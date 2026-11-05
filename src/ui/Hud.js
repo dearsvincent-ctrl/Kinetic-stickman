@@ -5,6 +5,7 @@ export class Hud {
     this.speedFill = document.querySelector("#speed-fill");
     this.movementState = document.querySelector("#movement-state");
     this.movementDot = document.querySelector("#movement-dot");
+    this.stanceLabel = document.querySelector("#stance-label");
     this.helpDialog = document.querySelector("#help-dialog");
     this.fullscreenButton = document.querySelector("#fullscreen-button");
     this.frameCount = 0;
@@ -43,7 +44,7 @@ export class Hud {
     if (!document.fullscreenEnabled) this.fullscreenButton.hidden = true;
   }
 
-  update(dt, speed, maxSpeed, sprinting) {
+  update(dt, speed, maxSpeed, sprinting, fighting = false) {
     this.frameCount++;
     this.sampleTime += dt;
     this.hudTime += dt;
@@ -59,6 +60,9 @@ export class Hud {
     const state =
       speed < 0.08 ? "IDLE" : sprinting && speed > 2.7 ? "SPRINT" : "WALK";
     this.movementState.textContent = state;
+    this.stanceLabel.textContent = fighting
+      ? "FIGHTING STANCE"
+      : "FREE MOVEMENT";
     this.speedValue.textContent = speed.toFixed(1);
     this.speedFill.style.width = `${Math.min(100, (speed / maxSpeed) * 100)}%`;
     this.movementDot.style.background =

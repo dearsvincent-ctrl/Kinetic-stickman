@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { createArena } from "../world/createArena.js";
 import { ArenaBounds } from "../world/ArenaBounds.js";
 import { Stickman } from "../character/Stickman.js";
-import { LocomotionAnimator } from "../character/LocomotionAnimator.js";
+import { CharacterAnimator } from "../character/CharacterAnimator.js";
 import { CharacterController } from "../movement/CharacterController.js";
 import { FollowCamera } from "../camera/FollowCamera.js";
 import { InputController } from "../input/InputController.js";
@@ -34,7 +34,7 @@ export class Game {
       this.character.root,
       new ArenaBounds(this.arena.halfSize),
     );
-    this.animator = new LocomotionAnimator(this.character);
+    this.animator = new CharacterAnimator(this.character);
     this.followCamera = new FollowCamera(
       this.camera,
       this.character.root.position,
@@ -45,6 +45,7 @@ export class Game {
       joystick: document.querySelector("#joystick"),
       joystickKnob: document.querySelector("#joystick-knob"),
       sprintButton: document.querySelector("#sprint-button"),
+      fightButton: document.querySelector("#fight-button"),
       cameraSurface: document.querySelector("#camera-surface"),
       resetButton: document.querySelector("#reset-camera"),
       onReset: () => this.followCamera.reset(this.controller.heading),
@@ -123,6 +124,7 @@ export class Game {
             ? this.controller.sprintSpeed
             : this.controller.walkSpeed,
           sprinting: this.input.sprinting,
+          fighting: this.input.fighting,
         });
         this.accumulator -= STEP;
       }
@@ -138,6 +140,7 @@ export class Game {
       this.controller.speed,
       this.controller.sprintSpeed,
       this.input.sprinting,
+      this.input.fighting,
     );
   }
 
@@ -150,6 +153,7 @@ export class Game {
       input: {
         move: { ...this.input.move },
         sprinting: this.input.sprinting,
+        fighting: this.input.fighting,
         joystickPointer: this.input.joystickPointer,
         cameraPointer: this.input.cameraPointer,
         sprintPointer: this.input.sprintPointer,
@@ -161,6 +165,12 @@ export class Game {
         targetPitch: this.followCamera.targetPitch,
         targetYaw: this.followCamera.targetYaw,
         distance: this.followCamera.distance,
+      },
+      animation: {
+        combatWeight: this.animator.combatWeight,
+        phase: this.animator.locomotion.phase,
+        cadence: this.animator.locomotion.cadence,
+        stride: this.animator.locomotion.stride,
       },
       halfSize: this.arena.halfSize,
       radius: this.controller.radius,

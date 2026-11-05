@@ -9,7 +9,7 @@ const MOVE_KEYS = new Set([
   "ArrowRight",
 ]);
 const SPRINT_KEYS = new Set(["ShiftLeft", "ShiftRight"]);
-const GAME_KEYS = new Set([...MOVE_KEYS, ...SPRINT_KEYS, "KeyR"]);
+const GAME_KEYS = new Set([...MOVE_KEYS, ...SPRINT_KEYS, "KeyR", "KeyF"]);
 const DEAD_ZONE = 0.1;
 
 /**
@@ -24,16 +24,23 @@ export class InputController {
     sprintButton,
     cameraSurface,
     resetButton,
+    fightButton,
     onReset,
   }) {
     this.joystick = joystick;
     this.joystickKnob = joystickKnob;
     this.sprintButton = sprintButton;
     this.cameraSurface = cameraSurface;
+    this.fightButton = fightButton;
     this.onReset = onReset ?? (() => {});
 
     this.move = { x: 0, y: 0 };
     this.sprinting = false;
+    // Stance is a persistent selection, unlike held movement/sprint input.
+    this.fighting = false;
+    this.fightPointer = null;
+    this.fightPressCancelled = false;
+    this.fightClickHandled = false;
     this.touchMove = { x: 0, y: 0 };
     this.lookDelta = { x: 0, y: 0 };
     this.keys = new Set();
@@ -133,12 +140,76 @@ export class InputController {
       });
     }
 
+    if (fightButton) {
+      listen(fightButton, "pointerdown", (event) => {
+        // Leave native button activation intact, but keep this UI gesture out
+        // of the camera surface. No movement/look/sprint pointer is acquired.
+        event.stopPropagation();
+        if (!this.canStartPointer(event) || this.fightPointer !== null) return;
+        this.fightPointer = event.pointerId;
+        this.fightPressCancelled = false;
+        this.fightClickHandled = false;
+      });
+      const outsideFightButton = (event) => {
+        const bounds = fightButton.getBoundingClientRect();
+        return (
+          event.clientX < bounds.left ||
+          event.clientX > bounds.right ||
+          event.clientY < bounds.top ||
+          event.clientY > bounds.bottom
+        );
+      };
+      listen(window, "pointermove", (event) => {
+        if (event.pointerId === this.fightPointer && outsideFightButton(event))
+          this.fightPressCancelled = true;
+      });
+      listen(window, "pointerup", (event) => {
+        if (event.pointerId !== this.fightPointer) return;
+        this.fightPressCancelled ||= outsideFightButton(event);
+        this.fightPointer = null;
+        if (!this.fightPressCancelled) {
+          // Chrome does not synthesize a click for a non-primary touch. Use
+          // completed pointer release so FIGHT also works as a fourth finger.
+          this.fightClickHandled = true;
+          this.toggleFighting();
+        }
+      });
+      const cancelFightPress = (event) => {
+        if (event.pointerId !== this.fightPointer) return;
+        this.fightPressCancelled = true;
+        this.fightPointer = null;
+      };
+      listen(window, "pointercancel", cancelFightPress);
+      listen(fightButton, "lostpointercapture", cancelFightPress);
+      listen(fightButton, "contextmenu", (event) => event.preventDefault());
+      listen(fightButton, "click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        // A keyboard/accessibility click has detail=0 and remains usable even
+        // after a previous touch was cancelled. Pointer clicks must complete
+        // inside the button, including browsers' implicit touch capture.
+        if (event.detail !== 0) {
+          if (this.fightClickHandled) {
+            this.fightClickHandled = false;
+            return;
+          }
+          if (this.fightPressCancelled) return;
+        }
+        this.toggleFighting();
+      });
+    }
+
     listen(window, "keydown", (event) => {
       if (!GAME_KEYS.has(event.code) || this.isTextOrDialogTarget(event.target))
         return;
       event.preventDefault();
       if (event.code === "KeyR") {
         if (!event.repeat) this.onReset();
+        return;
+      }
+      if (event.code === "KeyF") {
+        if (!event.repeat && !this.keys.has("KeyF")) this.toggleFighting();
+        this.keys.add("KeyF");
         return;
       }
       this.keys.add(event.code);
@@ -179,6 +250,11 @@ export class InputController {
   consumeEvent(event) {
     if (event.cancelable) event.preventDefault();
     event.stopPropagation();
+  }
+
+  toggleFighting() {
+    this.fighting = !this.fighting;
+    this.updateState();
   }
 
   capture(element, pointerId) {
@@ -236,6 +312,8 @@ export class InputController {
       this.keys.has("ShiftRight");
     this.sprintButton.classList.toggle("is-active", this.sprinting);
     this.sprintButton.setAttribute("aria-pressed", String(this.sprinting));
+    this.fightButton?.classList.toggle("is-active", this.fighting);
+    this.fightButton?.setAttribute("aria-pressed", String(this.fighting));
   }
 
   endPointer(pointerId) {
@@ -276,6 +354,9 @@ export class InputController {
     this.joystickPointer = null;
     this.cameraPointer = null;
     this.sprintPointer = null;
+    this.fightPointer = null;
+    this.fightPressCancelled = true;
+    this.fightClickHandled = false;
     this.touchMove.x = 0;
     this.touchMove.y = 0;
     this.lookDelta.x = 0;

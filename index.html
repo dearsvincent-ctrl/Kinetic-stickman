@@ -34,7 +34,7 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.1</b></span>
+          <span class="version">PROTOTYPE <b>0.2</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
@@ -71,7 +71,9 @@
         </div>
         <h1>Training ground<span class="title-period">.</span></h1>
         <p>Find your footing. Make your move.</p>
-        <div class="session-tag"><span></span> FREE MOVEMENT</div>
+        <div class="session-tag">
+          <span></span><span id="stance-label">FREE MOVEMENT</span>
+        </div>
       </section>
       <div class="camera-hint" aria-hidden="true">
         <svg viewBox="0 0 40 20">
@@ -111,6 +113,20 @@
         <span class="keyboard-label">W A S D <span>/</span> ↑ ← ↓ →</span>
       </div>
       <div class="right-controls">
+        <button
+          id="fight-button"
+          class="fight-button"
+          aria-label="Toggle fighting stance"
+          aria-pressed="false"
+          title="Toggle fighting stance (F)"
+        >
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <path
+              d="m8 24-3-8 3-6 5 2 2 6-3 6zm16 0 3-8-3-6-5 2-2 6 3 6zM12 7l4-3 4 3M16 4v7"
+            />
+          </svg>
+          <span>FIGHT</span>
+        </button>
         <button
           id="reset-camera"
           class="reset-button"
@@ -168,7 +184,7 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.1</div>
+        <div class="eyebrow">KINETIC / VERSION 0.2</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
           A space to explore movement.<br />Move, turn, and find your rhythm.
@@ -187,12 +203,16 @@
             <dd>Hold SPRINT <span>or Shift</span></dd>
           </div>
           <div>
+            <dt>Fighting stance</dt>
+            <dd>Tap FIGHT to toggle <span>or F</span></dd>
+          </div>
+          <div>
             <dt>Reset view</dt>
             <dd>Tap RESET VIEW <span>or R</span></dd>
           </div>
         </dl>
         <p class="help-note">
-          Movement prototype. Combat and physics come later.
+          Movement and guard prototype. Attacks and physics come later.
         </p>
         <form method="dialog">
           <button class="primary-button">

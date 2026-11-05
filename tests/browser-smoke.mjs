@@ -27,6 +27,30 @@ const wait = (predicate, timeout = 25000) =>
   page.waitForFunction(predicate, null, { timeout });
 const closeTo = (a, b, tolerance = 0.06) =>
   assert.ok(Math.abs(a - b) < tolerance, `${a} ≈ ${b}`);
+const checkFightLayout = async (width, height) => {
+  const fight = await page.locator("#fight-button").boundingBox();
+  assert.ok(
+    fight.x >= 0 &&
+      fight.y >= 0 &&
+      fight.x + fight.width <= width &&
+      fight.y + fight.height <= height,
+    "FIGHT fits the viewport",
+  );
+  assert.ok(
+    fight.width >= 44 && fight.height >= 44,
+    "FIGHT remains a usable touch target",
+  );
+  for (const selector of ["#joystick", "#sprint-button", "#reset-camera"]) {
+    const other = await page.locator(selector).boundingBox();
+    assert.ok(
+      fight.x + fight.width <= other.x ||
+        other.x + other.width <= fight.x ||
+        fight.y + fight.height <= other.y ||
+        other.y + other.height <= fight.y,
+      `FIGHT does not cover ${selector}`,
+    );
+  }
+};
 
 try {
   await page.goto(`${baseURL}/?debug`, { waitUntil: "networkidle" });
@@ -37,6 +61,58 @@ try {
   assert.equal(initial.renderer.triangles < 15000, true);
   await page.screenshot({ path: "test-results/landscape.png" });
   console.log("PASS: arena renders in a mobile landscape viewport");
+
+  await checkFightLayout(844, 390);
+  assert.equal(initial.input.fighting, false);
+  assert.equal(
+    await page.locator("#fight-button").getAttribute("aria-pressed"),
+    "false",
+  );
+  await page.locator("#fight-button").tap();
+  const guardWeights = await page.evaluate(async () => {
+    const samples = [];
+    for (let frame = 0; frame < 180; frame++) {
+      const weight = window.__KINETIC__.snapshot().animation.combatWeight;
+      samples.push(weight);
+      if (weight > 0.95) break;
+      await new Promise(requestAnimationFrame);
+    }
+    return samples;
+  });
+  assert.ok(
+    guardWeights.some((weight) => weight > 0 && weight < 0.95),
+    "Guard blends through intermediate poses",
+  );
+  assert.ok(guardWeights.at(-1) > 0.95, "Guard reaches its target pose");
+  assert.ok(
+    guardWeights.every(
+      (weight, index) =>
+        weight >= 0 &&
+        weight <= 1 &&
+        (index === 0 || weight >= guardWeights[index - 1]),
+    ),
+    "Guard entry is bounded and monotonic",
+  );
+  const guarded = await snapshot();
+  assert.equal(guarded.input.fighting, true);
+  assert.deepEqual(
+    guarded.position,
+    initial.position,
+    "Stance never translates the actor",
+  );
+  closeTo(guarded.camera.pitch, initial.camera.pitch, 0.000001);
+  closeTo(guarded.camera.yaw, initial.camera.yaw, 0.000001);
+  closeTo(guarded.camera.distance, initial.camera.distance, 0.000001);
+  await page.screenshot({ path: "test-results/guard.png" });
+  await page.locator("#fight-button").tap();
+  await wait(
+    () =>
+      !window.__KINETIC__.snapshot().input.fighting &&
+      window.__KINETIC__.snapshot().animation.combatWeight < 0.02,
+  );
+  console.log(
+    "PASS: FIGHT smoothly toggles the guard without moving the actor or camera",
+  );
 
   await page.keyboard.down("w");
   await page.keyboard.down("Shift");
@@ -124,12 +200,63 @@ try {
       .evaluate((node) => node.classList.contains("is-active")),
   );
   await page.screenshot({ path: "test-results/multitouch.png" });
+  const fight = await center("#fight-button");
+  const fourthFinger = touch(6, fight);
+  const beforeFightTap = await snapshot();
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [...fingers, fourthFinger],
+  });
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [fourthFinger],
+  });
+  await wait(
+    () =>
+      window.__KINETIC__.snapshot().input.fighting &&
+      window.__KINETIC__.snapshot().animation.combatWeight > 0.95,
+  );
+  const guardedMulti = await snapshot();
+  assert.equal(
+    guardedMulti.input.joystickPointer,
+    beforeFightTap.input.joystickPointer,
+  );
+  assert.equal(
+    guardedMulti.input.cameraPointer,
+    beforeFightTap.input.cameraPointer,
+  );
+  assert.equal(
+    guardedMulti.input.sprintPointer,
+    beforeFightTap.input.sprintPointer,
+  );
+  assert.deepEqual(guardedMulti.input.move, beforeFightTap.input.move);
+  assert.equal(guardedMulti.input.sprinting, true);
+  closeTo(
+    guardedMulti.camera.targetYaw,
+    beforeFightTap.camera.targetYaw,
+    0.000001,
+  );
+  assert.equal(
+    await page.locator("#fight-button").getAttribute("aria-pressed"),
+    "true",
+  );
+  await page.keyboard.press("f");
+  await wait(
+    () =>
+      !window.__KINETIC__.snapshot().input.fighting &&
+      window.__KINETIC__.snapshot().animation.combatWeight < 0.02,
+  );
+  console.log(
+    "PASS: a fourth touch toggles FIGHT while joystick, look and sprint keep their owners",
+  );
   await session.send("Input.dispatchTouchEvent", {
     type: "touchEnd",
     // CDP touchEnd identifies the ended finger, unlike TouchEvent.touches.
     touchPoints: fingers.slice(0, 1),
   });
-  await wait(() => window.__KINETIC__.snapshot().input.joystickPointer === null);
+  await wait(
+    () => window.__KINETIC__.snapshot().input.joystickPointer === null,
+  );
   let released = await snapshot();
   closeTo(released.input.move.x, 0);
   assert.ok(released.input.cameraPointer !== null && released.input.sprinting);
@@ -214,6 +341,7 @@ try {
       `${selector} fits portrait`,
     );
   }
+  await checkFightLayout(390, 844);
   await page.locator("#reset-camera").tap();
   await page.screenshot({ path: "test-results/portrait.png" });
   assert.equal(

@@ -5,7 +5,7 @@ import { CharacterController } from "../src/movement/CharacterController.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
 import { FollowCamera } from "../src/camera/FollowCamera.js";
 import { Stickman } from "../src/character/Stickman.js";
-import { LocomotionAnimator } from "../src/character/LocomotionAnimator.js";
+import { CharacterAnimator } from "../src/character/CharacterAnimator.js";
 
 const input = (x = 0, y = 0, sprinting = false) => ({
   move: { x, y },
@@ -211,7 +211,7 @@ test("rig joints are hierarchical and animation does not take ownership of world
   character.root.rotation.y = 1.2;
   const position = character.root.position.clone();
   const rotation = character.root.quaternion.clone();
-  const animator = new LocomotionAnimator(character);
+  const animator = new CharacterAnimator(character);
   for (let frame = 0; frame < 30; frame++)
     animator.update(1 / 60, { speed: 4, maxSpeed: 5.2, sprinting: true });
   assert.ok(character.root.position.equals(position));

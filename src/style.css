@@ -262,7 +262,7 @@ h1 {
   letter-spacing: 1.8px;
   color: #bcc5bd;
 }
-.session-tag > span {
+.session-tag > span:first-child {
   width: 4px;
   height: 4px;
   background: var(--orange);
@@ -413,6 +413,37 @@ h1 {
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+.fight-button {
+  position: absolute;
+  right: calc(100% + 24px);
+  bottom: 44px;
+  width: 76px;
+  height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #c0ceb54d;
+  border-radius: 50%;
+  background: #1b2b28e6;
+  color: #d3d9c9;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.fight-button svg {
+  width: 26px;
+  height: 26px;
+}
+.fight-button.is-active {
+  color: #ffc09d;
+  border-color: var(--orange);
+  background: #624534e6;
 }
 .reset-button {
   display: flex;
@@ -730,6 +761,17 @@ h1 {
   }
 }
 @media (max-height: 600px) {
+  .fight-button {
+    right: calc(100% + 16px);
+    bottom: 34px;
+    width: 64px;
+    height: 64px;
+    font-size: 7px;
+  }
+  .fight-button svg {
+    width: 23px;
+    height: 23px;
+  }
   .topbar {
     height: 65px;
     left: max(24px, env(safe-area-inset-left));
@@ -861,6 +903,19 @@ h1 {
   }
 }
 @media (max-width: 600px) and (orientation: portrait) {
+  .fight-button {
+    right: 0;
+    bottom: calc(100% + 14px);
+    width: 90px;
+    height: 48px;
+    flex-direction: row;
+    border-radius: 6px;
+    font-size: 7px;
+  }
+  .fight-button svg {
+    width: 22px;
+    height: 22px;
+  }
   .topbar {
     height: 78px;
     left: 20px;

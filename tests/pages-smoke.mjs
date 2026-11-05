@@ -118,6 +118,19 @@ try {
     "undefined",
     "Production build excludes development telemetry",
   );
+  assert.equal(
+    await page.locator("#fight-button").getAttribute("aria-pressed"),
+    "false",
+  );
+  await page.locator("#fight-button").tap();
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#stance-label").textContent === "FIGHTING STANCE",
+  );
+  assert.equal(
+    await page.locator("#fight-button").getAttribute("aria-pressed"),
+    "true",
+  );
 
   const center = async (selector) => {
     const box = await page.locator(selector).boundingBox();
@@ -173,6 +186,11 @@ try {
       .evaluate((element) => element.classList.contains("is-active")),
     "Joystick remains active during camera drag and sprint",
   );
+  assert.equal(
+    await page.locator("#fight-button").getAttribute("aria-pressed"),
+    "true",
+    "Guard remains selected during simultaneous movement/look/sprint",
+  );
   await session.send("Input.dispatchTouchEvent", {
     type: "touchCancel",
     touchPoints: [],
@@ -182,6 +200,22 @@ try {
   );
   assert.equal(
     await page.locator("#sprint-button").getAttribute("aria-pressed"),
+    "false",
+  );
+  assert.equal(
+    await page.locator("#fight-button").getAttribute("aria-pressed"),
+    "true",
+    "Cancelling momentary touches preserves the selected guard",
+  );
+  await mkdir("test-results", { recursive: true });
+  await page.screenshot({ path: "test-results/pages-guard.png" });
+  await page.locator("#fight-button").tap();
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#stance-label").textContent === "FREE MOVEMENT",
+  );
+  assert.equal(
+    await page.locator("#fight-button").getAttribute("aria-pressed"),
     "false",
   );
   await page.locator("#reset-camera").tap();
@@ -207,7 +241,7 @@ try {
     "Production page has no runtime or asset errors",
   );
   console.log(
-    `PASS: production bundle renders at ${base}; JS, CSS, fonts and favicon load from the Pages path; native emulated touch controls work`,
+    `PASS: production bundle renders at ${base}; JS, CSS, fonts and favicon load from the Pages path; native emulated touch controls and FIGHT toggle work`,
   );
   console.log("No physical Android device was tested.");
 } finally {
