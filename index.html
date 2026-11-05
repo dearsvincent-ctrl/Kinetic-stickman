@@ -34,7 +34,7 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.3</b></span>
+          <span class="version">PROTOTYPE <b>0.4</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
@@ -75,10 +75,22 @@
           <span></span><span id="stance-label">FREE MOVEMENT</span>
         </div>
       </section>
-      <div class="camera-hint" aria-hidden="true">
-        <svg viewBox="0 0 40 20">
-          <path d="m8 5-5 5 5 5m24-10 5 5-5 5M3 10h34" /></svg
-        ><span>DRAG TO LOOK</span>
+      <div class="camera-tools">
+        <div class="camera-hint" aria-hidden="true">
+          <svg viewBox="0 0 40 20">
+            <path d="m8 5-5 5 5 5m24-10 5 5-5 5M3 10h34" /></svg
+          ><span>DRAG TO LOOK</span>
+        </div>
+        <button
+          id="reset-camera"
+          class="reset-button"
+          aria-label="Reset camera behind character"
+          title="Reset camera (R)"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M4 10V5m0 0h5M4 5l3 3a7 7 0 1 1-1 8" /></svg
+          ><span>RESET VIEW</span><kbd>R</kbd>
+        </button>
       </div>
       <div class="orientation-note">
         <svg viewBox="0 0 24 24">
@@ -141,16 +153,6 @@
           <span>FIGHT</span>
         </button>
         <button
-          id="reset-camera"
-          class="reset-button"
-          aria-label="Reset camera behind character"
-          title="Reset camera (R)"
-        >
-          <svg viewBox="0 0 24 24">
-            <path d="M4 10V5m0 0h5M4 5l3 3a7 7 0 1 1-1 8" /></svg
-          ><span>RESET VIEW</span><kbd>R</kbd>
-        </button>
-        <button
           id="sprint-button"
           class="sprint-button"
           aria-label="Hold to sprint"
@@ -197,7 +199,7 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.3</div>
+        <div class="eyebrow">KINETIC / VERSION 0.4</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
           A space to explore movement.<br />Move, turn, and find your rhythm.
@@ -213,16 +215,16 @@
           </div>
           <div>
             <dt>Sprint</dt>
-            <dd>Hold SPRINT <span>or Shift</span></dd>
+            <dd>Hold or slide onto SPRINT <span>or Shift</span></dd>
           </div>
           <div>
             <dt>Fighting stance</dt>
-            <dd>Tap FIGHT to toggle <span>or F</span></dd>
+            <dd>Tap or slide onto FIGHT <span>or F</span></dd>
           </div>
           <div>
             <dt>Dash</dt>
             <dd>
-              Tap DASH, steer with the joystick
+              Tap or slide onto DASH, steer with the joystick
               <span>or E + movement keys</span>
             </dd>
           </div>

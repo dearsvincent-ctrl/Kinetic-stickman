@@ -1,3 +1,5 @@
+import { ActionBehavior, TouchActionRouter } from "./TouchActionRouter.js";
+
 const MOVE_KEYS = new Set([
   "KeyW",
   "KeyA",
@@ -33,6 +35,8 @@ export class InputController {
     fightButton,
     dashButton,
     onReset,
+    actionRoot = document.documentElement,
+    actionBindings = [],
   }) {
     this.joystick = joystick;
     this.joystickKnob = joystickKnob;
@@ -46,17 +50,12 @@ export class InputController {
     this.sprinting = false;
     // Stance is a persistent selection, unlike held movement/sprint input.
     this.fighting = false;
-    this.fightPointer = null;
-    this.fightPressCancelled = false;
-    this.fightClickHandled = false;
-    this.dashPointer = null;
     this.dashRequested = false;
     this.touchMove = { x: 0, y: 0 };
     this.lookDelta = { x: 0, y: 0 };
     this.keys = new Set();
     this.joystickPointer = null;
     this.cameraPointer = null;
-    this.sprintPointer = null;
     this.lastCameraPoint = { x: 0, y: 0 };
     this.listeners = [];
 
@@ -79,19 +78,6 @@ export class InputController {
         this.capture(joystick, event.pointerId);
         joystick.classList.add("is-active");
         this.updateJoystick(event);
-      },
-      pointerOptions,
-    );
-
-    listen(
-      sprintButton,
-      "pointerdown",
-      (event) => {
-        if (!this.canStartPointer(event) || this.sprintPointer !== null) return;
-        this.consumeEvent(event);
-        this.sprintPointer = event.pointerId;
-        this.capture(sprintButton, event.pointerId);
-        this.updateState();
       },
       pointerOptions,
     );
@@ -133,7 +119,7 @@ export class InputController {
     const release = (event) => this.endPointer(event.pointerId);
     listen(window, "pointerup", release);
     listen(window, "pointercancel", release);
-    for (const element of [joystick, sprintButton, cameraSurface]) {
+    for (const element of [joystick, cameraSurface]) {
       listen(element, "lostpointercapture", release);
       listen(element, "contextmenu", (event) => event.preventDefault());
       listen(element, "dragstart", (event) => event.preventDefault());
@@ -150,90 +136,35 @@ export class InputController {
       });
     }
 
-    if (fightButton) {
-      listen(fightButton, "pointerdown", (event) => {
-        // Leave native button activation intact, but keep this UI gesture out
-        // of the camera surface. No movement/look/sprint pointer is acquired.
-        event.stopPropagation();
-        if (!this.canStartPointer(event) || this.fightPointer !== null) return;
-        this.fightPointer = event.pointerId;
-        this.fightPressCancelled = false;
-        this.fightClickHandled = false;
-      });
-      const outsideFightButton = (event) => {
-        const bounds = fightButton.getBoundingClientRect();
-        return (
-          event.clientX < bounds.left ||
-          event.clientX > bounds.right ||
-          event.clientY < bounds.top ||
-          event.clientY > bounds.bottom
-        );
-      };
-      listen(window, "pointermove", (event) => {
-        if (event.pointerId === this.fightPointer && outsideFightButton(event))
-          this.fightPressCancelled = true;
-      });
-      listen(window, "pointerup", (event) => {
-        if (event.pointerId !== this.fightPointer) return;
-        this.fightPressCancelled ||= outsideFightButton(event);
-        this.fightPointer = null;
-        if (!this.fightPressCancelled) {
-          // Chrome does not synthesize a click for a non-primary touch. Use
-          // completed pointer release so FIGHT also works as a fourth finger.
-          this.fightClickHandled = true;
-          this.toggleFighting();
-        }
-      });
-      const cancelFightPress = (event) => {
-        if (event.pointerId !== this.fightPointer) return;
-        this.fightPressCancelled = true;
-        this.fightPointer = null;
-      };
-      listen(window, "pointercancel", cancelFightPress);
-      listen(fightButton, "lostpointercapture", cancelFightPress);
-      listen(fightButton, "contextmenu", (event) => event.preventDefault());
-      listen(fightButton, "click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        // A keyboard/accessibility click has detail=0 and remains usable even
-        // after a previous touch was cancelled. Pointer clicks must complete
-        // inside the button, including browsers' implicit touch capture.
-        if (event.detail !== 0) {
-          if (this.fightClickHandled) {
-            this.fightClickHandled = false;
-            return;
-          }
-          if (this.fightPressCancelled) return;
-        }
-        this.toggleFighting();
-      });
-    }
-
-    if (dashButton) {
-      listen(
-        dashButton,
-        "pointerdown",
-        (event) => {
-          // Fire on contact, including a non-primary touch. Consume even an
-          // unavailable/repeated press so it cannot start a camera gesture.
-          this.consumeEvent(event);
-          if (!this.canStartPointer(event) || this.dashPointer !== null) return;
-          this.dashPointer = event.pointerId;
-          this.capture(dashButton, event.pointerId);
-          this.requestDash();
-        },
-        pointerOptions,
-      );
-      listen(dashButton, "lostpointercapture", release);
-      listen(dashButton, "contextmenu", (event) => event.preventDefault());
-      listen(dashButton, "dragstart", (event) => event.preventDefault());
-      listen(dashButton, "click", (event) => {
-        this.consumeEvent(event);
-        // Pointer activation already fired on down. Native keyboard and
-        // accessibility clicks have detail=0 and remain available.
-        if (event.detail === 0) this.requestDash();
-      });
-    }
+    this.actions = new TouchActionRouter({
+      root: actionRoot,
+      canClaimPointer: (event) =>
+        event.pointerId !== this.joystickPointer &&
+        event.pointerId !== this.cameraPointer,
+    });
+    const bindings = [
+      {
+        id: "sprint",
+        element: sprintButton,
+        behavior: ActionBehavior.HOLD,
+        onHoldChange: () => this.updateState(),
+      },
+      {
+        id: "dash",
+        element: dashButton,
+        behavior: ActionBehavior.PRESS,
+        onActivate: () => this.requestDash(),
+      },
+      {
+        id: "fight",
+        element: fightButton,
+        behavior: ActionBehavior.TOGGLE,
+        onActivate: () => this.toggleFighting(),
+      },
+      ...actionBindings,
+    ];
+    for (const binding of bindings)
+      if (binding.element) this.actions.register(binding);
 
     listen(window, "keydown", (event) => {
       if (!GAME_KEYS.has(event.code) || this.isTextOrDialogTarget(event.target))
@@ -359,7 +290,7 @@ export class InputController {
     this.move.x = x / length;
     this.move.y = y / length;
     this.sprinting =
-      this.sprintPointer !== null ||
+      this.actions.isHeld("sprint") ||
       this.keys.has("ShiftLeft") ||
       this.keys.has("ShiftRight");
     this.sprintButton.classList.toggle("is-active", this.sprinting);
@@ -382,14 +313,6 @@ export class InputController {
       this.cameraSurface.classList.remove("is-active");
       this.releaseCapture(this.cameraSurface, pointerId);
     }
-    if (pointerId === this.sprintPointer) {
-      this.sprintPointer = null;
-      this.releaseCapture(this.sprintButton, pointerId);
-    }
-    if (pointerId === this.dashPointer) {
-      this.dashPointer = null;
-      this.releaseCapture(this.dashButton, pointerId);
-    }
     this.updateState();
   }
 
@@ -405,17 +328,11 @@ export class InputController {
     const pointers = [
       [this.joystick, this.joystickPointer],
       [this.cameraSurface, this.cameraPointer],
-      [this.sprintButton, this.sprintPointer],
-      [this.dashButton, this.dashPointer],
     ];
     this.joystickPointer = null;
     this.cameraPointer = null;
-    this.sprintPointer = null;
-    this.dashPointer = null;
     this.dashRequested = false;
-    this.fightPointer = null;
-    this.fightPressCancelled = true;
-    this.fightClickHandled = false;
+    this.actions.reset();
     this.touchMove.x = 0;
     this.touchMove.y = 0;
     this.lookDelta.x = 0;
@@ -428,8 +345,19 @@ export class InputController {
     this.updateState();
   }
 
+  get sprintPointer() {
+    return this.actions.getPointer("sprint");
+  }
+  get fightPointer() {
+    return this.actions.getPointer("fight");
+  }
+  get dashPointer() {
+    return this.actions.getPointer("dash");
+  }
+
   destroy() {
     this.reset();
+    this.actions.destroy();
     for (const removeListener of this.listeners) removeListener();
     this.listeners.length = 0;
   }

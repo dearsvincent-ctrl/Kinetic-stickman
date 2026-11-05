@@ -102,6 +102,38 @@ const checkDashLayout = async (width, height) => {
     );
   }
 };
+const checkResetLayout = async (width, height) => {
+  const reset = await page.locator("#reset-camera").boundingBox();
+  const hint = await page.locator(".camera-hint").boundingBox();
+  assert.ok(reset.height <= 34, "Reset Camera remains a slim utility button");
+  assert.ok(
+    reset.x >= width / 2 &&
+      reset.y >= 0 &&
+      reset.x + reset.width <= width &&
+      reset.y + reset.height <= height,
+    "Reset Camera fits the top-right area",
+  );
+  assert.ok(
+    reset.y >= hint.y + hint.height + 8,
+    "Reset Camera has at least 8px clearance below DRAG TO LOOK",
+  );
+  closeTo(reset.x + reset.width, hint.x + hint.width, 2);
+  for (const selector of [
+    ".topbar",
+    "#sprint-button",
+    "#dash-button",
+    "#fight-button",
+  ]) {
+    const other = await page.locator(selector).boundingBox();
+    assert.ok(
+      reset.x + reset.width <= other.x ||
+        other.x + other.width <= reset.x ||
+        reset.y + reset.height <= other.y ||
+        other.y + other.height <= reset.y,
+      `Reset Camera does not overlap ${selector}`,
+    );
+  }
+};
 
 try {
   await page.goto(`${baseURL}/?debug`, { waitUntil: "networkidle" });
@@ -115,6 +147,7 @@ try {
 
   await checkFightLayout(844, 390);
   await checkDashLayout(844, 390);
+  await checkResetLayout(844, 390);
   assert.equal(initial.movementState, "locomotion");
   assert.equal(initial.dash.ready, true);
   assert.equal(await page.locator("#dash-cooldown").textContent(), "READY");
@@ -271,6 +304,45 @@ try {
     radiusY: 7,
     force: 1,
   });
+  const moveTouches = async (points, changed = points) => {
+    // CDP may acknowledge a move before Chrome dispatches its pointer events.
+    // Wait for actual coordinates before stepping the frozen simulation clock.
+    await page.evaluate((expected) => {
+      window.__nativeActionMove = new Promise((resolve) => {
+        const pending = [...expected];
+        const moved = (event) => {
+          const index = pending.findIndex(
+            (point) =>
+              Math.abs(point.x - event.clientX) < 1 &&
+              Math.abs(point.y - event.clientY) < 1,
+          );
+          if (index >= 0) pending.splice(index, 1);
+          if (pending.length) return;
+          document.removeEventListener("pointermove", moved, true);
+          resolve();
+        };
+        document.addEventListener("pointermove", moved, true);
+      });
+    }, changed);
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: points,
+    });
+    let timer;
+    try {
+      await Promise.race([
+        page.evaluate(() => window.__nativeActionMove),
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("Native action move was not delivered")),
+            10000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   const camera = { x: 550, y: 165 };
   let fingers = [touch(1, joy), touch(2, camera), touch(3, sprint)];
   await session.send("Input.dispatchTouchEvent", {
@@ -478,6 +550,200 @@ try {
     "PASS: native three-finger movement, look, sprint, independent release and cancellation",
   );
 
+  // Keep one native pointer down for the entire route. Frozen RAF makes the
+  // 700ms cooldown deterministic without changing the game's timing constants.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  const dash = await center("#dash-button");
+  const reset = await center("#reset-camera");
+  const gap = { x: 420, y: 220 };
+  let slider = touch(41, sprint);
+  const slideTo = async (point) => {
+    slider = touch(41, point);
+    await moveTouches([slider]);
+    await page.clock.runFor(34);
+  };
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [slider],
+  });
+  await page.clock.runFor(34);
+  assert.equal((await snapshot()).input.sprinting, true);
+  const slideSequence = (await snapshot()).dash.sequence;
+  await slideTo(dash);
+  assert.equal(
+    (await snapshot()).input.sprinting,
+    false,
+    "Leaving Sprint releases HOLD",
+  );
+  assert.equal(
+    (await snapshot()).dash.sequence,
+    slideSequence + 1,
+    "Entering Dash presses once",
+  );
+  await page.clock.runFor(850);
+  assert.equal((await snapshot()).dash.ready, true);
+  assert.equal(
+    (await snapshot()).dash.sequence,
+    slideSequence + 1,
+    "Staying inside Dash through its cooldown never auto-repeats PRESS",
+  );
+  await slideTo(sprint);
+  assert.equal(
+    (await snapshot()).input.sprinting,
+    true,
+    "Sliding back immediately resumes Sprint",
+  );
+  await slideTo(dash);
+  assert.equal(
+    (await snapshot()).dash.sequence,
+    slideSequence + 2,
+    "Re-entering Dash after cooldown presses again without lifting",
+  );
+  await slideTo(fight);
+  assert.equal(
+    (await snapshot()).input.fighting,
+    true,
+    "Entering Fight toggles immediately",
+  );
+  await slideTo({ x: fight.x + 1, y: fight.y });
+  await page.clock.runFor(250);
+  assert.equal(
+    (await snapshot()).input.fighting,
+    true,
+    "Moving within Fight does not repeat TOGGLE",
+  );
+  await slideTo(gap);
+  assert.equal(
+    (await snapshot()).input.fighting,
+    true,
+    "Leaving Fight preserves its selected stance",
+  );
+  assert.equal(
+    (await snapshot()).input.cameraPointer,
+    null,
+    "An action finger keeps ownership across gaps",
+  );
+  await slideTo(fight);
+  assert.equal(
+    (await snapshot()).input.fighting,
+    false,
+    "Fight toggles once again on re-entry",
+  );
+  const cameraBeforeUtilityCrossing = (await snapshot()).camera;
+  await slideTo(reset);
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [slider],
+  });
+  await page.clock.runFor(34);
+  const afterUtilityCrossing = await snapshot();
+  closeTo(
+    afterUtilityCrossing.camera.targetYaw,
+    cameraBeforeUtilityCrossing.targetYaw,
+    0.000001,
+  );
+  closeTo(
+    afterUtilityCrossing.camera.targetPitch,
+    cameraBeforeUtilityCrossing.targetPitch,
+    0.000001,
+  );
+  assert.equal(
+    afterUtilityCrossing.input.fighting,
+    false,
+    "Release and synthetic click do not duplicate a toggle",
+  );
+  assert.equal(afterUtilityCrossing.input.sprinting, false);
+
+  // Two fingers may independently hold the same action. Leaving with one finger
+  // must not release the other finger's HOLD, even when it leaves into a gap.
+  let sharedSprint = [
+    touch(42, sprint),
+    touch(43, sprint),
+    touch(46, joy),
+    touch(47, camera),
+  ];
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: sharedSprint,
+  });
+  await page.clock.runFor(34);
+  const sharedOwners = (await snapshot()).input;
+  sharedSprint[0] = touch(42, gap);
+  await moveTouches(sharedSprint, [sharedSprint[0]]);
+  await page.clock.runFor(34);
+  assert.equal(
+    (await snapshot()).input.sprinting,
+    true,
+    "Sprint stays held by its second finger",
+  );
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [sharedSprint[1]],
+  });
+  await page.clock.runFor(34);
+  assert.equal(
+    (await snapshot()).input.sprinting,
+    false,
+    "Last Sprint occupant releases HOLD",
+  );
+  assert.equal(
+    (await snapshot()).input.joystickPointer,
+    sharedOwners.joystickPointer,
+    "Sliding an action finger preserves the simultaneous joystick owner",
+  );
+  assert.equal(
+    (await snapshot()).input.cameraPointer,
+    sharedOwners.cameraPointer,
+    "Sliding an action finger preserves the simultaneous camera owner",
+  );
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchCancel",
+    touchPoints: [],
+  });
+
+  // Pointers that began as joystick/look keep those roles when they cross the
+  // action area; hit-testing must never turn an unrelated drag into a press.
+  const crossingSequence = (await snapshot()).dash.sequence;
+  let crossing = [touch(44, joy), touch(45, camera)];
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: crossing,
+  });
+  const crossingOwners = (await snapshot()).input;
+  crossing = [touch(44, sprint), touch(45, fight)];
+  await moveTouches(crossing);
+  await page.clock.runFor(34);
+  let crossingState = await snapshot();
+  assert.equal(crossingState.input.sprinting, false);
+  assert.equal(crossingState.input.fighting, false);
+  assert.equal(
+    crossingState.input.joystickPointer,
+    crossingOwners.joystickPointer,
+  );
+  assert.equal(crossingState.input.cameraPointer, crossingOwners.cameraPointer);
+  crossing[1] = touch(45, dash);
+  await moveTouches(crossing, [crossing[1]]);
+  await page.clock.runFor(34);
+  assert.equal(
+    (await snapshot()).dash.sequence,
+    crossingSequence,
+    "Camera drag crossing Dash cannot activate it",
+  );
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchCancel",
+    touchPoints: [],
+  });
+  await page.clock.runFor(34);
+  crossingState = await snapshot();
+  assert.equal(crossingState.input.joystickPointer, null);
+  assert.equal(crossingState.input.cameraPointer, null);
+  assert.equal(crossingState.input.sprintPointer, null);
+  assert.equal(crossingState.input.sprinting, false);
+  await page.clock.resume();
+  console.log(
+    "PASS: native slide HOLD/PRESS/TOGGLE entry, re-entry, cooldown, shared holds, role isolation and cancellation",
+  );
+
   await page.locator("#reset-camera").tap();
   await wait(() => {
     const s = window.__KINETIC__.snapshot();
@@ -550,6 +816,7 @@ try {
   }
   await checkFightLayout(390, 844);
   await checkDashLayout(390, 844);
+  await checkResetLayout(390, 844);
   await page.locator("#reset-camera").tap();
   await page.screenshot({ path: "test-results/portrait.png" });
   assert.equal(

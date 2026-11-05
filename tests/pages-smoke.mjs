@@ -99,6 +99,7 @@ try {
       errors.push(`${response.status()} ${response.url()}`);
   });
 
+  await page.clock.install();
   await page.goto(`${origin}${base}`, { waitUntil: "networkidle" });
   await page.waitForSelector("#loading", { state: "detached" });
   assert.equal(await page.locator("#error").isVisible(), false);
@@ -139,6 +140,38 @@ try {
       y: Math.round(box.y + box.height / 2),
     };
   };
+  const checkResetLayout = async (width, height) => {
+    const reset = await page.locator("#reset-camera").boundingBox();
+    const hint = await page.locator(".camera-hint").boundingBox();
+    assert.ok(reset.height <= 34, "Production Reset Camera has reduced height");
+    assert.ok(
+      reset.x >= width / 2 &&
+        reset.y >= hint.y + hint.height + 8 &&
+        reset.x + reset.width <= width &&
+        reset.y + reset.height <= height,
+      "Reset Camera fits below the top-right hint with an 8px gap",
+    );
+    assert.ok(
+      Math.abs(reset.x + reset.width - hint.x - hint.width) < 2,
+      "Reset Camera aligns with the right edge of the hint",
+    );
+    for (const selector of [
+      ".topbar",
+      "#sprint-button",
+      "#fight-button",
+      "#dash-button",
+    ]) {
+      const other = await page.locator(selector).boundingBox();
+      assert.ok(
+        reset.x + reset.width <= other.x ||
+          other.x + other.width <= reset.x ||
+          reset.y + reset.height <= other.y ||
+          other.y + other.height <= reset.y,
+        `Reset Camera does not overlap ${selector}`,
+      );
+    }
+  };
+  await checkResetLayout(844, 390);
   const joystick = await center("#joystick");
   const sprint = await center("#sprint-button");
   const dash = await center("#dash-button");
@@ -292,9 +325,161 @@ try {
     await page.locator("#fight-button").getAttribute("aria-pressed"),
     "false",
   );
+
+  // Exercise the exact production bundle with one native finger that never
+  // lifts between actions. Assert rendered accessibility/HUD states rather
+  // than relying on development-only controller telemetry.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  const fight = await center("#fight-button");
+  const gap = { x: 420, y: 220 };
+  let slider = touch(21, sprint);
+  const slideTo = async (point) => {
+    slider = touch(21, point);
+    // A CDP acknowledgement may precede native pointermove delivery. Await the
+    // event itself before advancing the game's frozen animation clock.
+    await page.evaluate((expected) => {
+      window.__nativeActionMove = new Promise((resolve) => {
+        const moved = (event) => {
+          if (
+            Math.abs(expected.x - event.clientX) >= 1 ||
+            Math.abs(expected.y - event.clientY) >= 1
+          )
+            return;
+          document.removeEventListener("pointermove", moved, true);
+          resolve();
+        };
+        document.addEventListener("pointermove", moved, true);
+      });
+    }, slider);
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [slider],
+    });
+    let timer;
+    try {
+      await Promise.race([
+        page.evaluate(() => window.__nativeActionMove),
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("Native action move was not delivered")),
+            10000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+    // The production HUD intentionally refreshes every 80ms; advance far enough
+    // to observe its next refresh while remaining inside the 250ms dash.
+    await page.clock.runFor(100);
+  };
+  const pressed = (selector) =>
+    page.locator(selector).getAttribute("aria-pressed");
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [slider],
+  });
+  await page.clock.runFor(34);
+  assert.equal(await pressed("#sprint-button"), "true");
+  await slideTo(dash);
+  assert.equal(
+    await pressed("#sprint-button"),
+    "false",
+    "Sprint releases when the finger enters Dash",
+  );
+  assert.equal(
+    await page.locator("#dash-button").getAttribute("aria-disabled"),
+    "true",
+    "Entering Dash starts its cooldown",
+  );
+  await page.clock.runFor(1050);
+  assert.equal(
+    await page.locator("#dash-cooldown").textContent(),
+    "READY",
+    "Holding Dash does not repeat when the cooldown expires",
+  );
+  await slideTo(sprint);
+  assert.equal(
+    await pressed("#sprint-button"),
+    "true",
+    "Sliding back resumes Sprint",
+  );
+  await slideTo(dash);
+  assert.equal(
+    await page.locator("#dash-button").getAttribute("aria-disabled"),
+    "true",
+    "Re-entering Dash triggers another burst after cooldown",
+  );
+  await slideTo(fight);
+  assert.equal(
+    await pressed("#fight-button"),
+    "true",
+    "Fight toggles on finger entry",
+  );
+  await slideTo({ x: fight.x + 1, y: fight.y });
+  assert.equal(
+    await pressed("#fight-button"),
+    "true",
+    "Moving within Fight does not toggle again",
+  );
+  await slideTo(gap);
+  assert.equal(
+    await pressed("#fight-button"),
+    "true",
+    "Leaving Fight preserves stance",
+  );
+  assert.equal(
+    await page
+      .locator("#camera-surface")
+      .evaluate((node) => node.classList.contains("is-active")),
+    false,
+    "An action finger is not adopted by the camera in a gap",
+  );
+  await slideTo(fight);
+  assert.equal(
+    await pressed("#fight-button"),
+    "false",
+    "Re-entering Fight toggles off",
+  );
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [slider],
+  });
+  await page.clock.runFor(34);
+  assert.equal(
+    await pressed("#fight-button"),
+    "false",
+    "Releasing the pointer cannot duplicate the toggle",
+  );
+  slider = touch(22, sprint);
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [slider],
+  });
+  await page.clock.runFor(34);
+  assert.equal(await pressed("#sprint-button"), "true");
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchCancel",
+    touchPoints: [],
+  });
+  await page.clock.runFor(34);
+  assert.equal(
+    await pressed("#sprint-button"),
+    "false",
+    "Cancellation releases production HOLD controls",
+  );
+  await page.clock.resume();
   await page.locator("#reset-camera").tap();
   await mkdir("test-results", { recursive: true });
   await page.screenshot({ path: "test-results/pages-landscape.png" });
+  for (const viewport of [
+    { width: 740, height: 360 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await checkResetLayout(viewport.width, viewport.height);
+  }
+  await page.screenshot({ path: "test-results/pages-portrait.png" });
 
   for (const asset of requests) {
     const url = new URL(asset);
@@ -315,7 +500,7 @@ try {
     "Production page has no runtime or asset errors",
   );
   console.log(
-    `PASS: production bundle renders at ${base}; JS, CSS, fonts and favicon load from the Pages path; native emulated touch controls, guarded DASH/cooldown and FIGHT toggle work`,
+    `PASS: production bundle renders at ${base}; Pages assets, native multitouch, slide HOLD/PRESS/TOGGLE, DASH cooldown and responsive Reset Camera layout work`,
   );
   console.log("No physical Android device was tested.");
 } finally {

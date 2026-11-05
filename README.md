@@ -1,6 +1,6 @@
-# Kinetic — Movement Lab v0.3
+# Kinetic — Movement Lab v0.4
 
-A mobile-first, third-person 3D stickman prototype built with JavaScript, Three.js, and Vite. The arena opens directly into play. Version 0.3 adds a steerable directional dash to the existing locomotion and toggleable martial arts guard.
+A mobile-first, third-person 3D stickman prototype built with JavaScript, Three.js, and Vite. The arena opens directly into play. Version 0.4 adds shared slide-to-activate gameplay buttons and a smaller Reset View button beneath the top-right camera hint.
 
 The existing camera angle and controls, progressive joystick, acceleration/deceleration, 2.6 m/s movement speed, 5.2 m/s sprint speed, arena, boundaries, and rendering settings are preserved. The locomotion layers coordinate arms and legs, bend the knees, move the hips and torso, and blend between idle and faster gaits using actual travel speed. Planted feet and two-bone leg IK reduce sliding on the flat floor.
 
@@ -19,7 +19,7 @@ To check or rerun deployment from your phone:
 3. Open [Settings → Pages](https://github.com/dearsvincent-ctrl/Kinetic-stickman/settings/pages). Under **Build and deployment → Source**, choose **GitHub Actions**. Do not select a branch or create a `gh-pages` branch. If Settings or the controls are hidden on the mobile layout, open Chrome's three-dot menu and enable **Desktop site**.
 4. Open [Actions](https://github.com/dearsvincent-ctrl/Kinetic-stickman/actions), choose **Deploy GitHub Pages**, tap **Run workflow**, select **main**, and tap **Run workflow** again. This also retries an initial run that failed before Pages was enabled.
 5. Wait for that run's build and deploy jobs to finish with green check marks. Open its **github-pages** deployment link, or return to **Settings → Pages → Visit site**.
-6. Rotate the phone to landscape and play. Drag the left joystick to move, drag the right side to look, hold **SPRINT** to run, tap **FIGHT** to toggle the guard, and tap **DASH** for a movement burst.
+6. Rotate the phone to landscape and play. Drag the left joystick to move, drag the right side to look, hold **SPRINT** to run, and tap or slide onto **FIGHT** and **DASH** to activate them.
 
 Every later push or merged pull request to `main` automatically rebuilds and deploys the game. Pull requests run checks without publishing. If a page initially returns 404, confirm the deployment job succeeded and allow GitHub a short time to publish it, then reload the exact URL above, including its final slash.
 
@@ -44,18 +44,26 @@ For an Android phone, connect the phone and development computer to the same Wi-
 | -------------------- | ----------------------------------------- | ------------------------------ |
 | Move                 | Drag the bottom-left joystick             | WASD or arrow keys             |
 | Look                 | Drag the right side of the viewport       | Click and drag the right side  |
-| Sprint               | Hold the bottom-right SPRINT button       | Hold Shift                     |
-| Fighting stance      | Tap FIGHT to toggle the guard on or off   | Press F                        |
-| Directional dash     | Tap DASH above FIGHT                      | Press E                        |
+| Sprint               | Hold or slide onto SPRINT                 | Hold Shift                     |
+| Fighting stance      | Tap or slide onto FIGHT to toggle guard   | Press F                        |
+| Directional dash     | Tap or slide onto DASH above FIGHT        | Press E                        |
 | Reset camera         | Tap RESET VIEW                            | Press R                        |
 | Instructions / pause | Tap the question-mark button              | Click the question-mark button |
 | Fullscreen           | Tap the fullscreen button where supported | Click the fullscreen button    |
 
-The joystick, camera drag, sprint, and dash each own a separate pointer, allowing simultaneous steering, camera control, and dash input. Joystick travel controls normal movement speed, with a small central dead zone. Movement uses the camera's horizontal direction; the character smoothly faces the direction of travel. Releasing normal movement decelerates to idle. Camera reset returns to the character's current heading, with the default low viewing angle and 4.8-metre follow distance.
+Start a finger on any gameplay action button, then slide it between buttons without lifting:
 
-DASH triggers once per press. Its cooldown starts when the dash begins: the default 0.7 seconds includes the 0.25-second dash, leaving about 0.45 seconds afterwards. The button shows the remaining cooldown; pressing it while unavailable does not queue another dash. Dashing works with or without FIGHT and while sprint is held. Steering turns gradually, with a bounded turn rate so direction changes retain momentum. The configured distance is path length, so a curved dash has shorter net displacement; walls can shorten the distance actually travelled.
+- **HOLD — SPRINT:** active while the finger is inside. Leaving releases it; sliding back immediately resumes sprinting.
+- **PRESS — DASH:** activates once on entry. Sliding away and back makes a new request if its cooldown has expired. Staying inside does not repeat or automatically dash when the cooldown ends.
+- **TOGGLE — FIGHT:** toggles once on entry. Leaving or cancelling the touch keeps the selected stance; re-entering toggles it again.
 
-Touch gestures, page scrolling, text selection, and dragging are suppressed within the game. Momentary input clears when the page loses focus, becomes hidden, or changes size/orientation to prevent stuck movement. Pausing or losing focus cancels an active or pending dash without clearing its cooldown. Simulation time, including cooldown, pauses while the game is paused or backgrounded. The chosen fighting stance stays selected until FIGHT is toggled again. FIGHT does not take ownership of joystick, camera, sprint, or dash input.
+Sliding from SPRINT onto DASH releases sprint and requests a dash. Crossing a gap releases any HOLD action but keeps that finger assigned to gameplay buttons until it lifts or is cancelled. Joystick and camera fingers retain their original controls when crossing buttons. Multiple action fingers work independently; if two hold SPRINT, it remains active until both leave. This allows simultaneous joystick steering, camera dragging, and action input.
+
+Joystick travel controls normal movement speed, with a small central dead zone. Movement uses the camera's horizontal direction; the character smoothly faces the direction of travel. Releasing normal movement decelerates to idle. Camera reset returns to the character's current heading, with the default low viewing angle and 4.8-metre follow distance. RESET VIEW is a separate tap-only utility beneath the top-right DRAG TO LOOK hint, with responsive spacing and a reduced height of 28 pixels on desktop and 32 pixels on touch devices. Sliding gameplay fingers over it does not reset the camera.
+
+DASH triggers once per button entry or keyboard press. Its cooldown starts when the dash begins: the default 0.7 seconds includes the 0.25-second dash, leaving about 0.45 seconds afterwards. The button shows the remaining cooldown; entering it while unavailable does not queue another dash. Dashing works with or without FIGHT and while sprint is held. Steering turns gradually, with a bounded turn rate so direction changes retain momentum. The configured distance is path length, so a curved dash has shorter net displacement; walls can shorten the distance actually travelled.
+
+Touch gestures, page scrolling, text selection, and dragging are suppressed within the game. Momentary input clears when a touch is cancelled, the page loses focus, becomes hidden, or changes size/orientation to prevent stuck movement. Pausing or losing focus cancels an active or pending dash without clearing its cooldown. Simulation time, including cooldown, pauses while the game is paused or backgrounded. The chosen fighting stance stays selected until FIGHT is toggled again. Desktop Shift, F, and E shortcuts are unchanged; focused gameplay buttons also support Space and Enter through the shared action system.
 
 ## Production builds and deployment
 
@@ -83,28 +91,29 @@ For other static HTTPS hosts, use the ordinary `npm run build` command without t
 
 ## Project structure
 
-| Module                                  | Responsibility                                                           |
-| --------------------------------------- | ------------------------------------------------------------------------ |
-| `src/main.js`                           | Application entry point and startup error handling                       |
-| `src/core/Game.js`                      | Renderer, scene composition, game loop, simulation ownership             |
-| `src/core/math.js`                      | Shared damping and angle helpers                                         |
-| `src/ui/Hud.js`                         | FPS/speed readouts, dash cooldown, instructions, fullscreen              |
-| `src/input/InputController.js`          | Pointer ownership, joystick normalization, keyboard state, camera deltas |
-| `src/movement/CharacterController.js`   | Locomotion/dash states, camera-relative steering, facing, world movement |
-| `src/movement/DashState.js`             | Configurable dash timing, acceleration profile, steering, and cooldown   |
-| `src/world/ArenaBounds.js`              | Flat-ground movement adapter and boundary containment                    |
-| `src/world/createArena.js`              | Lightweight arena visuals, lighting, and authoritative arena dimensions  |
-| `src/camera/FollowCamera.js`            | Smoothed follow target, orbit angles, pitch limits, floor clearance      |
-| `src/character/Stickman.js`             | Named hierarchical body parts and joint pivots                           |
-| `src/character/CharacterAnimator.js`    | Composes animation layers and applies the final joint pose               |
-| `src/character/LocomotionAnimator.js`   | Speed-driven gait timing and foot contacts                               |
-| `src/character/CombatStanceAnimator.js` | Smooth defensive guard and balanced stance poses                         |
-| `src/character/DashAnimator.js`         | Dash push-off, directional lean, foot targets, and recovery overlay      |
-| `src/character/LegIK.js`                | Lightweight two-bone leg posing and floor contact                        |
-| `src/style.css`                         | Responsive HUD, touch controls, safe-area spacing                        |
-| `build/pagesBase.js`                    | GitHub Pages repository base-path selection                              |
-| `.github/workflows/deploy-pages.yml`    | Automated checks, production build, and Pages deployment                 |
-| `tests/`                                | Movement/camera checks and browser smoke coverage                        |
+| Module                                  | Responsibility                                                                      |
+| --------------------------------------- | ----------------------------------------------------------------------------------- |
+| `src/main.js`                           | Application entry point and startup error handling                                  |
+| `src/core/Game.js`                      | Renderer, scene composition, game loop, simulation ownership                        |
+| `src/core/math.js`                      | Shared damping and angle helpers                                                    |
+| `src/ui/Hud.js`                         | FPS/speed readouts, dash cooldown, instructions, fullscreen                         |
+| `src/input/InputController.js`          | Pointer ownership, joystick normalization, keyboard state, camera deltas            |
+| `src/input/TouchActionRouter.js`        | Shared HOLD/PRESS/TOGGLE registry, slide routing, cancellation, keyboard activation |
+| `src/movement/CharacterController.js`   | Locomotion/dash states, camera-relative steering, facing, world movement            |
+| `src/movement/DashState.js`             | Configurable dash timing, acceleration profile, steering, and cooldown              |
+| `src/world/ArenaBounds.js`              | Flat-ground movement adapter and boundary containment                               |
+| `src/world/createArena.js`              | Lightweight arena visuals, lighting, and authoritative arena dimensions             |
+| `src/camera/FollowCamera.js`            | Smoothed follow target, orbit angles, pitch limits, floor clearance                 |
+| `src/character/Stickman.js`             | Named hierarchical body parts and joint pivots                                      |
+| `src/character/CharacterAnimator.js`    | Composes animation layers and applies the final joint pose                          |
+| `src/character/LocomotionAnimator.js`   | Speed-driven gait timing and foot contacts                                          |
+| `src/character/CombatStanceAnimator.js` | Smooth defensive guard and balanced stance poses                                    |
+| `src/character/DashAnimator.js`         | Dash push-off, directional lean, foot targets, and recovery overlay                 |
+| `src/character/LegIK.js`                | Lightweight two-bone leg posing and floor contact                                   |
+| `src/style.css`                         | Responsive HUD, touch controls, safe-area spacing                                   |
+| `build/pagesBase.js`                    | GitHub Pages repository base-path selection                                         |
+| `.github/workflows/deploy-pages.yml`    | Automated checks, production build, and Pages deployment                            |
+| `tests/`                                | Movement/camera checks and browser smoke coverage                                   |
 
 All world distances are metres. The coordinate system is Y-up, and the character's local forward direction is −Z. Input uses normalized screen-right `x` and screen-forward `y`; the controller converts these into horizontal world movement.
 
@@ -119,6 +128,29 @@ Guard pose logic stays separate from locomotion, leaving room for future punches
 `ArenaBounds.move(position, displacement, radius, out)` is the current world-movement contract. It constrains the character's radius inside the arena and fixes its feet to the ground. For Rapier, introduce a world adapter backed by a kinematic character controller and static floor/wall colliders. The controller already derives facing and animation speed from resolved travel and cancels blocked velocity components. Extend that response for slopes and physical contacts when integrating Rapier, which is intentionally not installed yet.
 
 Dash motion integrates the acceleration/cruise/braking profile continuously in substeps no longer than 1/120 second. Every displacement goes through the same world adapter; the character slides along a boundary when possible and stops a dash early if fully blocked. It never teleports to a precomputed destination.
+
+### Extending touchscreen actions
+
+`InputController.actions` exposes the reusable `TouchActionRouter`. Register a button with an ID, DOM element, and `ActionBehavior`; use `onHoldChange` for HOLD and `onActivate` for PRESS or TOGGLE. For example, a future Block button could be wired without changing the router:
+
+```js
+import { ActionBehavior } from "./src/input/TouchActionRouter.js";
+
+const unregister = input.actions.register({
+  id: "block",
+  element: blockButton,
+  behavior: ActionBehavior.HOLD,
+  onHoldChange: (held) => {
+    futureCombatState.blocking = held;
+  },
+});
+
+// Call unregister() when removing this binding.
+```
+
+Block is only an integration example; this version adds no new gameplay actions. The `InputController` constructor also accepts an `actionBindings` array using the same registration objects. Registering the same ID or element replaces its old binding and releases its held state; an ongoing action finger can enter the replacement on its next move. The returned disposer only removes its own binding, so an old disposer cannot remove a later reassignment.
+
+The router captures each action finger on a stable root and hit-tests current coordinates with `document.elementFromPoint()`, including coalesced movement samples. Layout changes need no cached hit-box updates. Registration adds `data-touch-action` and `data-touch-behavior`; CSS keeps registered button bounds stable while active. HOLD tracks all occupying fingers, while PRESS and TOGGLE run once per entry. Blur, visibility changes, cancellation, reset, and teardown release momentary ownership without undoing an already-selected stance. Reset View is deliberately outside this registry.
 
 ### Dash tuning
 
@@ -145,9 +177,9 @@ The scene uses shared low-poly geometry and materials, instanced arena details, 
 
 ## Validation
 
-Version 0.3 passed all 75 Node tests, the production Pages build, the development browser regression suite, and the production asset/touch check in this environment. The checks include controller-driven landing/recovery at multiple frame rates and native multi-touch dash steering. Physical Android performance and feel still need the device checks below.
+Version 0.4 passed all 101 Node tests, the production Pages build, and both Chromium browser suites in this environment. Native touch checks cover continuous slides, re-entry after cooldown, shared HOLD fingers, cancellation, gesture isolation, and responsive reset placement. Physical Android verification remains in the device checklist below.
 
-Run the checks below and inspect the GitHub Actions run for the current commit. Unit tests cover movement, camera limits, input ownership, Pages base paths, stance toggling, animation transitions, and character-root ownership. Dash checks cover distance, steering, cooldown, wall containment, state transitions, and animation blending. Browser checks cover rendering, sprint and boundaries, native emulated multi-touch input and cancellation, dash controls, camera reset/pitch limits, instructions, and portrait layout. Screenshots are saved under `test-results/` by the browser scripts. UI fonts are bundled locally; the game makes no external asset requests.
+Run the checks below and inspect the GitHub Actions run for the current commit. Unit tests cover movement, camera limits, input ownership, Pages base paths, stance toggling, animation transitions, and character-root ownership. Dash checks cover distance, steering, cooldown, wall containment, state transitions, and animation blending. Action-router checks cover HOLD/PRESS/TOGGLE entry and re-entry, multiple fingers, cancellation, keyboard activation, and binding replacement. Browser checks cover rendering, sprint and boundaries, native emulated multi-touch input and cancellation, slide controls, dash cooldown, camera reset/pitch limits, instructions, and responsive layout. Screenshots are saved under `test-results/` by the browser scripts. UI fonts are bundled locally; the game makes no external asset requests.
 
 ```sh
 npm test
@@ -170,7 +202,7 @@ CHROMIUM_PATH=/path/to/chromium npm run test:browser
 
 In development, opening `http://localhost:5173/?debug` exposes a read-only `window.__KINETIC__.snapshot()` function for inspecting position, inputs, movement state, dash timing, camera limits, and render statistics. This hook is excluded from production builds.
 
-Version 0.3 has not been verified on a physical Android device by the implementer. Desktop Chromium and touch emulation can check rendering, pointer behavior, and responsive layouts, but cannot establish real mobile GPU performance, thermals, browser chrome behavior, or device-specific touch handling.
+Version 0.4 has not been verified on a physical Android device by the implementer. Desktop Chromium and touch emulation can check rendering, pointer behavior, and responsive layouts, but cannot establish real mobile GPU performance, thermals, browser chrome behavior, or device-specific touch handling.
 
 Before shipping to phones, verify on physical Android devices:
 
@@ -179,6 +211,8 @@ Before shipping to phones, verify on physical Android devices:
 - Vary joystick travel from slow walking through full movement and sprint. Check cadence, opposite arm/leg motion, foot contacts, and controlled guard steps.
 - Dash at rest, while moving, and in FIGHT. Steer through the burst, reverse the joystick, and release it midway; check push-off, bounded turning, recovery, and cooldown.
 - Move the joystick while dragging the camera and tapping DASH; nearby FIGHT and SPRINT controls should not activate accidentally.
+- Slide SPRINT → DASH → SPRINT without lifting, then re-enter DASH after cooldown. Confirm DASH does not repeat while held and FIGHT toggles once on each entry, including while other fingers move and look.
+- Cancel action touches and lift multiple fingers in different orders; confirm HOLD releases and the selected FIGHT stance persists. Check the smaller Reset View button sits beneath the top-right hint without overlapping text.
 - Rotate between portrait and landscape, including devices with display cutouts and Android gesture navigation.
 - Background and resume the browser; confirm no stuck inputs, movement jumps, or camera jumps.
 - Walk, sprint, and dash into each boundary and along corners; confirm containment and smooth sliding.
