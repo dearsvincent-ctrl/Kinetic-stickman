@@ -2,6 +2,7 @@ import { MathUtils, Quaternion, Vector3 } from "three";
 import { LocomotionAnimator } from "./LocomotionAnimator.js";
 import { CombatStanceAnimator } from "./CombatStanceAnimator.js";
 import { LegIK } from "./LegIK.js";
+import { DashAnimator } from "./DashAnimator.js";
 
 const TAU = Math.PI * 2;
 const fract = (value) => value - Math.floor(value);
@@ -32,6 +33,8 @@ export class CharacterAnimator {
     this.character = character;
     this.locomotion = new LocomotionAnimator();
     this.combat = new CombatStanceAnimator();
+    this.dashAnimation = new DashAnimator(character);
+    this.dashWeight = 0;
     this.ik = new LegIK(character);
     this.combatWeight = 0;
     this.feet = {
@@ -51,13 +54,17 @@ export class CharacterAnimator {
     this.initialized = false;
   }
 
-  update(dt, { speed = 0, fighting = false } = {}) {
+  update(dt, { speed = 0, fighting = false, dash } = {}) {
     if (dt <= 0) return;
     const root = this.character.root;
     const j = this.character.joints;
     const gait = this.locomotion;
     this.combatWeight = this.combat.update(dt, fighting);
-    gait.update(dt, { speed, combatWeight: this.combatWeight });
+    // The dash has its own single bound, not a 12 m/s running cycle.
+    gait.update(dt, {
+      speed: dash?.active ? Math.min(speed, 2.6) : speed,
+      combatWeight: this.combatWeight,
+    });
     const moving = speed >= 0.015;
     const distance = root.position.distanceTo(this.previousPosition);
     this.velocity
@@ -65,6 +72,7 @@ export class CharacterAnimator {
       .multiplyScalar(1 / dt);
     this.previousPosition.copy(root.position);
     this.rootYaw.copy(root.quaternion);
+    const dashOwnsFeet = Boolean(dash?.active) || this.dashAnimation.ownsFeet;
 
     // Mid-contact start avoids an overlong first planted step. Guard changes
     // during travel never reset phase or switch an existing contact early.
@@ -83,6 +91,7 @@ export class CharacterAnimator {
         foot.yaw.copy(this.rootYaw);
         foot.planted = true;
       }
+      if (dashOwnsFeet) continue;
       if (!moving) {
         foot.target.lerp(this.rest, 1 - Math.exp(-12 * dt));
         foot.yaw.slerp(this.rootYaw, 1 - Math.exp(-12 * dt));
@@ -94,6 +103,19 @@ export class CharacterAnimator {
     }
     this.initialized = true;
     this.wasMoving = moving;
+    this.dashAnimation.update(dt, dash, this.footList, this.combatWeight);
+    this.dashWeight = this.dashAnimation.weight;
+    if (dashOwnsFeet) {
+      // Resume the ordinary planner from the physical landing, without a
+      // stale pre-dash world anchor or a phase-wrap contact reset.
+      for (const foot of this.footList) {
+        foot.lastPhase = fract(gait.phase + this.gaitOffset + foot.offset);
+        foot.duty = gait.duty;
+        foot.swingStart.copy(foot.target);
+        foot.swingYaw.copy(foot.yaw);
+        foot.startPhase = foot.lastPhase;
+      }
+    }
 
     gait.sampleUpperBody(this.pose);
     const wave = Math.cos((gait.phase + this.gaitOffset) * TAU);
@@ -102,10 +124,15 @@ export class CharacterAnimator {
     this.pose.arms[0].x = -wave * amplitude;
     this.pose.arms[1].x = wave * amplitude;
     this.combat.apply(this.pose, gait.movementBlend);
+    this.dashAnimation.apply(this.pose, this.combatWeight);
     const pose = this.pose;
     j.hips.position.set(pose.hipX, pose.hipY, 0);
     j.hips.rotation.set(0, pose.hipYaw, pose.hipRoll);
-    j.spine.rotation.set(pose.spinePitch, pose.spineYaw, 0);
+    j.spine.rotation.set(
+      pose.spinePitch,
+      pose.spineYaw,
+      this.dashAnimation.spineRoll,
+    );
     j.head.rotation.set(pose.headPitch, -pose.spineYaw * 0.65, 0);
     for (let index = 0; index < 2; index++) {
       const side = index === 0 ? "left" : "right";

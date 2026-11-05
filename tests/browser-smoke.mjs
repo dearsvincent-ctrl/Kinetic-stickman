@@ -27,6 +27,27 @@ const wait = (predicate, timeout = 25000) =>
   page.waitForFunction(predicate, null, { timeout });
 const closeTo = (a, b, tolerance = 0.06) =>
   assert.ok(Math.abs(a - b) < tolerance, `${a} ≈ ${b}`);
+const center = async (selector) => {
+  const box = await page.locator(selector).boundingBox();
+  return {
+    x: Math.round(box.x + box.width / 2),
+    y: Math.round(box.y + box.height / 2),
+  };
+};
+// Observe in the page on every rendered frame: a 250ms dash can finish before
+// a later Playwright assertion gets its turn, especially in software rendering.
+const observeDash = (sequence) =>
+  page.evaluate(async (previousSequence) => {
+    const samples = [];
+    for (let frame = 0; frame < 240; frame++) {
+      const state = window.__KINETIC__.snapshot();
+      samples.push(state);
+      if (state.dash.sequence > previousSequence && !state.dash.active)
+        return samples;
+      await new Promise(requestAnimationFrame);
+    }
+    throw new Error("DASH did not start and finish within 240 rendered frames");
+  }, sequence);
 const checkFightLayout = async (width, height) => {
   const fight = await page.locator("#fight-button").boundingBox();
   assert.ok(
@@ -51,6 +72,36 @@ const checkFightLayout = async (width, height) => {
     );
   }
 };
+const checkDashLayout = async (width, height) => {
+  const dash = await page.locator("#dash-button").boundingBox();
+  assert.ok(
+    dash.x >= 0 &&
+      dash.y >= 0 &&
+      dash.x + dash.width <= width &&
+      dash.y + dash.height <= height,
+    "DASH fits the viewport",
+  );
+  assert.ok(
+    dash.width >= 44 && dash.height >= 44,
+    "DASH remains a usable touch target",
+  );
+  for (const selector of [
+    "#fight-button",
+    "#sprint-button",
+    "#reset-camera",
+    "#joystick",
+    "#help-button",
+  ]) {
+    const other = await page.locator(selector).boundingBox();
+    assert.ok(
+      dash.x + dash.width <= other.x ||
+        other.x + other.width <= dash.x ||
+        dash.y + dash.height <= other.y ||
+        other.y + other.height <= dash.y,
+      `DASH does not cover ${selector}`,
+    );
+  }
+};
 
 try {
   await page.goto(`${baseURL}/?debug`, { waitUntil: "networkidle" });
@@ -63,6 +114,72 @@ try {
   console.log("PASS: arena renders in a mobile landscape viewport");
 
   await checkFightLayout(844, 390);
+  await checkDashLayout(844, 390);
+  assert.equal(initial.movementState, "locomotion");
+  assert.equal(initial.dash.ready, true);
+  assert.equal(await page.locator("#dash-cooldown").textContent(), "READY");
+  const dashButton = await center("#dash-button");
+  const firstDashPromise = observeDash(initial.dash.sequence);
+  await page.touchscreen.tap(dashButton.x, dashButton.y);
+  const firstDashSamples = (await firstDashPromise).filter(
+    (sample) => sample.dash.sequence > initial.dash.sequence,
+  );
+  const firstDashEnd = firstDashSamples.at(-1);
+  assert.equal(firstDashEnd.dash.sequence, initial.dash.sequence + 1);
+  assert.ok(
+    firstDashSamples.some(
+      (sample) =>
+        sample.movementState === "dash" &&
+        sample.dash.distanceTravelled > 0 &&
+        sample.dash.distanceTravelled < 2.45,
+    ),
+    "DASH visibly travels through intermediate world positions",
+  );
+  closeTo(firstDashEnd.dash.distanceTravelled, 2.5, 0.03);
+  closeTo(
+    Math.hypot(
+      firstDashEnd.position[0] - initial.position[0],
+      firstDashEnd.position[2] - initial.position[2],
+    ),
+    2.5,
+    0.03,
+  );
+  assert.ok(firstDashEnd.position[2] < initial.position[2]);
+  assert.equal(firstDashEnd.movementState, "locomotion");
+  assert.equal(firstDashEnd.dash.active, false);
+  assert.equal(firstDashEnd.dash.exitReason, "completed");
+  assert.ok(
+    firstDashSamples.some(
+      (sample) =>
+        sample.animation.dashWeight > 0 && sample.animation.dashWeight < 1,
+    ),
+    "DASH blends through intermediate animation poses",
+  );
+  for (const sample of firstDashSamples) {
+    closeTo(sample.camera.pitch, initial.camera.pitch, 0.000001);
+    closeTo(sample.camera.yaw, initial.camera.yaw, 0.000001);
+    closeTo(sample.camera.distance, initial.camera.distance, 0.000001);
+  }
+  assert.ok(firstDashEnd.dash.cooldownRemaining > 0);
+  // Native coordinates bypass aria-disabled actionability while cooling down,
+  // as a real finger would. The movement state must reject this extra request.
+  await page.touchscreen.tap(dashButton.x, dashButton.y);
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.equal((await snapshot()).dash.sequence, initial.dash.sequence + 1);
+  await wait(() => window.__KINETIC__.snapshot().dash.ready);
+  const retryDashPromise = observeDash(initial.dash.sequence + 1);
+  await page.touchscreen.tap(dashButton.x, dashButton.y);
+  const retryDashEnd = (await retryDashPromise).at(-1);
+  assert.equal(retryDashEnd.dash.sequence, initial.dash.sequence + 2);
+  await wait(() => {
+    const state = window.__KINETIC__.snapshot();
+    return state.dash.ready && state.animation.dashWeight < 0.02;
+  });
+  console.log(
+    "PASS: stationary DASH travels continuously for 2.5m, preserves camera angles, blends back and respects cooldown",
+  );
+
+  const beforeGuard = await snapshot();
   assert.equal(initial.input.fighting, false);
   assert.equal(
     await page.locator("#fight-button").getAttribute("aria-pressed"),
@@ -97,7 +214,7 @@ try {
   assert.equal(guarded.input.fighting, true);
   assert.deepEqual(
     guarded.position,
-    initial.position,
+    beforeGuard.position,
     "Stance never translates the actor",
   );
   closeTo(guarded.camera.pitch, initial.camera.pitch, 0.000001);
@@ -137,13 +254,12 @@ try {
   await wait(() => window.__KINETIC__.snapshot().speed < 0.01);
   console.log("PASS: sprint respects the arena boundary and slides along it");
 
-  const center = async (selector) => {
-    const box = await page.locator(selector).boundingBox();
-    return {
-      x: Math.round(box.x + box.width / 2),
-      y: Math.round(box.y + box.height / 2),
-    };
-  };
+  // Isolate simultaneous steering from the preceding wall fixture. Starting
+  // near the centre also leaves room for the held sprint during guard blending.
+  await page.clock.install();
+  await page.reload({ waitUntil: "networkidle" });
+  await wait(() => Boolean(window.__KINETIC__));
+
   const joy = await center("#joystick");
   const sprint = await center("#sprint-button");
   const session = await page.context().newCDPSession(page);
@@ -240,6 +356,96 @@ try {
     await page.locator("#fight-button").getAttribute("aria-pressed"),
     "true",
   );
+  // Real CDP touch dispatch can take longer than this short dash in software
+  // rendering. Freeze only the game's RAF clock while delivering native events,
+  // then advance known frames; the production duration and mechanics stay intact.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  const beforeDashTouch = await snapshot();
+  const dashFinger = touch(7, await center("#dash-button"));
+  const clearance = beforeDashTouch.halfSize - beforeDashTouch.radius - 3;
+  assert.ok(
+    Math.abs(beforeDashTouch.position[0]) < clearance &&
+      Math.abs(beforeDashTouch.position[2]) < clearance,
+    "Native dash steering starts with room for the full burst",
+  );
+  const guardedDashPromise = observeDash(beforeDashTouch.dash.sequence);
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [...fingers, dashFinger],
+  });
+  await page.clock.runFor(34);
+  const startedGuardDash = (await snapshot()).dash;
+  assert.equal(startedGuardDash.active, true);
+  fingers = [touch(1, { x: joy.x - 32, y: joy.y - 6 }), fingers[1], fingers[2]];
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [...fingers, dashFinger],
+  });
+  await page.clock.runFor(300);
+  const guardedDashSamples = (await guardedDashPromise).filter(
+    (sample) => sample.dash.sequence > beforeDashTouch.dash.sequence,
+  );
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [dashFinger],
+  });
+  await page.clock.resume();
+  assert.equal(
+    guardedDashSamples.at(-1).dash.sequence,
+    beforeDashTouch.dash.sequence + 1,
+    "The DASH touch creates exactly one movement burst",
+  );
+  for (const sample of guardedDashSamples) {
+    assert.equal(sample.input.fighting, true);
+    assert.equal(sample.input.sprinting, true);
+    for (const owner of ["joystickPointer", "cameraPointer", "sprintPointer"])
+      assert.equal(sample.input[owner], beforeDashTouch.input[owner]);
+    closeTo(
+      sample.camera.targetYaw,
+      beforeDashTouch.camera.targetYaw,
+      0.000001,
+    );
+  }
+  // Opposing native joystick input must turn over time, rather than snapping
+  // the direction by 180 degrees. Allow one simulation substep of sampling slack.
+  for (let index = 1; index < guardedDashSamples.length; index++) {
+    const previous = guardedDashSamples[index - 1].dash;
+    const current = guardedDashSamples[index].dash;
+    const dot =
+      previous.direction[0] * current.direction[0] +
+      previous.direction[2] * current.direction[2];
+    const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+    assert.ok(
+      angle <= 9 * (current.elapsed - previous.elapsed + 1 / 120) + 0.02,
+      "Joystick steering preserves bounded dash momentum",
+    );
+  }
+  assert.ok(
+    startedGuardDash.elapsed < 0.15,
+    "Steering starts early in the dash",
+  );
+  assert.ok(
+    guardedDashSamples.some(
+      (sample) => sample.input.move.x < -0.5 && sample.dash.active,
+    ),
+    "The opposite native joystick input arrives while the dash is active",
+  );
+  const finalDirection = guardedDashSamples.at(-1).dash.direction;
+  const initialDirection = startedGuardDash.direction;
+  assert.ok(
+    initialDirection[0] * finalDirection[0] +
+      initialDirection[2] * finalDirection[2] <
+      0.999,
+    "The in-flight dash responds to the opposing joystick input",
+  );
+  assert.ok((await snapshot()).input.move.x < -0.5);
+  assert.equal(
+    await page.locator("#fight-button").getAttribute("aria-pressed"),
+    "true",
+  );
+  console.log(
+    "PASS: a fourth DASH touch supports guarded steering without stealing movement, look or sprint",
+  );
   await page.keyboard.press("f");
   await wait(
     () =>
@@ -324,6 +530,7 @@ try {
   await page.keyboard.up("w");
   assert.deepEqual((await snapshot()).position, helpPosition);
   await page.locator(".primary-button").tap();
+  await wait(() => !window.__KINETIC__.snapshot().paused);
   assert.equal((await snapshot()).paused, false);
   console.log("PASS: instructions pause movement and close cleanly");
 
@@ -342,6 +549,7 @@ try {
     );
   }
   await checkFightLayout(390, 844);
+  await checkDashLayout(390, 844);
   await page.locator("#reset-camera").tap();
   await page.screenshot({ path: "test-results/portrait.png" });
   assert.equal(

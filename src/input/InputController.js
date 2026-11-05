@@ -9,7 +9,13 @@ const MOVE_KEYS = new Set([
   "ArrowRight",
 ]);
 const SPRINT_KEYS = new Set(["ShiftLeft", "ShiftRight"]);
-const GAME_KEYS = new Set([...MOVE_KEYS, ...SPRINT_KEYS, "KeyR", "KeyF"]);
+const GAME_KEYS = new Set([
+  ...MOVE_KEYS,
+  ...SPRINT_KEYS,
+  "KeyR",
+  "KeyF",
+  "KeyE",
+]);
 const DEAD_ZONE = 0.1;
 
 /**
@@ -25,6 +31,7 @@ export class InputController {
     cameraSurface,
     resetButton,
     fightButton,
+    dashButton,
     onReset,
   }) {
     this.joystick = joystick;
@@ -32,6 +39,7 @@ export class InputController {
     this.sprintButton = sprintButton;
     this.cameraSurface = cameraSurface;
     this.fightButton = fightButton;
+    this.dashButton = dashButton;
     this.onReset = onReset ?? (() => {});
 
     this.move = { x: 0, y: 0 };
@@ -41,6 +49,8 @@ export class InputController {
     this.fightPointer = null;
     this.fightPressCancelled = false;
     this.fightClickHandled = false;
+    this.dashPointer = null;
+    this.dashRequested = false;
     this.touchMove = { x: 0, y: 0 };
     this.lookDelta = { x: 0, y: 0 };
     this.keys = new Set();
@@ -199,6 +209,32 @@ export class InputController {
       });
     }
 
+    if (dashButton) {
+      listen(
+        dashButton,
+        "pointerdown",
+        (event) => {
+          // Fire on contact, including a non-primary touch. Consume even an
+          // unavailable/repeated press so it cannot start a camera gesture.
+          this.consumeEvent(event);
+          if (!this.canStartPointer(event) || this.dashPointer !== null) return;
+          this.dashPointer = event.pointerId;
+          this.capture(dashButton, event.pointerId);
+          this.requestDash();
+        },
+        pointerOptions,
+      );
+      listen(dashButton, "lostpointercapture", release);
+      listen(dashButton, "contextmenu", (event) => event.preventDefault());
+      listen(dashButton, "dragstart", (event) => event.preventDefault());
+      listen(dashButton, "click", (event) => {
+        this.consumeEvent(event);
+        // Pointer activation already fired on down. Native keyboard and
+        // accessibility clicks have detail=0 and remain available.
+        if (event.detail === 0) this.requestDash();
+      });
+    }
+
     listen(window, "keydown", (event) => {
       if (!GAME_KEYS.has(event.code) || this.isTextOrDialogTarget(event.target))
         return;
@@ -210,6 +246,11 @@ export class InputController {
       if (event.code === "KeyF") {
         if (!event.repeat && !this.keys.has("KeyF")) this.toggleFighting();
         this.keys.add("KeyF");
+        return;
+      }
+      if (event.code === "KeyE") {
+        if (!event.repeat && !this.keys.has("KeyE")) this.requestDash();
+        this.keys.add("KeyE");
         return;
       }
       this.keys.add(event.code);
@@ -255,6 +296,17 @@ export class InputController {
   toggleFighting() {
     this.fighting = !this.fighting;
     this.updateState();
+  }
+
+  requestDash() {
+    // The movement state owns cooldown eligibility; HUD updates may lag a frame.
+    this.dashRequested = true;
+  }
+
+  consumeDashRequest() {
+    const requested = this.dashRequested;
+    this.dashRequested = false;
+    return requested;
   }
 
   capture(element, pointerId) {
@@ -334,6 +386,10 @@ export class InputController {
       this.sprintPointer = null;
       this.releaseCapture(this.sprintButton, pointerId);
     }
+    if (pointerId === this.dashPointer) {
+      this.dashPointer = null;
+      this.releaseCapture(this.dashButton, pointerId);
+    }
     this.updateState();
   }
 
@@ -350,10 +406,13 @@ export class InputController {
       [this.joystick, this.joystickPointer],
       [this.cameraSurface, this.cameraPointer],
       [this.sprintButton, this.sprintPointer],
+      [this.dashButton, this.dashPointer],
     ];
     this.joystickPointer = null;
     this.cameraPointer = null;
     this.sprintPointer = null;
+    this.dashPointer = null;
+    this.dashRequested = false;
     this.fightPointer = null;
     this.fightPressCancelled = true;
     this.fightClickHandled = false;

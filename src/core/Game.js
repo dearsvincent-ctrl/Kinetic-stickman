@@ -46,6 +46,7 @@ export class Game {
       joystickKnob: document.querySelector("#joystick-knob"),
       sprintButton: document.querySelector("#sprint-button"),
       fightButton: document.querySelector("#fight-button"),
+      dashButton: document.querySelector("#dash-button"),
       cameraSurface: document.querySelector("#camera-surface"),
       resetButton: document.querySelector("#reset-camera"),
       onReset: () => this.followCamera.reset(this.controller.heading),
@@ -117,6 +118,7 @@ export class Game {
     if (!paused) {
       this.accumulator = Math.min(this.accumulator + dt, STEP * 5);
       while (this.accumulator >= STEP) {
+        if (this.input.consumeDashRequest()) this.controller.requestDash();
         this.controller.update(STEP, this.input, this.followCamera.yaw);
         this.animator.update(STEP, {
           speed: this.controller.speed,
@@ -125,6 +127,7 @@ export class Game {
             : this.controller.walkSpeed,
           sprinting: this.input.sprinting,
           fighting: this.input.fighting,
+          dash: this.controller.dash,
         });
         this.accumulator -= STEP;
       }
@@ -141,6 +144,7 @@ export class Game {
       this.controller.sprintSpeed,
       this.input.sprinting,
       this.input.fighting,
+      this.controller.dash,
     );
   }
 
@@ -150,6 +154,18 @@ export class Game {
       heading: this.controller.heading,
       velocity: this.controller.velocity.toArray(),
       speed: this.controller.speed,
+      movementState: this.controller.movementState,
+      dash: {
+        active: this.controller.dash.active,
+        ready: this.controller.dash.ready,
+        elapsed: this.controller.dash.elapsed,
+        progress: this.controller.dash.progress,
+        cooldownRemaining: this.controller.dash.cooldownRemaining,
+        direction: this.controller.dash.direction.toArray(),
+        distanceTravelled: this.controller.dash.distanceTravelled,
+        sequence: this.controller.dash.sequence,
+        exitReason: this.controller.dash.exitReason,
+      },
       input: {
         move: { ...this.input.move },
         sprinting: this.input.sprinting,
@@ -171,6 +187,7 @@ export class Game {
         phase: this.animator.locomotion.phase,
         cadence: this.animator.locomotion.cadence,
         stride: this.animator.locomotion.stride,
+        dashWeight: this.animator.dashWeight,
       },
       halfSize: this.arena.halfSize,
       radius: this.controller.radius,

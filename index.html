@@ -34,7 +34,7 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.2</b></span>
+          <span class="version">PROTOTYPE <b>0.3</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
@@ -114,6 +114,19 @@
       </div>
       <div class="right-controls">
         <button
+          id="dash-button"
+          class="dash-button"
+          aria-label="Dash"
+          aria-disabled="false"
+          title="Directional dash (E)"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 12h16m-6-6 6 6-6 6M3 6h5M2 18h6" />
+          </svg>
+          <span>DASH</span>
+          <span id="dash-cooldown" class="dash-cooldown">READY</span>
+        </button>
+        <button
           id="fight-button"
           class="fight-button"
           aria-label="Toggle fighting stance"
@@ -184,7 +197,7 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.2</div>
+        <div class="eyebrow">KINETIC / VERSION 0.3</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
           A space to explore movement.<br />Move, turn, and find your rhythm.
@@ -205,6 +218,13 @@
           <div>
             <dt>Fighting stance</dt>
             <dd>Tap FIGHT to toggle <span>or F</span></dd>
+          </div>
+          <div>
+            <dt>Dash</dt>
+            <dd>
+              Tap DASH, steer with the joystick
+              <span>or E + movement keys</span>
+            </dd>
           </div>
           <div>
             <dt>Reset view</dt>

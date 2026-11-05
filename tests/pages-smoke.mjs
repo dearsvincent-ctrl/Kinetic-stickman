@@ -141,6 +141,7 @@ try {
   };
   const joystick = await center("#joystick");
   const sprint = await center("#sprint-button");
+  const dash = await center("#dash-button");
   const session = await page.context().newCDPSession(page);
   const touch = (id, point) => ({
     id,
@@ -149,22 +150,95 @@ try {
     radiusY: 7,
     force: 1,
   });
+  let fingers = [
+    touch(1, joystick),
+    touch(2, { x: 550, y: 165 }),
+    touch(3, sprint),
+  ];
   await session.send("Input.dispatchTouchEvent", {
     type: "touchStart",
-    touchPoints: [
-      touch(1, joystick),
-      touch(2, { x: 550, y: 165 }),
-      touch(3, sprint),
-    ],
+    touchPoints: fingers,
   });
+  fingers = [
+    touch(1, { x: joystick.x + 32, y: joystick.y }),
+    touch(2, { x: 590, y: 180 }),
+    touch(3, sprint),
+  ];
   await session.send("Input.dispatchTouchEvent", {
     type: "touchMove",
-    touchPoints: [
-      touch(1, { x: joystick.x + 32, y: joystick.y }),
-      touch(2, { x: 590, y: 180 }),
-      touch(3, sprint),
-    ],
+    touchPoints: fingers,
   });
+  // Keep production coverage independent of the development telemetry. Sample
+  // HUD states before the native fourth touch so the short dash cannot be
+  // missed by a slower assertion round-trip to the browser.
+  const dashHudPromise = page.evaluate(async () => {
+    const samples = [];
+    let sawDash = false;
+    let sawCooldown = false;
+    for (let frame = 0; frame < 240; frame++) {
+      const sample = {
+        movement: document.querySelector("#movement-state").textContent,
+        cooldown: document.querySelector("#dash-cooldown").textContent,
+        active: document
+          .querySelector("#dash-button")
+          .classList.contains("is-active"),
+        disabled: document
+          .querySelector("#dash-button")
+          .getAttribute("aria-disabled"),
+        guard: document
+          .querySelector("#fight-button")
+          .getAttribute("aria-pressed"),
+        sprint: document
+          .querySelector("#sprint-button")
+          .getAttribute("aria-pressed"),
+        joystick: document
+          .querySelector("#joystick")
+          .classList.contains("is-active"),
+        camera: document
+          .querySelector("#camera-surface")
+          .classList.contains("is-active"),
+      };
+      samples.push(sample);
+      sawDash ||= sample.movement === "DASH" || sample.active;
+      sawCooldown ||= /^\d+\.\d+s$/.test(sample.cooldown);
+      if (sawDash && sawCooldown && sample.cooldown === "READY") return samples;
+      await new Promise(requestAnimationFrame);
+    }
+    throw new Error(
+      "Production DASH HUD did not progress through dash, cooldown and ready",
+    );
+  });
+  const dashFinger = touch(4, dash);
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [...fingers, dashFinger],
+  });
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    // CDP identifies the ended touch, rather than the remaining three.
+    touchPoints: [dashFinger],
+  });
+  const dashHudSamples = await dashHudPromise;
+  assert.ok(
+    dashHudSamples.some(
+      (sample) => sample.movement === "DASH" || sample.active,
+    ),
+    "The production HUD displays the native fourth-touch dash",
+  );
+  assert.ok(
+    dashHudSamples.some(
+      (sample) =>
+        /^\d+\.\d+s$/.test(sample.cooldown) && sample.disabled === "true",
+    ),
+    "The production DASH button displays its cooldown",
+  );
+  assert.equal(dashHudSamples.at(-1).disabled, "false");
+  for (const sample of dashHudSamples) {
+    assert.equal(sample.guard, "true", "Dashing preserves fighting stance");
+    assert.equal(sample.sprint, "true", "Dashing preserves the sprint touch");
+    assert.equal(sample.joystick, true, "Dashing preserves the joystick touch");
+    assert.equal(sample.camera, true, "Dashing preserves the camera touch");
+  }
   await page.waitForFunction(() =>
     ["WALK", "SPRINT"].includes(
       document.querySelector("#movement-state").textContent,
@@ -241,7 +315,7 @@ try {
     "Production page has no runtime or asset errors",
   );
   console.log(
-    `PASS: production bundle renders at ${base}; JS, CSS, fonts and favicon load from the Pages path; native emulated touch controls and FIGHT toggle work`,
+    `PASS: production bundle renders at ${base}; JS, CSS, fonts and favicon load from the Pages path; native emulated touch controls, guarded DASH/cooldown and FIGHT toggle work`,
   );
   console.log("No physical Android device was tested.");
 } finally {

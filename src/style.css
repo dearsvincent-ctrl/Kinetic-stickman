@@ -445,6 +445,46 @@ h1 {
   border-color: var(--orange);
   background: #624534e6;
 }
+.dash-button {
+  position: absolute;
+  right: calc(100% + 24px);
+  bottom: 140px;
+  width: 76px;
+  height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 1px solid #d9e5c280;
+  border-radius: 50%;
+  background: #33463ae6;
+  color: #e0e9ce;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+}
+.dash-button svg {
+  width: 23px;
+  height: 23px;
+}
+.dash-cooldown {
+  font-size: 6px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: #a5b99c;
+  font-variant-numeric: tabular-nums;
+}
+.dash-button[aria-disabled="true"] {
+  border-color: #c0ceb52e;
+  background: #1b2b28e6;
+  color: #8d9c8b;
+}
+.dash-button.is-active {
+  border-color: var(--orange);
+  color: #ffc09d;
+  background: #624534e6;
+}
 .reset-button {
   display: flex;
   align-items: center;
@@ -761,6 +801,17 @@ h1 {
   }
 }
 @media (max-height: 600px) {
+  .dash-button {
+    right: calc(100% + 16px);
+    bottom: 114px;
+    width: 64px;
+    height: 64px;
+    font-size: 7px;
+  }
+  .dash-button svg {
+    width: 20px;
+    height: 20px;
+  }
   .fight-button {
     right: calc(100% + 16px);
     bottom: 34px;
@@ -903,6 +954,26 @@ h1 {
   }
 }
 @media (max-width: 600px) and (orientation: portrait) {
+  .dash-button {
+    right: 0;
+    bottom: calc(100% + 74px);
+    width: 90px;
+    height: 48px;
+    flex-direction: row;
+    gap: 5px;
+    border-radius: 6px;
+    font-size: 7px;
+  }
+  .dash-button svg {
+    width: 20px;
+    height: 20px;
+  }
+  .dash-cooldown {
+    position: absolute;
+    bottom: 5px;
+    right: 10px;
+    font-size: 5px;
+  }
   .fight-button {
     right: 0;
     bottom: calc(100% + 14px);

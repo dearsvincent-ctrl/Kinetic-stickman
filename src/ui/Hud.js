@@ -6,6 +6,8 @@ export class Hud {
     this.movementState = document.querySelector("#movement-state");
     this.movementDot = document.querySelector("#movement-dot");
     this.stanceLabel = document.querySelector("#stance-label");
+    this.dashButton = document.querySelector("#dash-button");
+    this.dashCooldown = document.querySelector("#dash-cooldown");
     this.helpDialog = document.querySelector("#help-dialog");
     this.fullscreenButton = document.querySelector("#fullscreen-button");
     this.frameCount = 0;
@@ -44,7 +46,7 @@ export class Hud {
     if (!document.fullscreenEnabled) this.fullscreenButton.hidden = true;
   }
 
-  update(dt, speed, maxSpeed, sprinting, fighting = false) {
+  update(dt, speed, maxSpeed, sprinting, fighting = false, dash = null) {
     this.frameCount++;
     this.sampleTime += dt;
     this.hudTime += dt;
@@ -57,8 +59,13 @@ export class Hud {
     }
     if (this.hudTime < 0.08) return;
     this.hudTime = 0;
-    const state =
-      speed < 0.08 ? "IDLE" : sprinting && speed > 2.7 ? "SPRINT" : "WALK";
+    const state = dash?.active
+      ? "DASH"
+      : speed < 0.08
+        ? "IDLE"
+        : sprinting && speed > 2.7
+          ? "SPRINT"
+          : "WALK";
     this.movementState.textContent = state;
     this.stanceLabel.textContent = fighting
       ? "FIGHTING STANCE"
@@ -67,5 +74,12 @@ export class Hud {
     this.speedFill.style.width = `${Math.min(100, (speed / maxSpeed) * 100)}%`;
     this.movementDot.style.background =
       state === "IDLE" ? "#9faa98" : "#ff885e";
+    if (dash) {
+      this.dashButton.setAttribute("aria-disabled", String(!dash.ready));
+      this.dashButton.classList.toggle("is-active", dash.active);
+      this.dashCooldown.textContent = dash.ready
+        ? "READY"
+        : `${Math.max(0, dash.cooldownRemaining).toFixed(1)}s`;
+    }
   }
 }
