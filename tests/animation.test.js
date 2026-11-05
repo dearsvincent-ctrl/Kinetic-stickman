@@ -6,11 +6,11 @@ import { CharacterAnimator } from "../src/character/CharacterAnimator.js";
 
 const DT = 1 / 60;
 const sides = ["left", "right"];
-const controls = (speed = 0, fighting = false) => ({
+const controls = (speed = 0, blocking = false) => ({
   speed,
   maxSpeed: speed > 2.6 ? 5.2 : 2.6,
   sprinting: speed > 2.6,
-  fighting,
+  blocking,
 });
 const rig = () => {
   const character = new Stickman();
@@ -46,7 +46,7 @@ const correlation = (a, b) => {
   return numerator / Math.sqrt(varianceA * varianceB);
 };
 
-test("fighting guard blends in and out while raising both hands into protection", () => {
+test("blocking guard blends in and out while raising both hands into protection", () => {
   const actor = rig();
   const j = actor.character.joints;
   settle(actor, controls());
@@ -235,21 +235,21 @@ test("nearby movement speeds produce continuous poses across gait transitions", 
 });
 
 test("locomotion keeps pelvis bob restrained instead of dropping through a deep squat", () => {
-  for (const fighting of [false, true]) {
+  for (const blocking of [false, true]) {
     for (const speed of [0.6, 2.6, 5.2]) {
       const actor = rig();
-      settle(actor, controls(speed, fighting));
+      settle(actor, controls(speed, blocking));
       let lowest = Infinity,
         highest = -Infinity;
       for (let frame = 0; frame < 180; frame++) {
-        update(actor, controls(speed, fighting));
+        update(actor, controls(speed, blocking));
         const height = actor.character.joints.hips.position.y;
         lowest = Math.min(lowest, height);
         highest = Math.max(highest, height);
       }
       assert.ok(
-        highest - lowest < (fighting ? 0.04 : 0.09),
-        `pelvis stays controlled at ${speed} m/s with guard ${fighting}`,
+        highest - lowest < (blocking ? 0.04 : 0.09),
+        `pelvis stays controlled at ${speed} m/s with guard ${blocking}`,
       );
       actor.character.dispose();
     }

@@ -10,10 +10,10 @@ import { ArenaBounds } from "../src/world/ArenaBounds.js";
 const DT = 1 / 120;
 const RATES = [1 / 30, 1 / 60, 1 / 120];
 const sides = ["left", "right"];
-const controls = (x = 0, y = 0, sprinting = false, fighting = false) => ({
+const controls = (x = 0, y = 0, sprinting = false, blocking = false) => ({
   move: { x, y },
   sprinting,
-  fighting,
+  blocking,
 });
 const rig = (halfSize = 100) => {
   const character = new Stickman();
@@ -39,7 +39,7 @@ const step = (actor, input = controls(), dt = DT, cameraYaw = 0) => {
   const rotation = root.quaternion.clone();
   actor.animator.update(dt, {
     speed: actor.controller.speed,
-    fighting: input.fighting,
+    blocking: input.blocking,
     dash: actor.controller.dash,
   });
   assert.ok(
@@ -63,9 +63,9 @@ const step = (actor, input = controls(), dt = DT, cameraYaw = 0) => {
     );
   }
 };
-const settle = (actor, fighting = false) => {
+const settle = (actor, blocking = false) => {
   for (let frame = 0; frame < 180; frame++)
-    step(actor, controls(0, 0, false, fighting));
+    step(actor, controls(0, 0, false, blocking));
 };
 
 test("an inactive dash leaves the existing animation path unchanged", () => {
@@ -74,13 +74,13 @@ test("an inactive dash leaves the existing animation path unchanged", () => {
   const dash = new DashState();
   for (let frame = 0; frame < 360; frame++) {
     const speed = Math.max(0, Math.sin(frame / 39)) * 5.2;
-    const fighting = Math.floor(frame / 43) % 2 === 1;
+    const blocking = Math.floor(frame / 43) % 2 === 1;
     for (const actor of [plain, integrated]) {
       actor.character.root.position.z -= speed * DT;
       actor.character.root.rotation.y = Math.sin(frame / 50);
     }
-    plain.animator.update(DT, { speed, fighting });
-    integrated.animator.update(DT, { speed, fighting, dash });
+    plain.animator.update(DT, { speed, blocking });
+    integrated.animator.update(DT, { speed, blocking, dash });
     assert.equal(integrated.animator.dashWeight, 0);
     for (const name of Object.keys(plain.character.joints)) {
       const before = plain.character.joints[name];
@@ -289,9 +289,9 @@ test("a wall-blocked controller dash blends out without stale contacts or joint 
 
 test("landing and recovery stay finite while sprint momentum continues", () => {
   for (const dt of RATES) {
-    for (const fighting of [false, true]) {
+    for (const blocking of [false, true]) {
       const actor = rig();
-      const input = controls(0, 1, true, fighting);
+      const input = controls(0, 1, true, blocking);
       for (let frame = 0; frame < Math.ceil(1 / dt); frame++)
         step(actor, input, dt);
       actor.controller.requestDash();
@@ -339,7 +339,7 @@ test("landing and recovery stay finite while sprint momentum continues", () => {
         contactFrames > 0,
         "ordinary ground contacts resume after the bound",
       );
-      if (fighting) assert.ok(actor.animator.combatWeight > 0.99);
+      if (blocking) assert.ok(actor.animator.combatWeight > 0.99);
       actor.character.dispose();
     }
   }

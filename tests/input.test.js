@@ -121,7 +121,10 @@ function dispatch(target, type, properties = {}, focusedTarget) {
   return event;
 }
 
-function setup(t, { withFightButton = true, withDashButton = true } = {}) {
+function setup(
+  t,
+  { withAttackButton = true, withBlockButton = true, withDashButton = true } = {},
+) {
   const previous = {
     window: globalThis.window,
     document: globalThis.document,
@@ -147,7 +150,8 @@ function setup(t, { withFightButton = true, withDashButton = true } = {}) {
     joystickKnob: { left: 65, top: 75, width: 30, height: 30 },
     sprintButton: { left: 660, top: 360, width: 80, height: 80 },
     dashButton: { left: 580, top: 360, width: 70, height: 80 },
-    fightButton: { left: 660, top: 260, width: 80, height: 80 },
+    attackButton: { left: 660, top: 260, width: 80, height: 80 },
+    blockButton: { left: 580, top: 260, width: 70, height: 80 },
     cameraSurface: { left: 400, top: 100, width: 150, height: 200 },
     resetButton: { left: 690, top: 40, width: 90, height: 30 },
   };
@@ -166,7 +170,8 @@ function setup(t, { withFightButton = true, withDashButton = true } = {}) {
       "sprintButton",
       "cameraSurface",
       "resetButton",
-      ...(withFightButton ? ["fightButton"] : []),
+      ...(withAttackButton ? ["attackButton"] : []),
+      ...(withBlockButton ? ["blockButton"] : []),
       ...(withDashButton ? ["dashButton"] : []),
     ].map((name) => [name, addElement(geometries[name])]),
   );
@@ -246,6 +251,7 @@ function assertStopped(input) {
   near(input.move.x, 0);
   near(input.move.y, 0);
   assert.equal(input.sprinting, false);
+  assert.equal(input.blocking, false);
   assert.deepEqual(input.consumeLookDelta(), { x: 0, y: 0 });
 }
 
@@ -386,55 +392,43 @@ test("reset-camera inputs fire once and button clears accumulated look", (t) => 
   assert.deepEqual(f.input.consumeLookDelta(), { x: 0, y: 0 });
 });
 
-test("FIGHT clicks and non-repeating F key presses toggle the persistent stance", (t) => {
+test("ATTACK accessibility clicks and non-repeating F presses request one attack", (t) => {
   const f = setup(t);
-  assert.equal(f.input.fighting, false);
-  assert.equal(f.fightButton.attributes.get("aria-pressed"), "false");
-  dispatch(f.fightButton, "click", { detail: 0 });
-  assert.equal(f.input.fighting, true);
-  assert.equal(f.fightButton.attributes.get("aria-pressed"), "true");
-  assert.equal(f.fightButton.classes.has("is-active"), true);
-  dispatch(f.fightButton, "click", { detail: 0 });
-  assert.equal(f.input.fighting, false);
+  assert.equal(f.input.consumeAttackRequest(), false);
+  dispatch(f.attackButton, "click", { detail: 0 });
+  assert.equal(f.input.consumeAttackRequest(), true);
+  assert.equal(f.input.consumeAttackRequest(), false);
+  dispatch(f.attackButton, "click", { detail: 0 });
+  assert.equal(f.input.consumeAttackRequest(), true);
 
   assert.equal(f.key("keydown", "KeyF").defaultPrevented, true);
-  assert.equal(f.input.fighting, true);
+  assert.equal(f.input.consumeAttackRequest(), true);
   f.key("keydown", "KeyF", { repeat: true });
   f.key("keydown", "KeyF");
-  assert.equal(f.input.fighting, true, "one toggle per physical key press");
+  assert.equal(f.input.consumeAttackRequest(), false, "one request per physical press");
   f.key("keyup", "KeyF");
   f.key("keydown", "KeyF");
-  assert.equal(f.input.fighting, false);
+  assert.equal(f.input.consumeAttackRequest(), true);
 
   const editable = new ElementStub();
   editable.editableOrDialog = true;
-  f.key("keyup", "KeyF");
+  f.key("keyup", "KeyF", {}, editable);
   assert.equal(f.key("keydown", "KeyF", {}, editable).defaultPrevented, false);
-  assert.equal(
-    f.input.fighting,
-    false,
-    "form/dialog input must not toggle guard",
-  );
+  assert.equal(f.input.consumeAttackRequest(), false, "form/dialog input cannot attack");
 });
 
-test("fight tapping preserves independent joystick, camera and sprint input", (t) => {
+test("ATTACK tapping preserves independent joystick, camera and sprint input", (t) => {
   const f = setup(t);
   dispatch(f.joystick, "pointerdown", f.joystickPoint(1, 0.55, 0));
   f.pointer(f.cameraSurface, "pointerdown", 2, 500, 200);
   f.pointer(f.sprintButton, "pointerdown", 3, 700, 400);
   f.pointer(f.window, "pointermove", 2, 515, 207);
-  const down = f.pointer(f.fightButton, "pointerdown", 4, 700, 300);
+  const down = f.pointer(f.attackButton, "pointerdown", 4, 700, 300);
   assert.equal(down.defaultPrevented, true);
-  assert.equal(f.input.fighting, true, "stance toggles immediately on entry");
+  assert.equal(f.input.consumeAttackRequest(), true, "attack requests immediately on entry");
   f.pointer(f.window, "pointerup", 4, 700, 300);
-  assert.equal(f.input.fighting, true, "release keeps the selected stance");
-  dispatch(f.fightButton, "click", { detail: 1 });
-
-  assert.equal(
-    f.input.fighting,
-    true,
-    "following native click must not toggle twice",
-  );
+  dispatch(f.attackButton, "click", { detail: 1 });
+  assert.equal(f.input.consumeAttackRequest(), false, "release/native click cannot duplicate entry");
   near(f.input.move.x, 0.5);
   near(f.input.move.y, 0);
   assert.equal(f.input.sprinting, true);
@@ -444,79 +438,163 @@ test("fight tapping preserves independent joystick, camera and sprint input", (t
   assert.deepEqual(f.input.consumeLookDelta(), { x: 15, y: 7 });
 });
 
-test("FIGHT toggles on entry and re-entry while cancellation preserves selection", (t) => {
+test("ATTACK requests once per entry, with no repeat on stay, release or lost capture", (t) => {
   const f = setup(t);
-  f.pointer(f.fightButton, "pointerdown", 4);
-  assert.equal(f.input.fighting, true);
+  f.pointer(f.attackButton, "pointerdown", 4);
+  assert.equal(f.input.consumeAttackRequest(), true);
   f.pointer(f.window, "pointermove", 4, 705, 305);
-  assert.equal(
-    f.input.fighting,
-    true,
-    "remaining inside cannot toggle repeatedly",
-  );
+  assert.equal(f.input.consumeAttackRequest(), false, "remaining inside cannot repeat");
   f.pointer(f.window, "pointercancel", 4, 700, 300);
-  dispatch(f.fightButton, "click", { detail: 1 });
-  assert.equal(f.input.fighting, true, "cancellation does not undo entry");
-  assert.equal(f.input.fightPointer, null);
+  dispatch(f.attackButton, "click", { detail: 1 });
+  assert.equal(f.input.consumeAttackRequest(), false);
+  assert.equal(f.input.attackPointer, null);
 
-  f.pointer(f.fightButton, "pointerdown", 5);
-  assert.equal(f.input.fighting, false);
+  f.pointer(f.attackButton, "pointerdown", 5);
+  assert.equal(f.input.consumeAttackRequest(), true);
   f.pointer(f.window, "pointermove", 5, 750, 300);
-  assert.equal(f.input.fightPointer, null);
-  assert.equal(
-    f.input.fighting,
-    false,
-    "leaving does not change the selection",
-  );
+  assert.equal(f.input.attackPointer, null);
+  assert.equal(f.input.consumeAttackRequest(), false, "leaving cannot request");
   f.pointer(f.window, "pointermove", 5, 700, 300);
-  assert.equal(f.input.fighting, true, "re-entry is one new activation");
+  assert.equal(f.input.consumeAttackRequest(), true, "re-entry is one new request");
   f.pointer(f.window, "pointerup", 5, 700, 300);
-  dispatch(f.fightButton, "click", { detail: 1 });
-  assert.equal(f.input.fighting, true, "release/click cannot duplicate entry");
+  dispatch(f.attackButton, "click", { detail: 1 });
+  assert.equal(f.input.consumeAttackRequest(), false);
 
-  f.pointer(f.fightButton, "pointerdown", 6);
-  assert.equal(f.input.fighting, false);
+  f.pointer(f.attackButton, "pointerdown", 6);
+  assert.equal(f.input.consumeAttackRequest(), true);
   f.actionRoot.releasePointerCapture(6);
-  dispatch(f.fightButton, "click", { detail: 1 });
-  assert.equal(f.input.fighting, false, "lost capture does not undo entry");
-  assert.equal(f.input.fightPointer, null);
-  dispatch(f.fightButton, "click", { detail: 0 });
-  assert.equal(
-    f.input.fighting,
-    true,
-    "keyboard/accessibility activation remains available",
-  );
+  dispatch(f.attackButton, "click", { detail: 1 });
+  assert.equal(f.input.consumeAttackRequest(), false);
+  assert.equal(f.input.attackPointer, null);
 });
 
-test("momentary resets preserve selected stance across blur, resize, visibility and help", (t) => {
+test("BLOCK holds until the final touch or Q key releases and preserves movement", (t) => {
   const f = setup(t);
-  dispatch(f.fightButton, "click", { detail: 0 });
-  for (const trigger of [
-    "blur",
-    "resize",
-    "orientationchange",
-    "hidden",
-    "explicit",
-  ]) {
+  assert.equal(f.blockButton.attributes.get("aria-pressed"), "false");
+  dispatch(f.joystick, "pointerdown", f.joystickPoint(1, 0.55, 0));
+  f.pointer(f.blockButton, "pointerdown", 4);
+  f.pointer(f.blockButton, "pointerdown", 5);
+  assert.equal(f.input.blocking, true);
+  assert.equal(f.blockButton.attributes.get("aria-pressed"), "true");
+  assert.equal(f.blockButton.classes.has("is-active"), true);
+  near(f.input.move.x, 0.5);
+  f.key("keydown", "KeyQ");
+  f.pointer(f.window, "pointermove", 4, 750, 300);
+  assert.equal(f.input.blocking, true, "second finger and keyboard remain held");
+  assert.equal(f.input.blockPointer, 5);
+  f.pointer(f.window, "pointercancel", 5);
+  assert.equal(f.input.blocking, true, "Q remains held independently");
+  assert.equal(f.input.blockPointer, null);
+  f.key("keyup", "KeyQ");
+  assert.equal(f.input.blocking, false);
+  assert.equal(f.blockButton.attributes.get("aria-pressed"), "false");
+  assert.equal(f.blockButton.classes.has("is-active"), false);
+
+  f.pointer(f.window, "pointermove", 4, 615, 300);
+  assert.equal(f.input.blocking, true, "re-entry holds immediately");
+  f.actionRoot.releasePointerCapture(4);
+  assert.equal(f.input.blocking, false, "capture loss releases guard");
+  const editable = new ElementStub();
+  editable.editableOrDialog = true;
+  assert.equal(f.key("keydown", "KeyQ", {}, editable).defaultPrevented, false);
+  assert.equal(f.input.blocking, false);
+  f.key("keydown", "KeyQ");
+  assert.equal(f.input.blocking, true);
+  f.key("keyup", "KeyQ", {}, editable);
+  assert.equal(f.input.blocking, false, "focus changes cannot stick a held key");
+});
+
+test("sliding BLOCK to ATTACK releases guard and requests once without lifting", (t) => {
+  const f = setup(t);
+  f.pointer(f.blockButton, "pointerdown", 4);
+  assert.equal(f.input.blocking, true);
+  f.pointer(f.window, "pointermove", 4, 700, 300);
+  assert.equal(f.input.blocking, false, "guard releases before attack consumption");
+  assert.equal(f.input.blockPointer, null);
+  assert.equal(f.input.attackPointer, 4);
+  assert.equal(f.input.consumeAttackRequest(), true);
+  f.pointer(f.window, "pointermove", 4, 705, 305);
+  assert.equal(f.input.consumeAttackRequest(), false);
+  f.pointer(f.window, "pointermove", 4, 615, 300);
+  assert.equal(f.input.blocking, true);
+  f.pointer(f.window, "pointermove", 4, 700, 300);
+  assert.equal(f.input.blocking, false);
+  assert.equal(f.input.consumeAttackRequest(), true, "new entry can request after recovery");
+  f.pointer(f.window, "pointercancel", 4);
+  assert.equal(f.input.consumeAttackRequest(), false);
+  assert.equal(f.input.actions.ownsPointer(4), false);
+});
+
+test("momentary resets release BLOCK and discard action requests across lifecycle changes", (t) => {
+  const f = setup(t);
+  for (const trigger of ["blur", "resize", "orientationchange", "hidden", "explicit"]) {
     dispatch(f.joystick, "pointerdown", f.joystickPoint(1, 1, 0));
     f.pointer(f.sprintButton, "pointerdown", 3);
+    f.pointer(f.blockButton, "pointerdown", 4);
+    f.pointer(f.attackButton, "pointerdown", 5);
+    f.pointer(f.dashButton, "pointerdown", 6);
+    f.key("keydown", "KeyQ");
     if (trigger === "hidden") {
       f.document.hidden = true;
       dispatch(f.document, "visibilitychange");
     } else if (trigger === "explicit") f.input.reset();
     else dispatch(f.window, trigger);
     assertStopped(f.input);
-    assert.equal(f.input.fighting, true);
-    assert.equal(f.fightButton.attributes.get("aria-pressed"), "true");
+    assert.equal(f.input.attackPointer, null);
+    assert.equal(f.input.blockPointer, null);
+    assert.equal(f.input.consumeAttackRequest(), false);
+    assert.equal(f.input.consumeDashRequest(), false);
+    assert.equal(f.blockButton.attributes.get("aria-pressed"), "false");
+    assert.equal(f.actionRoot.capturedPointers.size, 0);
   }
 });
 
-test("fight selection also works without an optional touchscreen button", (t) => {
-  const f = setup(t, { withFightButton: false });
+test("ATTACK and BLOCK keyboard access works without optional touchscreen buttons", (t) => {
+  const f = setup(t, { withAttackButton: false, withBlockButton: false });
   f.key("keydown", "KeyF");
-  assert.equal(f.input.fighting, true);
+  f.key("keydown", "KeyQ");
+  assert.equal(f.input.consumeAttackRequest(), true);
+  assert.equal(f.input.blocking, true);
   f.input.reset();
-  assert.equal(f.input.fighting, true);
+  assert.equal(f.input.blocking, false);
+  assert.equal(f.input.consumeAttackRequest(), false);
+});
+
+test("ATTACK input leaves recovery and block eligibility to the combat state", (t) => {
+  const f = setup(t);
+  f.attackButton.setAttribute("aria-disabled", "true");
+  f.pointer(f.blockButton, "pointerdown", 1);
+  f.pointer(f.attackButton, "pointerdown", 2);
+  assert.equal(f.input.blocking, true);
+  assert.equal(f.input.consumeAttackRequest(), true, "input does not gate another finger's entry");
+  assert.equal(f.input.consumeAttackRequest(), false);
+  f.pointer(f.window, "pointermove", 2, 750, 300);
+  f.pointer(f.window, "pointermove", 2, 700, 300);
+  assert.equal(f.input.consumeAttackRequest(), true, "recovery UI cannot prevent a fresh request");
+});
+
+test("native button keys activate ATTACK once and HOLD BLOCK until key release", (t) => {
+  const f = setup(t);
+  for (const code of ["Space", "Enter"]) {
+    assert.equal(f.key("keydown", code, {}, f.attackButton).defaultPrevented, true);
+    assert.equal(f.input.consumeAttackRequest(), true);
+    f.key("keydown", code, { repeat: true }, f.attackButton);
+    f.key("keydown", code, {}, f.attackButton);
+    assert.equal(f.input.consumeAttackRequest(), false);
+    f.key("keyup", code, {}, f.attackButton);
+    dispatch(f.attackButton, "click", { detail: 1 });
+    assert.equal(f.input.consumeAttackRequest(), false, "native click cannot duplicate the key entry");
+
+    assert.equal(f.key("keydown", code, {}, f.blockButton).defaultPrevented, true);
+    assert.equal(f.input.blocking, true);
+    f.key("keydown", code, { repeat: true }, f.blockButton);
+    assert.equal(f.input.blocking, true);
+    assert.equal(f.input.consumeAttackRequest(), false);
+    f.key("keyup", code, {}, f.blockButton);
+    assert.equal(f.input.blocking, false);
+  }
+  dispatch(f.blockButton, "click", { detail: 0 });
+  assert.equal(f.input.blocking, false, "standalone assistive click cannot leave HOLD stuck");
 });
 
 test("DASH requests on contact once per pointer and consumption is one-shot", (t) => {
@@ -556,16 +634,19 @@ test("DASH requests on contact once per pointer and consumption is one-shot", (t
   assert.equal(f.input.consumeDashRequest(), false);
 });
 
-test("DASH leaves simultaneous joystick, look, sprint and FIGHT owners untouched", (t) => {
+test("DASH leaves simultaneous joystick, look, sprint, BLOCK and ATTACK owners untouched", (t) => {
   const f = setup(t);
   dispatch(f.joystick, "pointerdown", f.joystickPoint(1, 0.55, 0));
   f.pointer(f.cameraSurface, "pointerdown", 2, 500, 200);
   f.pointer(f.sprintButton, "pointerdown", 3, 700, 400);
-  f.pointer(f.fightButton, "pointerdown", 4, 700, 300);
+  f.pointer(f.blockButton, "pointerdown", 4, 615, 300);
   f.pointer(f.dashButton, "pointerdown", 5, 615, 400);
+  f.pointer(f.attackButton, "pointerdown", 6, 700, 300);
   assert.equal(f.input.consumeDashRequest(), true);
-  assert.equal(f.input.fightPointer, 4);
-  assert.equal(f.input.fighting, true);
+  assert.equal(f.input.consumeAttackRequest(), true);
+  assert.equal(f.input.blockPointer, 4);
+  assert.equal(f.input.attackPointer, 6);
+  assert.equal(f.input.blocking, true);
   assert.equal(f.input.joystickPointer, 1);
   assert.equal(f.input.cameraPointer, 2);
   assert.equal(f.input.sprintPointer, 3);
@@ -576,16 +657,18 @@ test("DASH leaves simultaneous joystick, look, sprint and FIGHT owners untouched
   f.pointer(f.window, "pointermove", 2, 515, 207);
   f.pointer(f.window, "pointerup", 4, 80, 90);
   f.pointer(f.window, "pointerup", 5);
-  assert.equal(f.input.fighting, true);
+  f.pointer(f.window, "pointerup", 6);
+  assert.equal(f.input.blocking, false);
   assert.equal(f.input.sprinting, true);
   assert.deepEqual(f.input.consumeLookDelta(), { x: 15, y: 7 });
   assert.equal(f.input.consumeDashRequest(), false);
+  assert.equal(f.input.consumeAttackRequest(), false);
 });
 
-test("dash reset discards queued input and captures while preserving selected stance", (t) => {
+test("dash reset discards queued input and captures and releases guard", (t) => {
   const f = setup(t);
-  dispatch(f.fightButton, "click", { detail: 0 });
   for (const trigger of ["blur", "hidden", "explicit"]) {
+    f.pointer(f.blockButton, "pointerdown", 4);
     f.pointer(f.dashButton, "pointerdown", 5, 615, 400);
     if (trigger === "hidden") {
       f.document.hidden = true;
@@ -595,7 +678,7 @@ test("dash reset discards queued input and captures while preserving selected st
     assert.equal(f.input.dashPointer, null);
     assert.equal(f.actionRoot.capturedPointers.size, 0);
     assert.equal(f.input.consumeDashRequest(), false);
-    assert.equal(f.input.fighting, true);
+    assert.equal(f.input.blocking, false);
   }
 });
 
@@ -711,6 +794,8 @@ test("destroy resets gameplay state and removes every registered event handler",
   const f = setup(t);
   dispatch(f.joystick, "pointerdown", f.joystickPoint(1, 1, 0));
   f.pointer(f.sprintButton, "pointerdown", 3);
+  f.pointer(f.blockButton, "pointerdown", 4);
+  f.pointer(f.attackButton, "pointerdown", 5);
   f.input.destroy();
   assertStopped(f.input);
   for (const target of [
@@ -722,25 +807,29 @@ test("destroy resets gameplay state and removes every registered event handler",
     f.sprintButton,
     f.cameraSurface,
     f.resetButton,
-    f.fightButton,
+    f.attackButton,
+    f.blockButton,
     f.dashButton,
   ]) {
     assert.equal(target.listenerCount, 0);
   }
   f.key("keydown", "KeyW");
+  f.key("keydown", "KeyF");
+  f.key("keydown", "KeyQ");
   f.pointer(f.sprintButton, "pointerdown", 4);
   dispatch(f.joystick, "pointerdown", f.joystickPoint(5, 1, 0));
   dispatch(f.resetButton, "click");
-  dispatch(f.fightButton, "click", { detail: 0 });
+  dispatch(f.attackButton, "click", { detail: 0 });
+  f.pointer(f.blockButton, "pointerdown", 7);
   f.pointer(f.dashButton, "pointerdown", 6, 615, 400);
   dispatch(f.dashButton, "click", { detail: 0 });
   assertStopped(f.input);
   assert.equal(f.resetCount, 0);
-  assert.equal(f.input.fighting, false);
+  assert.equal(f.input.consumeAttackRequest(), false);
   assert.equal(f.input.consumeDashRequest(), false);
 });
 
-test("one action finger slides through HOLD, PRESS, TOGGLE and gaps without lifting", (t) => {
+test("one action finger slides through Sprint, Dash, Block, Attack and gaps without lifting", (t) => {
   const f = setup(t);
   f.pointer(f.sprintButton, "pointerdown", 10);
   assert.equal(f.input.sprinting, true);
@@ -748,54 +837,37 @@ test("one action finger slides through HOLD, PRESS, TOGGLE and gaps without lift
   assert.equal(f.sprintButton.hasPointerCapture(10), false);
 
   f.pointer(f.window, "pointermove", 10, 615, 400);
-  assert.equal(
-    f.input.sprinting,
-    false,
-    "leaving HOLD releases it immediately",
-  );
+  assert.equal(f.input.sprinting, false, "leaving HOLD releases it immediately");
   assert.equal(f.input.sprintPointer, null);
   assert.equal(f.input.dashPointer, 10);
   assert.equal(f.input.consumeDashRequest(), true);
   f.pointer(f.window, "pointermove", 10, 620, 405);
-  assert.equal(
-    f.input.consumeDashRequest(),
-    false,
-    "PRESS cannot repeat inside",
-  );
+  assert.equal(f.input.consumeDashRequest(), false, "PRESS cannot repeat inside");
 
   f.pointer(f.window, "pointermove", 10, 700, 400);
-  assert.equal(
-    f.input.sprinting,
-    true,
-    "sliding back immediately resumes HOLD",
-  );
+  assert.equal(f.input.sprinting, true, "sliding back immediately resumes HOLD");
   f.pointer(f.window, "pointermove", 10, 615, 400);
-  assert.equal(
-    f.input.consumeDashRequest(),
-    true,
-    "PRESS requests again on re-entry",
-  );
-  f.pointer(f.window, "pointermove", 10, 700, 300);
-  assert.equal(f.input.fighting, true);
+  assert.equal(f.input.consumeDashRequest(), true, "PRESS requests again on re-entry");
+  f.pointer(f.window, "pointermove", 10, 615, 300);
+  assert.equal(f.input.blocking, true);
   assert.equal(f.input.sprinting, false);
+  f.pointer(f.window, "pointermove", 10, 700, 300);
+  assert.equal(f.input.blocking, false);
+  assert.equal(f.input.consumeAttackRequest(), true);
   f.pointer(f.window, "pointermove", 10, 705, 305);
-  assert.equal(f.input.fighting, true);
+  assert.equal(f.input.consumeAttackRequest(), false);
 
   f.pointer(f.window, "pointermove", 10, 750, 350);
-  assert.equal(f.input.fightPointer, null);
-  assert.equal(f.input.fighting, true, "leaving TOGGLE keeps selection");
-  assert.equal(
-    f.input.actions.ownsPointer(10),
-    true,
-    "ownership survives a gap",
-  );
+  assert.equal(f.input.attackPointer, null);
+  assert.equal(f.input.blocking, false);
+  assert.equal(f.input.actions.ownsPointer(10), true, "ownership survives a gap");
   f.pointer(f.window, "pointermove", 10, 700, 400);
   assert.equal(f.input.sprinting, true);
   f.pointer(f.window, "pointerup", 10, 700, 400);
   assert.equal(f.input.sprinting, false);
   assert.equal(f.input.actions.ownsPointer(10), false);
   assert.equal(f.actionRoot.hasPointerCapture(10), false);
-  assert.equal(f.input.fighting, true);
+  assert.equal(f.input.consumeAttackRequest(), false);
 });
 
 test("multiple action fingers release HOLD only when its last occupant leaves", (t) => {
@@ -824,13 +896,15 @@ test("joystick and camera gestures crossing action buttons cannot activate them"
   for (const [x, y] of [
     [700, 400],
     [615, 400],
+    [615, 300],
     [700, 300],
   ]) {
     f.pointer(f.window, "pointermove", 1, x, y);
     f.pointer(f.window, "pointermove", 2, x, y);
     assert.equal(f.input.sprinting, false);
     assert.equal(f.input.consumeDashRequest(), false);
-    assert.equal(f.input.fighting, false);
+    assert.equal(f.input.blocking, false);
+    assert.equal(f.input.consumeAttackRequest(), false);
   }
   assert.equal(f.input.joystickPointer, 1);
   assert.equal(f.input.cameraPointer, 2);
@@ -851,13 +925,13 @@ test("joystick and camera gestures crossing action buttons cannot activate them"
 
 test("future actions join the same sliding gesture and follow current layout geometry", (t) => {
   const f = setup(t);
-  const block = f.addElement({ left: 500, top: 350, width: 70, height: 80 });
+  const focus = f.addElement({ left: 500, top: 350, width: 70, height: 80 });
   const icon = f.addElement({ left: 520, top: 375, width: 20, height: 20 });
-  icon.parentElement = block;
+  icon.parentElement = focus;
   const held = [];
   const unregister = f.input.actions.register({
-    id: "block",
-    element: block,
+    id: "focus",
+    element: focus,
     behavior: "HOLD",
     onHoldChange: (active) => held.push(active),
   });
@@ -865,24 +939,24 @@ test("future actions join the same sliding gesture and follow current layout geo
   f.pointer(f.window, "pointermove", 1, 530, 385);
   assert.equal(f.input.sprinting, false);
   assert.equal(
-    f.input.actions.isHeld("block"),
+    f.input.actions.isHeld("focus"),
     true,
     "button children hit their registered ancestor",
   );
   assert.deepEqual(held, [true]);
 
-  block.rect.left = 410;
+  focus.rect.left = 410;
   icon.rect.left = 430;
   f.pointer(f.window, "pointermove", 1, 530, 385);
   assert.equal(
-    f.input.actions.isHeld("block"),
+    f.input.actions.isHeld("focus"),
     false,
     "layout changes do not leave stale hit bounds",
   );
   f.pointer(f.window, "pointermove", 1, 440, 385);
-  assert.equal(f.input.actions.isHeld("block"), true);
+  assert.equal(f.input.actions.isHeld("focus"), true);
   unregister();
-  assert.equal(f.input.actions.isHeld("block"), false);
+  assert.equal(f.input.actions.isHeld("focus"), false);
   assert.deepEqual(held, [true, false, true, false]);
   f.pointer(f.window, "pointermove", 1, 700, 400);
   assert.equal(
@@ -901,17 +975,15 @@ test("action capture fallback still routes sliding and cancellation clears momen
   assert.equal(f.input.sprinting, false);
   assert.equal(f.input.consumeDashRequest(), true);
   f.pointer(f.window, "pointermove", 1, 700, 300);
-  assert.equal(f.input.fighting, true);
-  f.pointer(f.window, "pointermove", 1, 700, 400);
-  assert.equal(f.input.sprinting, true);
+  assert.equal(f.input.consumeAttackRequest(), true);
+  f.pointer(f.window, "pointermove", 1, 615, 300);
+  assert.equal(f.input.blocking, true);
   f.pointer(f.window, "pointercancel", 1);
   assert.equal(f.input.sprinting, false);
-  assert.equal(f.input.fighting, true);
+  assert.equal(f.input.blocking, false);
   assert.equal(f.input.actions.ownsPointer(1), false);
   f.pointer(f.window, "pointermove", 1, 615, 400);
-  assert.equal(
-    f.input.consumeDashRequest(),
-    false,
-    "cancelled pointers cannot reactivate by moving",
-  );
+  f.pointer(f.window, "pointermove", 1, 700, 300);
+  assert.equal(f.input.consumeDashRequest(), false, "cancelled pointers cannot reactivate by moving");
+  assert.equal(f.input.consumeAttackRequest(), false);
 });

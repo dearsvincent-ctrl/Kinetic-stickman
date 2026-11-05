@@ -34,7 +34,7 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.4</b></span>
+          <span class="version">PROTOTYPE <b>0.5</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
@@ -139,18 +139,29 @@
           <span id="dash-cooldown" class="dash-cooldown">READY</span>
         </button>
         <button
-          id="fight-button"
-          class="fight-button"
-          aria-label="Toggle fighting stance"
+          id="block-button"
+          class="block-button"
+          aria-label="Hold to block"
           aria-pressed="false"
-          title="Toggle fighting stance (F)"
+          title="Hold to block (Q)"
         >
-          <svg viewBox="0 0 32 32" aria-hidden="true">
-            <path
-              d="m8 24-3-8 3-6 5 2 2 6-3 6zm16 0 3-8-3-6-5 2-2 6 3 6zM12 7l4-3 4 3M16 4v7"
-            />
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m12 3 8 3v6c0 4-4 7-8 9-4-2-8-5-8-9V6zM12 7v9" />
           </svg>
-          <span>FIGHT</span>
+          <span>BLOCK</span>
+        </button>
+        <button
+          id="attack-button"
+          class="attack-button"
+          aria-label="Attack"
+          aria-disabled="false"
+          title="Basic punch (F)"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 9h7l2-3h3l1 2h3l2 3-2 6h-8l-2-3H3M15 8v4m4-4v4M3 9v5" />
+          </svg>
+          <span>ATTACK</span>
+          <span id="attack-status" class="attack-status">READY</span>
         </button>
         <button
           id="sprint-button"
@@ -199,7 +210,7 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.4</div>
+        <div class="eyebrow">KINETIC / VERSION 0.5</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
           A space to explore movement.<br />Move, turn, and find your rhythm.
@@ -218,8 +229,12 @@
             <dd>Hold or slide onto SPRINT <span>or Shift</span></dd>
           </div>
           <div>
-            <dt>Fighting stance</dt>
-            <dd>Tap or slide onto FIGHT <span>or F</span></dd>
+            <dt>Attack</dt>
+            <dd>Tap or slide onto ATTACK <span>or F</span></dd>
+          </div>
+          <div>
+            <dt>Block</dt>
+            <dd>Hold or slide onto BLOCK <span>or hold Q</span></dd>
           </div>
           <div>
             <dt>Dash</dt>
@@ -234,7 +249,7 @@
           </div>
         </dl>
         <p class="help-note">
-          Movement and guard prototype. Attacks and physics come later.
+          A basic punch and manual guard. Opponents and damage come later.
         </p>
         <form method="dialog">
           <button class="primary-button">

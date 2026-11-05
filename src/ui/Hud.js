@@ -8,6 +8,8 @@ export class Hud {
     this.stanceLabel = document.querySelector("#stance-label");
     this.dashButton = document.querySelector("#dash-button");
     this.dashCooldown = document.querySelector("#dash-cooldown");
+    this.attackButton = document.querySelector("#attack-button");
+    this.attackStatus = document.querySelector("#attack-status");
     this.helpDialog = document.querySelector("#help-dialog");
     this.fullscreenButton = document.querySelector("#fullscreen-button");
     this.frameCount = 0;
@@ -46,7 +48,7 @@ export class Hud {
     if (!document.fullscreenEnabled) this.fullscreenButton.hidden = true;
   }
 
-  update(dt, speed, maxSpeed, sprinting, fighting = false, dash = null) {
+  update(dt, speed, maxSpeed, sprinting, combat = null, dash = null) {
     this.frameCount++;
     this.sampleTime += dt;
     this.hudTime += dt;
@@ -67,9 +69,15 @@ export class Hud {
           ? "SPRINT"
           : "WALK";
     this.movementState.textContent = state;
-    this.stanceLabel.textContent = fighting
-      ? "FIGHTING STANCE"
-      : "FREE MOVEMENT";
+    this.stanceLabel.textContent = combat?.blocking
+      ? "BLOCKING"
+      : combat?.attack.active
+        ? combat.attack.phase === "recovery"
+          ? "RECOVERING"
+          : "ATTACKING"
+        : combat?.postureActive
+          ? "COMBAT POSTURE"
+          : "FREE MOVEMENT";
     this.speedValue.textContent = speed.toFixed(1);
     this.speedFill.style.width = `${Math.min(100, (speed / maxSpeed) * 100)}%`;
     this.movementDot.style.background =
@@ -80,6 +88,17 @@ export class Hud {
       this.dashCooldown.textContent = dash.ready
         ? "READY"
         : `${Math.max(0, dash.cooldownRemaining).toFixed(1)}s`;
+    }
+    if (combat) {
+      this.attackButton.setAttribute("aria-disabled", String(!combat.ready));
+      this.attackButton.classList.toggle("is-active", combat.attack.active);
+      this.attackStatus.textContent = combat.blocking
+        ? "BLOCKING"
+        : !combat.attack.active
+          ? "READY"
+          : combat.attack.phase === "recovery"
+            ? "RECOVER"
+            : "PUNCH";
     }
   }
 }

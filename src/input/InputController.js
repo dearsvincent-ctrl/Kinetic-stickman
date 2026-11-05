@@ -17,6 +17,7 @@ const GAME_KEYS = new Set([
   "KeyR",
   "KeyF",
   "KeyE",
+  "KeyQ",
 ]);
 const DEAD_ZONE = 0.1;
 
@@ -32,7 +33,8 @@ export class InputController {
     sprintButton,
     cameraSurface,
     resetButton,
-    fightButton,
+    attackButton,
+    blockButton,
     dashButton,
     onReset,
     actionRoot = document.documentElement,
@@ -42,14 +44,15 @@ export class InputController {
     this.joystickKnob = joystickKnob;
     this.sprintButton = sprintButton;
     this.cameraSurface = cameraSurface;
-    this.fightButton = fightButton;
+    this.attackButton = attackButton;
+    this.blockButton = blockButton;
     this.dashButton = dashButton;
     this.onReset = onReset ?? (() => {});
 
     this.move = { x: 0, y: 0 };
     this.sprinting = false;
-    // Stance is a persistent selection, unlike held movement/sprint input.
-    this.fighting = false;
+    this.blocking = false;
+    this.attackRequested = false;
     this.dashRequested = false;
     this.touchMove = { x: 0, y: 0 };
     this.lookDelta = { x: 0, y: 0 };
@@ -156,10 +159,16 @@ export class InputController {
         onActivate: () => this.requestDash(),
       },
       {
-        id: "fight",
-        element: fightButton,
-        behavior: ActionBehavior.TOGGLE,
-        onActivate: () => this.toggleFighting(),
+        id: "attack",
+        element: attackButton,
+        behavior: ActionBehavior.PRESS,
+        onActivate: () => this.requestAttack(),
+      },
+      {
+        id: "block",
+        element: blockButton,
+        behavior: ActionBehavior.HOLD,
+        onHoldChange: () => this.updateState(),
       },
       ...actionBindings,
     ];
@@ -175,7 +184,7 @@ export class InputController {
         return;
       }
       if (event.code === "KeyF") {
-        if (!event.repeat && !this.keys.has("KeyF")) this.toggleFighting();
+        if (!event.repeat && !this.keys.has("KeyF")) this.requestAttack();
         this.keys.add("KeyF");
         return;
       }
@@ -224,9 +233,15 @@ export class InputController {
     event.stopPropagation();
   }
 
-  toggleFighting() {
-    this.fighting = !this.fighting;
-    this.updateState();
+  requestAttack() {
+    // Combat owns recovery and block eligibility; input records each entry only.
+    this.attackRequested = true;
+  }
+
+  consumeAttackRequest() {
+    const requested = this.attackRequested;
+    this.attackRequested = false;
+    return requested;
   }
 
   requestDash() {
@@ -295,8 +310,9 @@ export class InputController {
       this.keys.has("ShiftRight");
     this.sprintButton.classList.toggle("is-active", this.sprinting);
     this.sprintButton.setAttribute("aria-pressed", String(this.sprinting));
-    this.fightButton?.classList.toggle("is-active", this.fighting);
-    this.fightButton?.setAttribute("aria-pressed", String(this.fighting));
+    this.blocking = this.actions.isHeld("block") || this.keys.has("KeyQ");
+    this.blockButton?.classList.toggle("is-active", this.blocking);
+    this.blockButton?.setAttribute("aria-pressed", String(this.blocking));
   }
 
   endPointer(pointerId) {
@@ -331,6 +347,7 @@ export class InputController {
     ];
     this.joystickPointer = null;
     this.cameraPointer = null;
+    this.attackRequested = false;
     this.dashRequested = false;
     this.actions.reset();
     this.touchMove.x = 0;
@@ -348,8 +365,11 @@ export class InputController {
   get sprintPointer() {
     return this.actions.getPointer("sprint");
   }
-  get fightPointer() {
-    return this.actions.getPointer("fight");
+  get attackPointer() {
+    return this.actions.getPointer("attack");
+  }
+  get blockPointer() {
+    return this.actions.getPointer("block");
   }
   get dashPointer() {
     return this.actions.getPointer("dash");

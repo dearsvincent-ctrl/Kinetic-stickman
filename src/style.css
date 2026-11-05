@@ -423,7 +423,8 @@ h1 {
   /* Preserve the action column's footprint after relocating Reset View. */
   width: 132px;
 }
-.fight-button {
+.attack-button,
+.block-button {
   position: absolute;
   right: calc(100% + 24px);
   bottom: 44px;
@@ -445,14 +446,31 @@ h1 {
     background 0.15s,
     border-color 0.15s;
 }
-.fight-button svg {
+.attack-button {
+  /* Leave the space above Attack available for a future action. */
+  right: calc(100% + 120px);
+  gap: 3px;
+}
+.attack-button svg,
+.block-button svg {
   width: 26px;
   height: 26px;
 }
-.fight-button.is-active {
+.attack-button.is-active,
+.block-button.is-active {
   color: #ffc09d;
   border-color: var(--orange);
   background: #624534e6;
+}
+.attack-status {
+  font-size: 6px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: #a5b99c;
+}
+.attack-button[aria-disabled="true"]:not(.is-active) {
+  border-color: #c0ceb52e;
+  color: #8d9c8b;
 }
 .dash-button {
   position: absolute;
@@ -828,14 +846,19 @@ h1 {
     width: 20px;
     height: 20px;
   }
-  .fight-button {
+  .attack-button,
+  .block-button {
     right: calc(100% + 16px);
     bottom: 34px;
     width: 64px;
     height: 64px;
     font-size: 7px;
   }
-  .fight-button svg {
+  .attack-button {
+    right: calc(100% + 94px);
+  }
+  .attack-button svg,
+  .block-button svg {
     width: 23px;
     height: 23px;
   }
@@ -982,7 +1005,8 @@ h1 {
     right: 10px;
     font-size: 5px;
   }
-  .fight-button {
+  .attack-button,
+  .block-button {
     right: 0;
     bottom: calc(100% + 14px + var(--reset-stack-space));
     width: 90px;
@@ -991,7 +1015,17 @@ h1 {
     border-radius: 6px;
     font-size: 7px;
   }
-  .fight-button svg {
+  .attack-button {
+    bottom: calc(100% - 48px + var(--reset-stack-space));
+  }
+  .attack-status {
+    position: absolute;
+    bottom: 5px;
+    right: 10px;
+    font-size: 5px;
+  }
+  .attack-button svg,
+  .block-button svg {
     width: 22px;
     height: 22px;
   }

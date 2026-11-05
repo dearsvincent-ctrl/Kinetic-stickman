@@ -3,6 +3,7 @@ import { LocomotionAnimator } from "./LocomotionAnimator.js";
 import { CombatStanceAnimator } from "./CombatStanceAnimator.js";
 import { LegIK } from "./LegIK.js";
 import { DashAnimator } from "./DashAnimator.js";
+import { AttackAnimator } from "./AttackAnimator.js";
 
 const TAU = Math.PI * 2;
 const fract = (value) => value - Math.floor(value);
@@ -25,7 +26,7 @@ function createFoot(side, offset, sign) {
   };
 }
 
-/** Composes gait and guard, then resolves two planted feet through the existing
+/** Composes gait, automatic guard and punch, then resolves planted feet through the existing
  * hierarchy. Animation owns child transforms only; never root movement/yaw.
  */
 export class CharacterAnimator {
@@ -34,6 +35,8 @@ export class CharacterAnimator {
     this.locomotion = new LocomotionAnimator();
     this.combat = new CombatStanceAnimator();
     this.dashAnimation = new DashAnimator(character);
+    this.attackAnimation = new AttackAnimator();
+    this.attackWeight = 0;
     this.dashWeight = 0;
     this.ik = new LegIK(character);
     this.combatWeight = 0;
@@ -54,12 +57,16 @@ export class CharacterAnimator {
     this.initialized = false;
   }
 
-  update(dt, { speed = 0, fighting = false, dash } = {}) {
+  update(dt, { speed = 0, blocking = false, combat, dash } = {}) {
     if (dt <= 0) return;
     const root = this.character.root;
     const j = this.character.joints;
     const gait = this.locomotion;
-    this.combatWeight = this.combat.update(dt, fighting);
+    this.combatWeight = this.combat.update(
+      dt,
+      Boolean(blocking || combat?.postureActive),
+    );
+    this.attackWeight = this.attackAnimation.update(dt, combat);
     // The dash has its own single bound, not a 12 m/s running cycle.
     gait.update(dt, {
       speed: dash?.active ? Math.min(speed, 2.6) : speed,
@@ -125,6 +132,7 @@ export class CharacterAnimator {
     this.pose.arms[1].x = wave * amplitude;
     this.combat.apply(this.pose, gait.movementBlend);
     this.dashAnimation.apply(this.pose, this.combatWeight);
+    this.attackAnimation.apply(this.pose);
     const pose = this.pose;
     j.hips.position.set(pose.hipX, pose.hipY, 0);
     j.hips.rotation.set(0, pose.hipYaw, pose.hipRoll);

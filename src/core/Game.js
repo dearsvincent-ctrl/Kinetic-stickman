@@ -7,6 +7,7 @@ import { CharacterController } from "../movement/CharacterController.js";
 import { FollowCamera } from "../camera/FollowCamera.js";
 import { InputController } from "../input/InputController.js";
 import { Hud } from "../ui/Hud.js";
+import { CombatController } from "../combat/CombatController.js";
 
 const STEP = 1 / 60;
 
@@ -34,6 +35,7 @@ export class Game {
       this.character.root,
       new ArenaBounds(this.arena.halfSize),
     );
+    this.combat = new CombatController();
     this.animator = new CharacterAnimator(this.character);
     this.followCamera = new FollowCamera(
       this.camera,
@@ -45,7 +47,8 @@ export class Game {
       joystick: document.querySelector("#joystick"),
       joystickKnob: document.querySelector("#joystick-knob"),
       sprintButton: document.querySelector("#sprint-button"),
-      fightButton: document.querySelector("#fight-button"),
+      attackButton: document.querySelector("#attack-button"),
+      blockButton: document.querySelector("#block-button"),
       dashButton: document.querySelector("#dash-button"),
       cameraSurface: document.querySelector("#camera-surface"),
       resetButton: document.querySelector("#reset-camera"),
@@ -100,6 +103,7 @@ export class Game {
   clearMotion() {
     this.input.reset();
     this.controller.stop();
+    this.combat.reset();
     this.accumulator = 0;
     this.lastTime = null;
   }
@@ -120,13 +124,30 @@ export class Game {
       while (this.accumulator >= STEP) {
         if (this.input.consumeDashRequest()) this.controller.requestDash();
         this.controller.update(STEP, this.input, this.followCamera.yaw);
+        this.combat.setBlocking(this.input.blocking);
+        if (this.input.consumeAttackRequest()) {
+          const velocity = this.controller.velocity;
+          const length = velocity.length();
+          this.combat.requestAttack({
+            speed: this.controller.speed,
+            movementDirection:
+              length > 0.001
+                ? [velocity.x / length, 0, velocity.z / length]
+                : [0, 0, 0],
+            facing: this.controller.heading,
+            dashActive: this.controller.dash.active,
+            opponentDistance: null,
+          });
+        }
+        this.combat.update(STEP);
         this.animator.update(STEP, {
           speed: this.controller.speed,
           maxSpeed: this.input.sprinting
             ? this.controller.sprintSpeed
             : this.controller.walkSpeed,
           sprinting: this.input.sprinting,
-          fighting: this.input.fighting,
+          blocking: this.input.blocking,
+          combat: this.combat,
           dash: this.controller.dash,
         });
         this.accumulator -= STEP;
@@ -143,7 +164,7 @@ export class Game {
       this.controller.speed,
       this.controller.sprintSpeed,
       this.input.sprinting,
-      this.input.fighting,
+      this.combat,
       this.controller.dash,
     );
   }
@@ -169,7 +190,9 @@ export class Game {
       input: {
         move: { ...this.input.move },
         sprinting: this.input.sprinting,
-        fighting: this.input.fighting,
+        blocking: this.input.blocking,
+        attackPointer: this.input.attackPointer,
+        blockPointer: this.input.blockPointer,
         joystickPointer: this.input.joystickPointer,
         cameraPointer: this.input.cameraPointer,
         sprintPointer: this.input.sprintPointer,
@@ -182,12 +205,28 @@ export class Game {
         targetYaw: this.followCamera.targetYaw,
         distance: this.followCamera.distance,
       },
+      combat: {
+        blocking: this.combat.blocking,
+        ready: this.combat.ready,
+        postureActive: this.combat.postureActive,
+        attack: {
+          active: this.combat.attack.active,
+          phase: this.combat.attack.phase,
+          elapsed: this.combat.attack.elapsed,
+          phaseProgress: this.combat.attack.phaseProgress,
+          extension: this.combat.attack.extension,
+          sequence: this.combat.attack.sequence,
+          techniqueId: this.combat.attack.techniqueId,
+          cancelled: this.combat.attack.cancelled,
+        },
+      },
       animation: {
         combatWeight: this.animator.combatWeight,
         phase: this.animator.locomotion.phase,
         cadence: this.animator.locomotion.cadence,
         stride: this.animator.locomotion.stride,
         dashWeight: this.animator.dashWeight,
+        attackWeight: this.animator.attackWeight,
       },
       halfSize: this.arena.halfSize,
       radius: this.controller.radius,

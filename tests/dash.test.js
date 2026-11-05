@@ -4,10 +4,10 @@ import { Group, Vector3 } from "three";
 import { CharacterController } from "../src/movement/CharacterController.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
 
-const controls = (x = 0, y = 0, sprinting = false, fighting = false) => ({
+const controls = (x = 0, y = 0, sprinting = false, blocking = false) => ({
   move: { x, y },
   sprinting,
-  fighting,
+  blocking,
 });
 
 const close = (actual, expected, tolerance = 0.001) => {
@@ -376,11 +376,11 @@ test("steered dash trajectories remain comparable across frame rates", () => {
   }
 });
 
-test("dash returns to ordinary walking, sprinting and fighting movement speeds", () => {
-  for (const fighting of [false, true]) {
+test("dash returns to ordinary walking, sprinting and blocking movement speeds", () => {
+  for (const blocking of [false, true]) {
     for (const sprinting of [false, true]) {
       const { controller } = actor();
-      const input = controls(0, 1, sprinting, fighting);
+      const input = controls(0, 1, sprinting, blocking);
       const expectedSpeed = sprinting ? 5.2 : 2.6;
       advance(controller, 1, input);
       close(controller.speed, expectedSpeed, 0.005);
@@ -396,7 +396,7 @@ test("dash returns to ordinary walking, sprinting and fighting movement speeds",
   }
 });
 
-test("changing fighting stance during a dash preserves its timing and return to movement", () => {
+test("changing blocking stance during a dash preserves its timing and return to movement", () => {
   const { controller } = actor();
   start(controller, controls(0, 1, false, false));
   advance(controller, 0.1, controls(0, 1, false, true));
