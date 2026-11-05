@@ -1,0 +1,16 @@
+{
+  "name": "kinetic-stickman-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test tests/*.test.js",
+    "test:browser": "node tests/browser-smoke.mjs",
+    "test:pages": "node tests/pages-smoke.mjs"
+  },
+  "dependencies": { "three": "^0.180.0" },
+  "devDependencies": { "vite": "^7.2.2", "playwright": "^1.56.1" }
+}

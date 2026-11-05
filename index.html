@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#172124" />
+    <meta
+      name="description"
+      content="Kinetic — a playable 3D stickman movement prototype. Explore the training arena with camera-relative touch controls."
+    />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <title>Kinetic — Movement Lab</title>
+  </head>
+  <body>
+    <main id="app" aria-label="Kinetic 3D training arena">
+      <div id="viewport" aria-label="3D arena"></div>
+      <div id="camera-surface" aria-label="Drag to rotate camera"></div>
+      <div class="screen-vignette" aria-hidden="true"></div>
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="Kinetic Movement Lab">
+          <svg class="brand-mark" viewBox="0 0 36 36" aria-hidden="true">
+            <path
+              d="M8 7v22h5V19l10 10h7L18 17 29 7h-7l-9 9V7z"
+              fill="currentColor"
+            />
+          </svg>
+          <span class="brand-name"
+            >kinetic<span class="brand-dot">.</span></span
+          >
+          <span class="brand-divider"></span>
+          <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
+        </a>
+        <div class="top-actions">
+          <span class="version">PROTOTYPE <b>0.1</b></span>
+          <span class="fps"
+            ><span class="live-dot"></span><b id="fps-value">—</b
+            ><span>FPS</span></span
+          >
+          <span class="action-divider"></span>
+          <button
+            id="help-button"
+            class="icon-button"
+            aria-label="How to play"
+            title="How to play"
+          >
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="8.5" />
+              <path
+                d="M9.8 9a2.3 2.3 0 0 1 4.5.6c0 1.7-2.3 1.8-2.3 3.4M12 16.5v.1"
+              />
+            </svg>
+          </button>
+          <button
+            id="fullscreen-button"
+            class="icon-button"
+            aria-label="Enter fullscreen"
+            title="Fullscreen"
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4" />
+            </svg>
+          </button>
+        </div>
+      </header>
+      <section class="arena-heading" aria-label="Training ground">
+        <div class="eyebrow">
+          <span class="orange-line"></span> SANDBOX / 001
+        </div>
+        <h1>Training ground<span class="title-period">.</span></h1>
+        <p>Find your footing. Make your move.</p>
+        <div class="session-tag"><span></span> FREE MOVEMENT</div>
+      </section>
+      <div class="camera-hint" aria-hidden="true">
+        <svg viewBox="0 0 40 20">
+          <path d="m8 5-5 5 5 5m24-10 5 5-5 5M3 10h34" /></svg
+        ><span>DRAG TO LOOK</span>
+      </div>
+      <div class="orientation-note">
+        <svg viewBox="0 0 24 24">
+          <rect
+            x="7"
+            y="3"
+            width="10"
+            height="18"
+            rx="2"
+            transform="rotate(90 12 12)"
+          />
+        </svg>
+        Best experienced in landscape
+      </div>
+      <div
+        id="joystick"
+        class="joystick"
+        role="group"
+        aria-label="Movement joystick"
+      >
+        <span class="control-caption joystick-caption">MOVE</span>
+        <div class="joystick-ring" aria-hidden="true"></div>
+        <span class="joy-tick tick-n"></span
+        ><span class="joy-tick tick-e"></span
+        ><span class="joy-tick tick-s"></span
+        ><span class="joy-tick tick-w"></span>
+        <div id="joystick-knob" class="joystick-knob">
+          <svg viewBox="0 0 24 24">
+            <path d="m9 5 3-3 3 3m-6 14 3 3 3-3M5 9l-3 3 3 3m14-6 3 3-3 3" />
+          </svg>
+        </div>
+        <span class="keyboard-label">W A S D <span>/</span> ↑ ← ↓ →</span>
+      </div>
+      <div class="right-controls">
+        <button
+          id="reset-camera"
+          class="reset-button"
+          aria-label="Reset camera behind character"
+          title="Reset camera (R)"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M4 10V5m0 0h5M4 5l3 3a7 7 0 1 1-1 8" /></svg
+          ><span>RESET VIEW</span><kbd>R</kbd>
+        </button>
+        <button
+          id="sprint-button"
+          class="sprint-button"
+          aria-label="Hold to sprint"
+        >
+          <svg viewBox="0 0 32 32"><path d="m8 23 8-8 8 8M8 14l8-8 8 8" /></svg
+          ><span>SPRINT</span>
+        </button>
+        <span class="sprint-caption"
+          >HOLD <span class="desktop-shift">/ SHIFT</span></span
+        >
+      </div>
+      <div class="movement-readout" aria-live="off">
+        <div class="readout-state">
+          <span id="movement-dot"></span><span id="movement-state">IDLE</span>
+        </div>
+        <span class="readout-divider"></span><b id="speed-value">0.0</b
+        ><span class="speed-unit">M/S</span>
+        <div class="speed-track"><div id="speed-fill"></div></div>
+      </div>
+      <footer class="bottombar">
+        <span><span class="footer-cross">+</span> A STUDY IN MOTION</span
+        ><span
+          >THIRD PERSON <span class="footer-slash">/</span>
+          <span id="camera-label">FOLLOW CAMERA</span></span
+        >
+      </footer>
+      <div id="loading" class="loading">
+        <span class="loading-mark">k.</span
+        ><span>PREPARING THE TRAINING GROUND</span>
+      </div>
+      <div id="error" class="error-panel" hidden>
+        <h2>Unable to start the arena</h2>
+        <p id="error-message">
+          This prototype needs a browser with WebGL support.
+        </p>
+        <button onclick="location.reload()">Try again</button>
+      </div>
+      <dialog id="help-dialog" class="help-dialog">
+        <form method="dialog">
+          <button
+            class="dialog-close icon-button"
+            aria-label="Close instructions"
+          >
+            ×
+          </button>
+        </form>
+        <div class="eyebrow">KINETIC / VERSION 0.1</div>
+        <h2>Get a feel for it<span>.</span></h2>
+        <p>
+          A space to explore movement.<br />Move, turn, and find your rhythm.
+        </p>
+        <dl>
+          <div>
+            <dt>Move</dt>
+            <dd>Left joystick <span>or WASD / arrow keys</span></dd>
+          </div>
+          <div>
+            <dt>Look</dt>
+            <dd>Drag on the right side</dd>
+          </div>
+          <div>
+            <dt>Sprint</dt>
+            <dd>Hold SPRINT <span>or Shift</span></dd>
+          </div>
+          <div>
+            <dt>Reset view</dt>
+            <dd>Tap RESET VIEW <span>or R</span></dd>
+          </div>
+        </dl>
+        <p class="help-note">
+          Movement prototype. Combat and physics come later.
+        </p>
+        <form method="dialog">
+          <button class="primary-button">
+            BACK TO THE ARENA <span>↗</span>
+          </button>
+        </form>
+      </dialog>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
