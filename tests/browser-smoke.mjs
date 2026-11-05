@@ -49,12 +49,7 @@ const observeDash = (sequence) =>
     throw new Error("DASH did not start and finish within 240 rendered frames");
   }, sequence);
 const checkActionLayout = async (width, height) => {
-  const selectors = [
-    "#sprint-button",
-    "#dash-button",
-    "#attack-button",
-    "#block-button",
-  ];
+  const selectors = ["#sprint-button", "#dash-button", "#block-button"];
   for (const selector of selectors) {
     const box = await page.locator(selector).boundingBox();
     assert.ok(
@@ -105,7 +100,6 @@ const checkResetLayout = async (width, height) => {
     ".topbar",
     "#sprint-button",
     "#dash-button",
-    "#attack-button",
     "#block-button",
   ]) {
     const other = await page.locator(selector).boundingBox();
@@ -187,6 +181,7 @@ try {
   await page.touchscreen.tap(dashButton.x, dashButton.y);
   const retryDashEnd = (await retryDashPromise).at(-1);
   assert.equal(retryDashEnd.dash.sequence, initial.dash.sequence + 2);
+  closeTo(retryDashEnd.dash.distanceTravelled, 2.5, 0.03);
   await wait(() => {
     const state = window.__KINETIC__.snapshot();
     return state.dash.ready && state.animation.dashWeight < 0.02;
@@ -195,6 +190,13 @@ try {
     "PASS: stationary DASH travels continuously for 2.5m, preserves camera angles, blends back and respects cooldown",
   );
 
+  await page.reload({ waitUntil: "networkidle" });
+  await wait(() => Boolean(window.__KINETIC__));
+  assert.equal(
+    await page.locator("#attack-button").count(),
+    0,
+    "Automatic combat has no visible Attack button",
+  );
   assert.equal(
     await page.locator("#fight-button").count(),
     0,
@@ -253,19 +255,24 @@ try {
   assert.ok((await snapshot()).position[2] < -0.2);
   console.log("PASS: keyboard sprint accelerates and stops");
 
-  await page.keyboard.down("w");
+  await page.keyboard.down("d");
   await page.keyboard.down("Shift");
+  await wait(() => window.__KINETIC__.snapshot().position[0] > 3);
+  await page.keyboard.up("d");
+  await page.keyboard.down("w");
   await wait(() => window.__KINETIC__.snapshot().position[2] < -17.63, 45000);
   const boundary = await snapshot();
   closeTo(boundary.position[2], -(boundary.halfSize - boundary.radius));
   await page.keyboard.down("d");
-  await wait(() => window.__KINETIC__.snapshot().position[0] > 1);
+  await wait(() => window.__KINETIC__.snapshot().position[0] > 4.5);
   closeTo((await snapshot()).position[2], boundary.position[2]);
   await page.keyboard.up("w");
   await page.keyboard.up("d");
   await page.keyboard.up("Shift");
   await wait(() => window.__KINETIC__.snapshot().speed < 0.01);
-  console.log("PASS: sprint respects the arena boundary and slides along it");
+  console.log(
+    "PASS: sprint respects the arena boundary and slides along it while avoiding the dummy",
+  );
 
   // Native events and fixed virtual frames keep brief punches and dashes
   // deterministic even with software-rendered Chromium on a busy CI machine.
@@ -332,7 +339,6 @@ try {
   const joy = await center("#joystick");
   const sprint = await center("#sprint-button");
   const dash = await center("#dash-button");
-  const attack = await center("#attack-button");
   const block = await center("#block-button");
   const reset = await center("#reset-camera");
   const camera = { x: 550, y: 165 };
@@ -342,10 +348,10 @@ try {
     return snapshot();
   };
 
-  // Attack is one PRESS. Rejected recovery entries never buffer a later punch.
-  let attackFinger = touch(5, attack);
-  let beforeAttack = await snapshot();
-  await native("touchStart", [attackFinger]);
+  // The extensible manual request remains available through F for regression
+  // coverage, but no visible Attack control is rendered or registered.
+  const beforeAttack = await snapshot();
+  await page.keyboard.down("f");
   let state = await step();
   assert.equal(
     state.combat.attack.sequence,
@@ -361,50 +367,36 @@ try {
   assert.equal(
     state.combat.attack.sequence,
     beforeAttack.combat.attack.sequence + 1,
-    "Holding Attack does not repeat after recovery",
+    "Held F does not repeatedly request manual punches",
   );
   assert.equal(state.combat.ready, true);
-  await native("touchMove", [touch(5, gap)]);
-  await step();
-  await native("touchMove", [attackFinger]);
+  await page.keyboard.up("f");
+  await page.keyboard.press("f");
   state = await step(100);
   const secondSequence = state.combat.attack.sequence;
+  assert.equal(secondSequence, beforeAttack.combat.attack.sequence + 2);
+  await page.keyboard.press("f");
   assert.equal(
+    (await step()).combat.attack.sequence,
     secondSequence,
-    beforeAttack.combat.attack.sequence + 2,
-    "Re-entry triggers a new punch",
-  );
-  await native("touchMove", [touch(5, gap)]);
-  await step();
-  await native("touchMove", [attackFinger]);
-  state = await step();
-  assert.equal(
-    state.combat.attack.sequence,
-    secondSequence,
-    "Recovery rejects another entry",
+    "Recovery rejects another manual request",
   );
   state = await step(850);
   assert.equal(
     state.combat.attack.sequence,
     secondSequence,
-    "Rejected entry never queues an attack",
+    "Rejected manual request never queues an attack",
   );
   assert.ok(
     state.animation.combatWeight < 0.03,
-    "Automatic combat posture blends back to idle",
+    "Automatic posture blends back outside proximity",
   );
   assert.ok(
     state.animation.attackWeight < 0.03,
     "Punch naturally recovers its arm pose",
   );
-  await native("touchEnd", [attackFinger]);
-  assert.equal(
-    (await step()).combat.attack.sequence,
-    secondSequence,
-    "Release cannot produce another attack",
-  );
   console.log(
-    "PASS: basic punch, automatic posture, one attack per entry, recovery rejection and no buffered repeat",
+    "PASS: reusable manual punch request, recovery and no held/rejected-repeat remain intact without an Attack button",
   );
 
   // Slow analog walk, full normal movement and sprint retain their speed while
@@ -416,7 +408,7 @@ try {
     ["run", 1, false],
     ["sprint", 1, true],
   ]) {
-    const movingFinger = touch(10, { x: joy.x, y: joy.y - radius * fraction });
+    const movingFinger = touch(10, { x: joy.x + radius * fraction, y: joy.y });
     await native("touchStart", [movingFinger]);
     if (sprinting) await page.keyboard.down("Shift");
     const moving = await step(650);
@@ -448,6 +440,8 @@ try {
     "PASS: attacks preserve slow walking, running and sprinting speeds and continuous movement",
   );
 
+  await page.reload({ waitUntil: "networkidle" });
+  await step(500);
   let fingers = [touch(1, joy), touch(2, camera), touch(3, sprint)];
   await native("touchStart", fingers);
   fingers = [
@@ -472,20 +466,18 @@ try {
   );
   for (const owner of ["joystickPointer", "cameraPointer", "sprintPointer"])
     assert.notEqual(multi.input[owner], null);
-  const fourthFinger = touch(6, attack);
-  await native("touchStart", [...fingers, fourthFinger], [fourthFinger]);
+  await page.keyboard.press("f");
   const attackingMulti = await step(100);
   assert.equal(attackingMulti.combat.attack.active, true);
   assert.ok(
     attackingMulti.speed > 3.3,
-    "Punching preserves the simultaneous sprinting joystick motion",
+    "Manual punch preserves simultaneous sprinting joystick motion",
   );
   for (const owner of ["joystickPointer", "cameraPointer", "sprintPointer"])
     assert.equal(attackingMulti.input[owner], multi.input[owner]);
   assert.deepEqual(attackingMulti.input.move, multi.input.move);
   closeTo(attackingMulti.camera.targetYaw, multi.camera.targetYaw, 0.000001);
   await page.screenshot({ path: "test-results/multitouch.png" });
-  await native("touchEnd", [fourthFinger]);
   await step(600);
 
   const blockFinger = touch(8, block);
@@ -634,7 +626,7 @@ try {
     "PASS: punch and dash remain independent while native joystick steering redirects the burst",
   );
 
-  // One action pointer never lifts while crossing all four gameplay buttons.
+  // One action pointer never lifts while crossing Sprint, Dash and Block.
   let slider = touch(41, sprint);
   const slideTo = async (point, duration = 34) => {
     slider = touch(41, point);
@@ -671,54 +663,32 @@ try {
   slid = await slideTo(block, 350);
   assert.equal(slid.input.blocking, true, "Sliding onto Block holds defence");
   assert.ok(slid.animation.combatWeight > 0.95);
-  const beforeSlideAttack = slid.combat.attack.sequence;
-  slid = await slideTo(attack);
-  assert.equal(
-    slid.input.blocking,
-    false,
-    "Block releases before the Attack entry",
-  );
-  assert.equal(
-    slid.combat.attack.sequence,
-    beforeSlideAttack + 1,
-    "Block to Attack initiates one punch without lifting",
-  );
-  assert.equal(slid.combat.attack.active, true);
-  assert.equal(
-    (await step(700)).combat.attack.sequence,
-    beforeSlideAttack + 1,
-    "Holding Attack never repeats",
-  );
-  await slideTo(gap);
-  assert.equal(
-    (await snapshot()).input.cameraPointer,
-    null,
-    "Action ownership survives gaps without becoming camera input",
-  );
-  slid = await slideTo(attack);
-  assert.equal(
-    slid.combat.attack.sequence,
-    beforeSlideAttack + 2,
-    "Attack re-entry initiates another recovered punch",
-  );
-  slid = await slideTo(block);
-  assert.equal(slid.input.blocking, true);
-  assert.equal(
-    slid.combat.attack.cancelled,
-    true,
-    "Block safely recovers an in-progress punch",
-  );
-  slid = await slideTo(gap, 750);
+  slid = await slideTo(gap);
   assert.equal(
     slid.input.blocking,
     false,
     "Leaving Block releases HOLD immediately",
   );
   assert.equal(
-    slid.combat.attack.active,
-    false,
-    "Releasing Block never resumes the cancelled punch",
+    slid.input.cameraPointer,
+    null,
+    "Action ownership survives gaps without becoming camera input",
   );
+  await slideTo(sprint);
+  assert.equal(
+    (await snapshot()).input.sprinting,
+    true,
+    "Block to Sprint resumes sprinting without lifting",
+  );
+  slid = await slideTo(block);
+  assert.equal(slid.input.sprinting, false);
+  assert.equal(
+    slid.input.blocking,
+    true,
+    "Re-entering Block holds defence again",
+  );
+  slid = await slideTo(gap, 750);
+  assert.equal(slid.input.blocking, false);
   const cameraBeforeUtilityCrossing = slid.camera;
   const utilitySequence = slid.combat.attack.sequence;
   await slideTo(reset);
@@ -788,7 +758,7 @@ try {
   let crossing = [touch(44, joy), touch(45, camera)];
   await native("touchStart", crossing);
   const crossingOwners = (await step()).input;
-  crossing = [touch(44, sprint), touch(45, attack)];
+  crossing = [touch(44, sprint), touch(45, block)];
   await native("touchMove", crossing);
   let crossingState = await step();
   assert.equal(crossingState.input.sprinting, false);
@@ -796,7 +766,7 @@ try {
   assert.equal(
     crossingState.combat.attack.sequence,
     crossingAttackSequence,
-    "Camera drag crossing Attack cannot activate a punch",
+    "Camera drag crossing Block cannot activate a punch",
   );
   assert.equal(
     crossingState.input.joystickPointer,
@@ -831,7 +801,7 @@ try {
   assert.equal(crossingState.input.blocking, false);
   await page.clock.resume();
   console.log(
-    "PASS: native slide Sprint/Dash/Attack/Block entry and recovery, shared HOLD, role isolation and cancellation",
+    "PASS: native slide Sprint/Dash/Block entry, shared HOLD, role isolation and cancellation",
   );
 
   await page.locator("#reset-camera").tap();
@@ -889,6 +859,286 @@ try {
   await wait(() => !window.__KINETIC__.snapshot().paused);
   assert.equal((await snapshot()).paused, false);
   console.log("PASS: instructions pause movement and close cleanly");
+
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  const freshScene = async () => {
+    await page.reload({ waitUntil: "networkidle" });
+    await step(500);
+  };
+  const advanceUntil = async (predicate, limit = 3000, quantum = 34) => {
+    for (let time = 0; time <= limit; time += quantum) {
+      const sample = await snapshot();
+      if (predicate(sample)) return sample;
+      await step(quantum);
+    }
+    throw new Error(
+      "Native movement did not reach its expected proximity state",
+    );
+  };
+  // Place the actor using a proportional native joystick, with no position
+  // mutation hook. Low-speed settling leaves margin around the hysteresis band.
+  const walkTo = async (target) => {
+    let driver = touch(90, joy);
+    await native("touchStart", [driver]);
+    let settled = false;
+    for (let index = 0; index < 120; index++) {
+      const sample = await snapshot();
+      const dx = target.x - sample.position[0];
+      const dz = target.z - sample.position[2];
+      const distance = Math.hypot(dx, dz);
+      if (distance < 0.02 && sample.speed < 0.08) {
+        settled = true;
+        break;
+      }
+      const magnitude = Math.min(1, distance);
+      const fraction = distance < 0.003 ? 0 : 0.1 + magnitude * 0.9;
+      const cos = Math.cos(sample.camera.yaw),
+        sin = Math.sin(sample.camera.yaw);
+      const divisor = distance || 1;
+      const nextDriver = touch(90, {
+        x: joy.x + ((dx * cos - dz * sin) / divisor) * radius * fraction,
+        y: joy.y - ((-dx * sin - dz * cos) / divisor) * radius * fraction,
+      });
+      if (Math.hypot(nextDriver.x - driver.x, nextDriver.y - driver.y) > 0.01) {
+        driver = nextDriver;
+        await native("touchMove", [driver]);
+      }
+      await step(100);
+    }
+    await native("touchEnd", [driver]);
+    const result = await step(300);
+    assert.ok(settled, "Native joystick settles near its requested test point");
+    assert.ok(
+      Math.hypot(result.position[0] - target.x, result.position[2] - target.z) <
+        0.04,
+    );
+    return result;
+  };
+  await freshScene();
+  const approachStart = await snapshot();
+  const dummyX = approachStart.dummy.position[0];
+  const dummyZ = approachStart.dummy.position[2];
+  await walkTo({ x: dummyX, z: 0 });
+  assert.equal(approachStart.proximity.targetId, null);
+  await page.keyboard.down("w");
+  const entered = await advanceUntil(
+    (sample) => sample.proximity.targetId !== null,
+  );
+  assert.ok(
+    entered.proximity.distance <= entered.proximity.entryDistance + 0.001,
+  );
+  const movingAuto = await advanceUntil(
+    (sample) => sample.combat.attack.active && sample.speed > 0.1,
+  );
+  assert.equal(movingAuto.combat.attack.techniqueId, "basic-punch");
+  await step(500);
+  await page.keyboard.up("w");
+  const atDummy = await step(350);
+  const separation = Math.hypot(
+    atDummy.position[0] - atDummy.dummy.position[0],
+    atDummy.position[2] - atDummy.dummy.position[2],
+  );
+  closeTo(separation, atDummy.radius + atDummy.dummy.radius, 0.01);
+  const repeatStart = atDummy.combat.attack.sequence;
+  const repeated = await step(1400);
+  assert.ok(
+    repeated.combat.attack.sequence >= repeatStart + 2,
+    "Standing in range repeats only recovered basic punches",
+  );
+  assert.deepEqual(
+    repeated.position,
+    atDummy.position,
+    "Automatic punches never push or translate the actor",
+  );
+  assert.deepEqual(
+    repeated.dummy.position,
+    approachStart.dummy.position,
+    "The training dummy stays stationary",
+  );
+  closeTo(repeated.camera.yaw, approachStart.camera.yaw, 0.000001);
+  closeTo(repeated.camera.pitch, approachStart.camera.pitch, 0.000001);
+  await page.screenshot({ path: "test-results/proximity-combat.png" });
+
+  const heldBlock = touch(80, block);
+  await native("touchStart", [heldBlock]);
+  const blockStart = await step();
+  const blockedAuto = await step(1100);
+  assert.equal(blockedAuto.input.blocking, true);
+  assert.equal(
+    blockedAuto.combat.attack.sequence,
+    blockStart.combat.attack.sequence,
+    "Held Block suppresses automatic attacks",
+  );
+  assert.equal(blockedAuto.combat.attack.active, false);
+  assert.ok(blockedAuto.animation.combatWeight > 0.95);
+  await native("touchEnd", [heldBlock]);
+  const resumed = await step();
+  assert.equal(resumed.input.blocking, false);
+  assert.equal(
+    resumed.combat.attack.sequence,
+    blockStart.combat.attack.sequence + 1,
+    "Releasing Block resumes an eligible automatic punch",
+  );
+  await page.keyboard.down("s");
+  await page.keyboard.down("Shift");
+  const leftRange = await advanceUntil(
+    (sample) => sample.proximity.targetId === null,
+  );
+  const leaveSequence = leftRange.combat.attack.sequence;
+  await page.keyboard.up("s");
+  await page.keyboard.up("Shift");
+  const recoveredOutside = await step(1100);
+  assert.equal(
+    recoveredOutside.combat.attack.sequence,
+    leaveSequence,
+    "Leaving range never queues another punch",
+  );
+  assert.equal(
+    recoveredOutside.combat.attack.active,
+    false,
+    "A started punch recovers naturally after leaving range",
+  );
+  console.log(
+    "PASS: native approach triggers moving and stationary automatic punches; dummy collision, held Block, release and leaving range are stable",
+  );
+
+  await freshScene();
+  await walkTo({ x: dummyX, z: 0 });
+  await page.keyboard.down("w");
+  await page.keyboard.down("Shift");
+  const sprintingAuto = await advanceUntil(
+    (sample) =>
+      sample.combat.attack.active && sample.proximity.targetId !== null,
+    2000,
+    17,
+  );
+  assert.ok(
+    sprintingAuto.speed > 4.5,
+    "Automatic punches do not stop an approaching sprint",
+  );
+  assert.equal(sprintingAuto.input.sprinting, true);
+  await page.keyboard.up("w");
+  await page.keyboard.up("Shift");
+  await step(500);
+
+  await freshScene();
+  await walkTo({ x: dummyX, z: dummyZ + 2 });
+  await page.keyboard.down("w");
+  await step();
+  await page.keyboard.press("e");
+  const dashingAuto = await advanceUntil(
+    (sample) => sample.dash.active && sample.combat.attack.active,
+    500,
+    17,
+  );
+  assert.equal(
+    dashingAuto.proximity.targetId,
+    dashingAuto.dummy.id,
+    "A dash can trigger the existing automatic punch without a special dash strike",
+  );
+  const dummyDashSamples = [dashingAuto];
+  for (
+    let index = 0;
+    index < 40 && dummyDashSamples.at(-1).dash.active;
+    index++
+  )
+    dummyDashSamples.push(await step(17));
+  await page.keyboard.up("w");
+  await step(500);
+  for (const sample of dummyDashSamples)
+    assert.ok(
+      Math.hypot(
+        sample.position[0] - sample.dummy.position[0],
+        sample.position[2] - sample.dummy.position[2],
+      ) >=
+        sample.radius + sample.dummy.radius - 0.002,
+      "Continuous dash collision never enters the dummy",
+    );
+  assert.equal(dummyDashSamples.at(-1).dash.active, false);
+  console.log(
+    "PASS: proximity punches work during sprint and dash while preserving continuous dummy collision",
+  );
+
+  await freshScene();
+  const outsideEntry = await walkTo({ x: dummyX, z: dummyZ + 1.06 });
+  assert.equal(
+    outsideEntry.proximity.targetId,
+    null,
+    "Outside the 1m entry radius does not acquire the dummy",
+  );
+  assert.equal(outsideEntry.combat.attack.sequence, 0);
+  const insideEntry = await walkTo({ x: dummyX, z: dummyZ + 0.92 });
+  assert.notEqual(insideEntry.proximity.targetId, null);
+  const insideExit = await walkTo({ x: dummyX, z: dummyZ + 1.06 });
+  assert.notEqual(
+    insideExit.proximity.targetId,
+    null,
+    "An acquired target is retained inside the 1.15m exit band",
+  );
+  const outsideExit = await walkTo({ x: dummyX, z: dummyZ + 1.28 });
+  assert.equal(
+    outsideExit.proximity.targetId,
+    null,
+    "Passing the exit radius clears the target",
+  );
+  const returnedBand = await walkTo({ x: dummyX, z: dummyZ + 1.06 });
+  assert.equal(
+    returnedBand.proximity.targetId,
+    null,
+    "Returning only to the hysteresis band cannot reacquire the target",
+  );
+  console.log(
+    "PASS: native joystick entry/exit hysteresis prevents proximity flicker without teleporting the actor",
+  );
+
+  await freshScene();
+  await walkTo({ x: dummyX + 0.9, z: 0 });
+  await page.keyboard.down("w");
+  const sideEntry = await advanceUntil(
+    (sample) => sample.proximity.targetId !== null,
+  );
+  assert.equal(
+    sideEntry.proximity.aligned,
+    false,
+    "A side-on target is not instantly treated as aligned",
+  );
+  assert.equal(
+    sideEntry.combat.attack.sequence,
+    0,
+    "Automatic punch waits for the body to face the target",
+  );
+  await page.keyboard.up("w");
+  const facingSamples = [];
+  let firstAlignedAttack;
+  for (let index = 0; index < 120; index++) {
+    const sample = await step(17);
+    facingSamples.push(sample);
+    if (sample.combat.attack.sequence > 0) {
+      firstAlignedAttack = sample;
+      break;
+    }
+  }
+  assert.ok(
+    firstAlignedAttack,
+    "Smooth body facing eventually permits the basic punch",
+  );
+  assert.equal(firstAlignedAttack.proximity.aligned, true);
+  assert.ok(
+    facingSamples.some(
+      (sample) =>
+        sample.heading > sideEntry.heading &&
+        sample.heading < firstAlignedAttack.heading,
+    ),
+    "Body facing passes through intermediate angles",
+  );
+  for (const sample of facingSamples) {
+    closeTo(sample.camera.yaw, sideEntry.camera.yaw, 0.000001);
+    closeTo(sample.camera.pitch, sideEntry.camera.pitch, 0.000001);
+  }
+  console.log(
+    "PASS: automatic body facing is gradual, gates punches until aligned and never rotates the camera",
+  );
+  await page.clock.resume();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await wait(

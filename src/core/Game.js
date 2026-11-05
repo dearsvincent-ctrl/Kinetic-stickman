@@ -8,6 +8,8 @@ import { FollowCamera } from "../camera/FollowCamera.js";
 import { InputController } from "../input/InputController.js";
 import { Hud } from "../ui/Hud.js";
 import { CombatController } from "../combat/CombatController.js";
+import { ProximityCombatController } from "../combat/ProximityCombatController.js";
+import { TrainingDummy } from "../world/TrainingDummy.js";
 
 const STEP = 1 / 60;
 
@@ -29,13 +31,26 @@ export class Game {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 150);
     this.arena = createArena(this.scene);
+    this.dummy = new TrainingDummy();
+    this.scene.add(this.dummy.root);
     this.character = new Stickman();
     this.scene.add(this.character.root);
     this.controller = new CharacterController(
       this.character.root,
-      new ArenaBounds(this.arena.halfSize),
+      new ArenaBounds(this.arena.halfSize, [this.dummy.target]),
     );
     this.combat = new CombatController();
+    this.proximity = new ProximityCombatController(this.combat, {
+      targets: [this.dummy.target],
+    });
+    // Reuse live movement context; accepted attacks take their own snapshot.
+    this.combatContext = {
+      speed: 0,
+      movementDirection: [0, 0, 0],
+      facing: 0,
+      dashActive: false,
+      opponentDistance: null,
+    };
     this.animator = new CharacterAnimator(this.character);
     this.followCamera = new FollowCamera(
       this.camera,
@@ -47,7 +62,6 @@ export class Game {
       joystick: document.querySelector("#joystick"),
       joystickKnob: document.querySelector("#joystick-knob"),
       sprintButton: document.querySelector("#sprint-button"),
-      attackButton: document.querySelector("#attack-button"),
       blockButton: document.querySelector("#block-button"),
       dashButton: document.querySelector("#dash-button"),
       cameraSurface: document.querySelector("#camera-surface"),
@@ -104,6 +118,7 @@ export class Game {
     this.input.reset();
     this.controller.stop();
     this.combat.reset();
+    this.proximity.reset();
     this.accumulator = 0;
     this.lastTime = null;
   }
@@ -123,23 +138,31 @@ export class Game {
       this.accumulator = Math.min(this.accumulator + dt, STEP * 5);
       while (this.accumulator >= STEP) {
         if (this.input.consumeDashRequest()) this.controller.requestDash();
-        this.controller.update(STEP, this.input, this.followCamera.yaw);
+        this.controller.update(
+          STEP,
+          this.input,
+          this.followCamera.yaw,
+          this.proximity.target?.position,
+        );
+        const velocity = this.controller.velocity;
+        const length = velocity.length();
+        const context = this.combatContext;
+        context.speed = this.controller.speed;
+        context.movementDirection[0] = length > 0.001 ? velocity.x / length : 0;
+        context.movementDirection[2] = length > 0.001 ? velocity.z / length : 0;
+        context.facing = this.controller.heading;
+        context.dashActive = this.controller.dash.active;
         this.combat.setBlocking(this.input.blocking);
         if (this.input.consumeAttackRequest()) {
-          const velocity = this.controller.velocity;
-          const length = velocity.length();
-          this.combat.requestAttack({
-            speed: this.controller.speed,
-            movementDirection:
-              length > 0.001
-                ? [velocity.x / length, 0, velocity.z / length]
-                : [0, 0, 0],
-            facing: this.controller.heading,
-            dashActive: this.controller.dash.active,
-            opponentDistance: null,
-          });
+          // Kept for future dedicated techniques; basic mobile punches are automatic.
+          this.combat.requestAttack(context);
         }
-        this.combat.update(STEP);
+        this.proximity.update(STEP, {
+          position: this.character.root.position,
+          blocking: this.input.blocking,
+          facing: this.controller.heading,
+          context,
+        });
         this.animator.update(STEP, {
           speed: this.controller.speed,
           maxSpeed: this.input.sprinting
@@ -158,6 +181,7 @@ export class Game {
         this.input.consumeLookDelta(),
       );
     }
+    this.dummy.setTargeted(Boolean(this.proximity.target));
     if (!this.contextLost) this.renderer.render(this.scene, this.camera);
     this.hud.update(
       Math.max(0.001, elapsed),
@@ -166,6 +190,7 @@ export class Game {
       this.input.sprinting,
       this.combat,
       this.controller.dash,
+      this.proximity,
     );
   }
 
@@ -219,6 +244,20 @@ export class Game {
           techniqueId: this.combat.attack.techniqueId,
           cancelled: this.combat.attack.cancelled,
         },
+      },
+      proximity: {
+        targetId: this.proximity.target?.id ?? null,
+        distance: Number.isFinite(this.proximity.distance)
+          ? this.proximity.distance
+          : null,
+        entryDistance: this.proximity.config.entryDistance,
+        exitDistance: this.proximity.config.exitDistance,
+        aligned: this.proximity.aligned,
+      },
+      dummy: {
+        id: this.dummy.target.id,
+        position: this.dummy.root.position.toArray(),
+        radius: this.dummy.target.radius,
       },
       animation: {
         combatWeight: this.animator.combatWeight,

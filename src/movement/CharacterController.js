@@ -2,6 +2,11 @@ import { Vector3 } from "three";
 import { dampAngle, dampFactor } from "../core/math.js";
 import { DashState } from "./DashState.js";
 
+export const TARGET_FACING_CONFIG = Object.freeze({
+  turnRate: 6,
+  response: 13,
+});
+
 /** Input -> desired velocity -> world adapter -> actor transform.
  * This layer never writes to individual rig joints.
  */
@@ -9,7 +14,14 @@ export class CharacterController {
   constructor(
     root,
     world,
-    { walkSpeed = 2.6, sprintSpeed = 5.2, radius = 0.36, dashConfig } = {},
+    {
+      walkSpeed = 2.6,
+      sprintSpeed = 5.2,
+      radius = 0.36,
+      dashConfig,
+      facingTurnRate = TARGET_FACING_CONFIG.turnRate,
+      facingResponse = TARGET_FACING_CONFIG.response,
+    } = {},
   ) {
     this.root = root;
     this.world = world;
@@ -19,6 +31,9 @@ export class CharacterController {
     this.velocity = new Vector3();
     this.speed = 0;
     this.heading = 0;
+    this.facingTarget = null;
+    this.facingTurnRate = facingTurnRate;
+    this.facingResponse = facingResponse;
     this.desired = new Vector3();
     this.displacement = new Vector3();
     this.previous = new Vector3();
@@ -35,8 +50,12 @@ export class CharacterController {
     return true;
   }
 
-  update(dt, input, cameraYaw) {
+  update(dt, input, cameraYaw, facingTarget = null) {
     if (!Number.isFinite(dt) || dt <= 0) return;
+    this.facingTarget =
+      Number.isFinite(facingTarget?.x) && Number.isFinite(facingTarget?.z)
+        ? facingTarget
+        : null;
     const x = input.move.x;
     const y = input.move.y;
     const speed = input.sprinting ? this.sprintSpeed : this.walkSpeed;
@@ -110,18 +129,43 @@ export class CharacterController {
     this.previous.copy(this.root.position);
     this.world.move(this.previous, this.displacement, this.radius, this.next);
     this.root.position.copy(this.next);
-    // Cancel only the blocked component: sliding along a wall stays responsive.
+    const contactResolved =
+      this.world.resolveVelocity?.(this.velocity) === true;
     const actualX = this.next.x - this.previous.x;
     const actualZ = this.next.z - this.previous.z;
-    if (Math.abs(actualX - this.displacement.x) > 0.000001) {
-      this.velocity.x = 0;
-    }
-    if (Math.abs(actualZ - this.displacement.z) > 0.000001) {
-      this.velocity.z = 0;
+    // Circular contacts resolve along their normal, retaining tangent momentum.
+    // The original per-axis cancellation remains exact for the flat arena.
+    if (!contactResolved) {
+      if (Math.abs(actualX - this.displacement.x) > 0.000001) {
+        this.velocity.x = 0;
+      }
+      if (Math.abs(actualZ - this.displacement.z) > 0.000001) {
+        this.velocity.z = 0;
+      }
     }
     const distance = this.next.distanceTo(this.previous);
     this.speed = distance / dt;
-    if (this.speed > 0.03) {
+    if (this.facingTarget) {
+      // Facing is independent of travel: never steer or pull the root toward
+      // a nearby target. Resolve yaw from the collision-corrected position.
+      const dx = this.facingTarget.x - this.next.x;
+      const dz = this.facingTarget.z - this.next.z;
+      if (dx * dx + dz * dz > 1e-10) {
+        const desired = Math.atan2(-dx, -dz);
+        const damped = dampAngle(
+          this.heading,
+          desired,
+          this.facingResponse,
+          dt,
+        );
+        const maximum = Math.max(0, this.facingTurnRate) * dt;
+        this.heading += Math.max(
+          -maximum,
+          Math.min(maximum, damped - this.heading),
+        );
+        this.root.rotation.y = this.heading;
+      }
+    } else if (this.speed > 0.03) {
       this.heading = dampAngle(
         this.heading,
         Math.atan2(-actualX, -actualZ),

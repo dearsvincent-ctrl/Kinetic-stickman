@@ -120,6 +120,11 @@ try {
     "Production build excludes development telemetry",
   );
   assert.equal(
+    await page.locator("#attack-button").count(),
+    0,
+    "Automatic combat has no visible Attack button",
+  );
+  assert.equal(
     await page.locator("#fight-button").count(),
     0,
     "Manual Fight toggle is removed",
@@ -159,12 +164,7 @@ try {
       Math.abs(reset.x + reset.width - hint.x - hint.width) < 2,
       "Reset Camera aligns with the hint",
     );
-    const actionSelectors = [
-      "#sprint-button",
-      "#dash-button",
-      "#attack-button",
-      "#block-button",
-    ];
+    const actionSelectors = ["#sprint-button", "#dash-button", "#block-button"];
     for (const selector of actionSelectors) {
       const box = await page.locator(selector).boundingBox();
       assert.ok(
@@ -267,7 +267,6 @@ try {
   const joystick = await center("#joystick");
   const sprint = await center("#sprint-button");
   const dash = await center("#dash-button");
-  const attack = await center("#attack-button");
   const block = await center("#block-button");
   const gap = { x: 420, y: 220 };
 
@@ -284,31 +283,30 @@ try {
   ];
   await native("touchMove", fingers, fingers.slice(0, 2));
   await page.clock.runFor(400);
-  const attackFinger = touch(4, attack);
-  await native("touchStart", [...fingers, attackFinger], [attackFinger]);
+  await page.keyboard.press("f");
   await page.clock.runFor(100);
-  assert.equal(
-    await disabled("#attack-button"),
-    "true",
-    "Native fourth touch starts the production punch",
+  assert.ok(
+    ["ATTACKING", "RECOVERING"].includes(
+      await page.locator("#stance-label").textContent(),
+    ),
+    "The reusable manual F request still starts a production punch",
   );
   assert.ok(
     ["WALK", "SPRINT"].includes(
       await page.locator("#movement-state").textContent(),
     ),
-    "Attacking preserves movement",
+    "Punching preserves movement",
   );
   assert.equal(
     await pressed("#sprint-button"),
     "true",
-    "Attacking preserves the Sprint touch",
+    "Punching preserves Sprint touch",
   );
-  await native("touchEnd", [attackFinger]);
-  await page.clock.runFor(550);
+  await page.clock.runFor(650);
   assert.equal(
-    await disabled("#attack-button"),
-    "false",
-    "Punch recovers in the production bundle",
+    await page.locator("#stance-label").textContent(),
+    "FREE MOVEMENT",
+    "Manual punch recovers outside proximity",
   );
   const blockFinger = touch(5, block);
   await native("touchStart", [...fingers, blockFinger], [blockFinger]);
@@ -317,11 +315,6 @@ try {
     await pressed("#block-button"),
     "true",
     "Held Block immediately raises defence",
-  );
-  assert.equal(
-    await disabled("#attack-button"),
-    "true",
-    "Held Block prevents another punch",
   );
   assert.equal(await page.locator("#stance-label").textContent(), "BLOCKING");
 
@@ -417,22 +410,7 @@ try {
     "Automatic posture returns to normal after releasing Block",
   );
 
-  // Count only rendered ready-to-busy transitions. This validates per-entry
-  // attack recovery without exposing any development-only game internals.
-  await page.evaluate(() => {
-    const button = document.querySelector("#attack-button");
-    let previous = button.getAttribute("aria-disabled");
-    window.__attackBusyEntries = 0;
-    new MutationObserver(() => {
-      const current = button.getAttribute("aria-disabled");
-      if (current === "true" && previous !== "true")
-        window.__attackBusyEntries++;
-      previous = current;
-    }).observe(button, {
-      attributes: true,
-      attributeFilter: ["aria-disabled"],
-    });
-  });
+  // Exercise every remaining gameplay action with one finger that never lifts.
   let slider = touch(21, sprint);
   const slideTo = async (point, milliseconds = 100) => {
     slider = touch(21, point);
@@ -477,65 +455,38 @@ try {
     "true",
     "Block activates on slide entry",
   );
-  await slideTo(attack);
+  await slideTo(gap);
   assert.equal(
     await pressed("#block-button"),
     "false",
-    "Block releases before entering Attack",
+    "Leaving Block releases defence immediately",
   );
-  assert.equal(
-    await disabled("#attack-button"),
-    "true",
-    "Block to Attack initiates the punch without lifting",
-  );
-  const firstBusyCount = await page.evaluate(() => window.__attackBusyEntries);
-  await slideTo(gap);
-  await slideTo(attack);
-  assert.equal(
-    await page.evaluate(() => window.__attackBusyEntries),
-    firstBusyCount,
-    "Recovery rejects rapid re-entry",
-  );
-  await page.clock.runFor(850);
-  assert.equal(
-    await disabled("#attack-button"),
-    "false",
-    "Attack recovers while the thumb remains over it",
-  );
-  assert.equal(
-    await page.evaluate(() => window.__attackBusyEntries),
-    firstBusyCount,
-    "Held or rejected entries do not buffer a repeated punch",
-  );
-  await slideTo(gap);
   assert.equal(
     await page
       .locator("#camera-surface")
       .evaluate((node) => node.classList.contains("is-active")),
     false,
-    "Action finger is not adopted by camera in a gap",
+    "Action pointer retains ownership across a gap",
   );
-  await slideTo(attack);
+  await slideTo(sprint);
   assert.equal(
-    await disabled("#attack-button"),
+    await pressed("#sprint-button"),
     "true",
-    "Recovered re-entry initiates another punch",
+    "Block to Sprint resumes sprinting without lifting",
   );
+  await slideTo(block);
+  assert.equal(await pressed("#sprint-button"), "false");
   assert.equal(
-    await page.evaluate(() => window.__attackBusyEntries),
-    firstBusyCount + 1,
+    await pressed("#block-button"),
+    "true",
+    "Re-entering Block holds defence again",
   );
-  await page.clock.runFor(850);
   await native("touchEnd", [slider]);
   await page.clock.runFor(100);
   assert.equal(
-    await disabled("#attack-button"),
+    await pressed("#block-button"),
     "false",
-    "Releasing Attack does not generate a synthetic extra punch",
-  );
-  assert.equal(
-    await page.evaluate(() => window.__attackBusyEntries),
-    firstBusyCount + 1,
+    "Releasing the action finger releases Block",
   );
 
   slider = touch(22, block);
@@ -553,6 +504,88 @@ try {
     await pressed("#sprint-button"),
     "false",
     "Touch cancellation releases every HOLD",
+  );
+  // A fresh production scene reaches the dummy through real movement. Observe
+  // only HUD text, never development telemetry or a position mutation hook.
+  await page.reload({ waitUntil: "networkidle" });
+  await page.clock.runFor(500);
+  await page.evaluate(() => {
+    const label = document.querySelector("#stance-label");
+    window.__combatLabels = [label.textContent];
+    new MutationObserver(() => {
+      const value = label.textContent;
+      if (window.__combatLabels.at(-1) !== value)
+        window.__combatLabels.push(value);
+    }).observe(label, { childList: true, subtree: true });
+  });
+  // The stationary dummy is front-right at x=2m. Move there through the
+  // unchanged movement controls before approaching along the camera's forward.
+  await page.keyboard.down("d");
+  await page.clock.runFor(800);
+  await page.keyboard.up("d");
+  await page.clock.runFor(350);
+  await page.keyboard.down("w");
+  await page.clock.runFor(1800);
+  await page.keyboard.up("w");
+  await page.clock.runFor(1400);
+  const automaticLabels = await page.evaluate(() => window.__combatLabels);
+  assert.ok(
+    automaticLabels.filter((value) => value === "ATTACKING").length >= 2,
+    "Approaching and standing at the training dummy automatically repeats recovered punches",
+  );
+  assert.equal(
+    await page.locator("#movement-state").textContent(),
+    "IDLE",
+    "Standing proximity punches do not cause movement",
+  );
+  const proximityBlockFinger = touch(40, block);
+  await native("touchStart", [proximityBlockFinger]);
+  await page.clock.runFor(100);
+  const beforeBlockingLabels = await page.evaluate(
+    () => window.__combatLabels.filter((value) => value === "ATTACKING").length,
+  );
+  await page.clock.runFor(1100);
+  assert.equal(await pressed("#block-button"), "true");
+  assert.equal(await page.locator("#stance-label").textContent(), "BLOCKING");
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.__combatLabels.filter((value) => value === "ATTACKING").length,
+    ),
+    beforeBlockingLabels,
+    "Held Block suppresses automatic production punches",
+  );
+  await native("touchEnd", [proximityBlockFinger]);
+  await page.clock.runFor(100);
+  assert.equal(await pressed("#block-button"), "false");
+  assert.ok(
+    ["ATTACKING", "RECOVERING"].includes(
+      await page.locator("#stance-label").textContent(),
+    ),
+    "Releasing Block resumes an eligible automatic punch",
+  );
+  await page.keyboard.down("s");
+  await page.keyboard.down("Shift");
+  await page.clock.runFor(1000);
+  await page.keyboard.up("s");
+  await page.keyboard.up("Shift");
+  await page.clock.runFor(1000);
+  assert.equal(
+    await page.locator("#stance-label").textContent(),
+    "FREE MOVEMENT",
+    "Leaving the dummy returns to normal posture",
+  );
+  const afterLeavingLabels = await page.evaluate(
+    () => window.__combatLabels.filter((value) => value === "ATTACKING").length,
+  );
+  await page.clock.runFor(850);
+  assert.equal(
+    await page.evaluate(
+      () =>
+        window.__combatLabels.filter((value) => value === "ATTACKING").length,
+    ),
+    afterLeavingLabels,
+    "Leaving proximity never queues another production punch",
   );
   await page.clock.resume();
   await page.locator("#reset-camera").tap();
@@ -586,7 +619,7 @@ try {
     "Production page has no runtime or asset errors",
   );
   console.log(
-    `PASS: production bundle renders at ${base}; Pages assets, native multitouch, slide Attack/Block/HOLD/PRESS recovery, DASH cooldown and responsive action/Reset Camera layouts work`,
+    `PASS: production bundle renders at ${base}; Pages assets, native multitouch, automatic proximity punches, Block priority, slide HOLD/PRESS, DASH cooldown and responsive action/Reset Camera layouts work`,
   );
   console.log("No physical Android device was tested.");
 } finally {
