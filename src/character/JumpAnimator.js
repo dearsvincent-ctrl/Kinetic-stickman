@@ -102,9 +102,14 @@ export class JumpAnimator {
         foot.target.copy(this.starts[i]);
         if (i !== this.support)
           foot.target.addScaledVector(this.travel, smooth(p));
-        foot.target.y = i === this.support ? ankleY : this.starts[i].y;
+        // An interrupted dash may have both visual feet above the floor.
+        // Load the support foot over takeoff rather than snapping it down.
+        foot.target.y =
+          i === this.support
+            ? MathUtils.lerp(this.starts[i].y, ankleY, smooth(p))
+            : this.starts[i].y;
         foot.yaw.copy(this.startYaws[i]).slerp(root.quaternion, smooth(p));
-        foot.planted = i === this.support;
+        foot.planted = i === this.support && foot.target.y <= ankleY + 1e-5;
         this.limitReach(foot, 0.62);
         if (i === this.support) {
           this.goal
@@ -117,7 +122,7 @@ export class JumpAnimator {
           );
           this.hipY = Math.min(
             this.hipY,
-            ankleY -
+            foot.target.y -
               root.position.y +
               Math.sqrt(
                 Math.max(0.01, 0.858 * 0.858 - horizontal * horizontal),

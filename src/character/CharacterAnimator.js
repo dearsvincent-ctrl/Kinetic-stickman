@@ -121,7 +121,13 @@ export class CharacterAnimator {
     }
     this.initialized = true;
     this.wasMoving = moving;
-    this.dashAnimation.update(dt, groundDash, this.footList, this.combatWeight);
+    this.dashAnimation.update(
+      dt,
+      groundDash,
+      this.footList,
+      this.combatWeight,
+      !jumpOwnsFeet,
+    );
     this.dashWeight = this.dashAnimation.weight;
     this.jumpAnimation.update(
       dt,

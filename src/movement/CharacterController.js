@@ -76,31 +76,25 @@ export class CharacterController {
     this.airDash.tickCooldown(dt);
   }
 
+  get canJump() {
+    // Ground dash is interruptible. Vertical eligibility and the aerial dash
+    // remain independent; neither a landing nor an air burst grants a jump.
+    return (
+      this.jump.ready &&
+      !this.jumpRequested &&
+      !(this.dash.active && this.dash.mode !== "ground") &&
+      !(this.dashRequested && this.requestedDashMode !== "ground")
+    );
+  }
+
   requestJump() {
-    if (
-      this.jumpRequested ||
-      !this.jump.ready ||
-      this.dash.active ||
-      this.dashRequested
-    )
-      return false;
+    if (!this.canJump) return false;
     this.jumpRequested = true;
     return true;
   }
 
   update(dt, input, cameraYaw, facingTarget = null) {
     if (!Number.isFinite(dt) || dt <= 0) return;
-    if (this.jumpRequested) {
-      this.jumpRequested = false;
-      if (!this.dash.active) this.jump.start();
-    }
-    this.facingTarget =
-      this.jump.ready &&
-      !(this.dash.active && this.dash.mode === "air") &&
-      Number.isFinite(facingTarget?.x) &&
-      Number.isFinite(facingTarget?.z)
-        ? facingTarget
-        : null;
     const x = input.move.x;
     const y = input.move.y;
     const speed = input.sprinting ? this.sprintSpeed : this.walkSpeed;
@@ -158,6 +152,20 @@ export class CharacterController {
       // Releasing the stick during a dash retains its current trajectory.
       this.dashDirection.copy(this.desired);
     }
+    if (this.jumpRequested) {
+      this.jumpRequested = false;
+      // End the impulse, not the resolved velocity. This also handles rapid
+      // Dash -> Jump entries before a simulation tick without stacking bursts.
+      if (this.groundDash.active) this.groundDash.finish("jumped");
+      if (this.jump.start()) this.movementState = "jump";
+    }
+    this.facingTarget =
+      this.jump.ready &&
+      !(this.dash.active && this.dash.mode === "air") &&
+      Number.isFinite(facingTarget?.x) &&
+      Number.isFinite(facingTarget?.z)
+        ? facingTarget
+        : null;
     if (!this.jump.ready) {
       this.updateJump(dt, maximum);
       this.tickDashCooldowns(dt);

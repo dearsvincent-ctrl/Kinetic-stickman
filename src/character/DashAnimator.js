@@ -37,7 +37,7 @@ export class DashAnimator {
     return this.active || this.weight > 0;
   }
 
-  update(dt, dash, feet, combatWeight) {
+  update(dt, dash, feet, combatWeight, controlFeet = true) {
     const active = Boolean(dash?.active);
     const root = this.character.root;
     const ankleY = this.character.dimensions.ankleHeight;
@@ -55,7 +55,7 @@ export class DashAnimator {
       this.rear = this.goal.dot(dash.direction) < 0 ? 0 : 1;
     } else if (!active && this.active) {
       completed = dash?.exitReason === "completed";
-      if (completed) {
+      if (completed && controlFeet) {
         // The controller finishes before animation samples the last frame.
         // Resolve that touchdown explicitly even if a frame skipped the last
         // active contact sample, then begin recovery on the following frame.
@@ -101,7 +101,7 @@ export class DashAnimator {
         (dash.config?.distance ?? 2.5) - dash.distanceTravelled,
       );
 
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; controlFeet && i < 2; i++) {
         const foot = feet[i];
         const rear = i === this.rear;
         const flight = Math.sin(Math.PI * clamp01((p - 0.16) / 0.84));
@@ -144,7 +144,9 @@ export class DashAnimator {
       const t = clamp01(this.recoveryTime / this.recoveryDuration);
       const blend = smooth(t);
       this.weight = this.recoveryWeight * (1 - blend);
-      for (let i = 0; i < 2; i++) {
+      // A jump may take over the contacts immediately while this upper-body
+      // layer recovers. Never drag its airborne feet back to the floor.
+      for (let i = 0; controlFeet && i < 2; i++) {
         const foot = feet[i];
         const stagger = (i === 0 ? -0.13 : 0.13) * combatWeight;
         this.rest

@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
 import { checkLayoutEditorEdges } from "./layout-editor-edge-cases.mjs";
 import { checkAerialDashes } from "./aerial-dash-browser.mjs";
+import { checkDashJumpTransitions } from "./dash-jump-browser.mjs";
 
 // Run against `npm run dev`. CDP dispatches native multi-touch input rather
 // than directly mutating the controller. This is emulation, not device testing.
@@ -1391,17 +1392,19 @@ try {
   await page.keyboard.press("e");
   await page.keyboard.press("Space");
   const dashWon = await step();
-  assert.equal(dashWon.dash.active, true);
+  assert.equal(dashWon.dash.active, false);
+  assert.equal(dashWon.dash.exitReason, "jumped");
+  assert.equal(dashWon.dash.sequence, 1);
   assert.equal(
     dashWon.jump.sequence,
-    0,
-    "An accepted Dash rejects a later pending Jump",
+    1,
+    "A later Jump interrupts a pending ground Dash in the same frame",
   );
   await step(1000);
   assert.equal(
     (await snapshot()).jump.sequence,
-    0,
-    "Rejected Jump never starts after Dash",
+    1,
+    "The interrupted transition starts once and never queues a second Jump",
   );
 
   await freshScene();
@@ -2050,6 +2053,7 @@ try {
   );
   await checkLayoutEditorEdges(page, step);
   await checkAerialDashes(page);
+  await checkDashJumpTransitions(page, native);
   await page.clock.resume();
   assert.deepEqual(errors, [], "No browser runtime errors");
   console.log(

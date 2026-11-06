@@ -237,6 +237,7 @@ export class Game {
         phaseProgress: this.controller.jump.phaseProgress,
         sequence: this.controller.jump.sequence,
         ready: this.controller.jump.ready,
+        canJump: this.controller.canJump,
         config: { ...this.controller.jump.config },
       },
       dash: {

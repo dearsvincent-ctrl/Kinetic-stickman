@@ -7,6 +7,7 @@ import { chromium } from "playwright";
 import { resolvePagesBase } from "../build/pagesBase.js";
 import { checkLayoutEditorEdges } from "./layout-editor-edge-cases.mjs";
 import { checkAerialDashes } from "./aerial-dash-browser.mjs";
+import { checkDashJumpTransitions } from "./dash-jump-browser.mjs";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
 // the expected prefix makes root-relative asset mistakes fail with real 404s.
@@ -1188,6 +1189,7 @@ try {
     page.clock.runFor(milliseconds),
   );
   await checkAerialDashes(page);
+  await checkDashJumpTransitions(page, native);
   await page.clock.resume();
 
   for (const asset of requests) {

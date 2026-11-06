@@ -247,11 +247,13 @@ test("ground skills keep request order without buffering takeoff or landing requ
 
   const dashFirst = actor().controller;
   assert.equal(dashFirst.requestDash(), true);
-  assert.equal(dashFirst.requestJump(), false);
+  assert.equal(dashFirst.requestJump(), true);
   dashFirst.update(DT, input(), 0);
   assert.equal(dashFirst.requestJump(), false);
+  assert.equal(dashFirst.dash.exitReason, "jumped");
   advance(dashFirst, 0.3);
-  assert.equal(dashFirst.jump.sequence, 0);
+  assert.equal(dashFirst.jump.sequence, 1);
+  advance(dashFirst, 0.7);
   assert.equal(
     dashFirst.requestJump(),
     true,

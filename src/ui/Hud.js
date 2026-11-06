@@ -137,11 +137,11 @@ export class Hud {
     if (jump) {
       this.jumpButton.setAttribute(
         "aria-disabled",
-        String(!jump.ready || Boolean(dash?.active)),
+        String(!(movement ? movement.canJump : jump.ready && !dash?.active)),
       );
       this.jumpButton.classList.toggle("is-active", !jump.ready);
       this.jumpStatus.textContent = jump.ready
-        ? dash?.active
+        ? dash?.active && dash.mode === "air"
           ? "DASHING"
           : "READY"
         : jump.phase === "takeoff"
