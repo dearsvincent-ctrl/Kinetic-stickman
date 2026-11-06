@@ -6,6 +6,7 @@ import { extname, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 import { resolvePagesBase } from "../build/pagesBase.js";
 import { checkLayoutEditorEdges } from "./layout-editor-edge-cases.mjs";
+import { checkAerialDashes } from "./aerial-dash-browser.mjs";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
 // the expected prefix makes root-relative asset mistakes fail with real 404s.
@@ -699,7 +700,6 @@ try {
     "Native Jump starts the production takeoff/flight state",
   );
   await page.keyboard.press("Space");
-  await page.keyboard.press("e");
   await page.keyboard.press("f");
   await page.clock.runFor(1200);
   assert.equal(await page.locator("#jump-status").textContent(), "READY");
@@ -712,7 +712,7 @@ try {
   assert.equal(
     await page.locator("#dash-cooldown").textContent(),
     "READY",
-    "Rejected airborne Dash never starts a cooldown or a landing dash",
+    "An idle jump does not start a dash or consume ground cooldown",
   );
   assert.equal(
     await page.locator("#stance-label").textContent(),
@@ -783,14 +783,14 @@ try {
   );
   assert.equal(
     await page.locator("#dash-cooldown").textContent(),
-    "LAND FIRST",
-    "Airborne Dash entry is rejected without consuming cooldown",
+    "AIR DASH",
+    "Airborne Dash entry starts immediately",
   );
   await page.clock.runFor(1100);
   assert.equal(
     await page.locator("#dash-cooldown").textContent(),
     "READY",
-    "A held rejected Dash never starts automatically after landing",
+    "A held aerial Dash never starts another dash automatically after landing",
   );
   assert.notEqual(await page.locator("#movement-state").textContent(), "DASH");
   await slideJumpAction(sprint);
@@ -1096,7 +1096,7 @@ try {
   assert.equal(await pressed("#block-button"), "false");
   assert.equal(
     await page.locator("#dash-cooldown").textContent(),
-    "LAND FIRST",
+    "AIR DASH",
   );
   await page.clock.runFor(1100);
   assert.equal(await page.locator("#dash-cooldown").textContent(), "READY");
@@ -1187,6 +1187,7 @@ try {
   await checkLayoutEditorEdges(page, (milliseconds) =>
     page.clock.runFor(milliseconds),
   );
+  await checkAerialDashes(page);
   await page.clock.resume();
 
   for (const asset of requests) {
@@ -1208,7 +1209,7 @@ try {
     "Production page has no runtime or asset errors",
   );
   console.log(
-    `PASS: production bundle renders at ${base}; Pages assets, native Jump/multitouch, grounded-only automatic proximity punches, Block priority, slide HOLD/PRESS, Jump/Dash exclusion responsive action/Reset Camera layouts and saved control editing work`,
+    `PASS: production bundle renders at ${base}; Pages assets, native Jump/aerial Dash/multitouch, grounded-only automatic proximity punches, Block priority, slide HOLD/PRESS, responsive action/Reset Camera layouts and saved control editing work`,
   );
   console.log("No physical Android device was tested.");
 } finally {

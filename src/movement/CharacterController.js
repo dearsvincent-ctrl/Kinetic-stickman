@@ -2,6 +2,7 @@ import { Vector3 } from "three";
 import { dampAngle, dampFactor } from "../core/math.js";
 import { DashState } from "./DashState.js";
 import { JumpState } from "./JumpState.js";
+import { resolveMovementConfig } from "./MovementConfig.js";
 
 export const TARGET_FACING_CONFIG = Object.freeze({
   turnRate: 6,
@@ -12,23 +13,19 @@ export const TARGET_FACING_CONFIG = Object.freeze({
  * This layer never writes to individual rig joints.
  */
 export class CharacterController {
-  constructor(
-    root,
-    world,
-    {
-      walkSpeed = 2.6,
-      sprintSpeed = 5.2,
+  constructor(root, world, options = {}) {
+    const {
       radius = 0.36,
-      dashConfig,
-      jumpConfig,
       facingTurnRate = TARGET_FACING_CONFIG.turnRate,
       facingResponse = TARGET_FACING_CONFIG.response,
-    } = {},
-  ) {
+    } = options;
+    this.config = resolveMovementConfig(options);
     this.root = root;
     this.world = world;
-    this.walkSpeed = walkSpeed;
-    this.sprintSpeed = sprintSpeed;
+    this.walkingSpeed = this.config.locomotion.walkSpeed;
+    this.runSpeed = this.config.locomotion.runSpeed;
+    this.walkSpeed = this.runSpeed; // Backward-compatible full-stick speed.
+    this.sprintSpeed = this.config.locomotion.sprintSpeed;
     this.radius = radius;
     this.velocity = new Vector3();
     this.speed = 0;
@@ -41,23 +38,42 @@ export class CharacterController {
     this.previous = new Vector3();
     this.next = new Vector3();
     this.dashDirection = new Vector3();
-    this.dash = new DashState(dashConfig);
-    this.jump = new JumpState(jumpConfig);
+    this.groundDash = new DashState(this.config.groundDash);
+    this.groundDash.mode = "ground";
+    this.airDash = new DashState(this.config.aerialDash);
+    this.airDash.mode = "air";
+    this.dash = this.groundDash;
+    this.dashSequence = 0;
+    this.jump = new JumpState(this.config.jump);
+    this.airDashesUsed = 0;
     this.movementState = "locomotion";
     this.dashRequested = false;
+    this.requestedDashMode = null;
     this.jumpRequested = false;
   }
 
   requestDash() {
-    if (
-      this.dashRequested ||
-      !this.dash.ready ||
-      !this.jump.ready ||
-      this.jumpRequested
-    )
-      return false;
+    if (!this.canDash) return false;
     this.dashRequested = true;
+    this.requestedDashMode = this.jump.airborne ? "air" : "ground";
     return true;
+  }
+
+  get airDashesRemaining() {
+    return Math.max(0, this.config.maxAerialDashes - this.airDashesUsed);
+  }
+
+  get canDash() {
+    if (this.dashRequested || this.dash.active || this.jumpRequested)
+      return false;
+    return this.jump.airborne
+      ? this.airDashesRemaining > 0 && this.airDash.ready
+      : this.jump.ready && this.groundDash.ready;
+  }
+
+  tickDashCooldowns(dt) {
+    this.groundDash.tickCooldown(dt);
+    this.airDash.tickCooldown(dt);
   }
 
   requestJump() {
@@ -80,6 +96,7 @@ export class CharacterController {
     }
     this.facingTarget =
       this.jump.ready &&
+      !(this.dash.active && this.dash.mode === "air") &&
       Number.isFinite(facingTarget?.x) &&
       Number.isFinite(facingTarget?.z)
         ? facingTarget
@@ -95,16 +112,25 @@ export class CharacterController {
       0,
       (-x * sin - y * cos) * speed,
     );
-    const maximum = speed * Math.min(1, Math.hypot(x, y));
-    if (this.desired.length() > maximum) this.desired.setLength(maximum);
-    if (!this.jump.ready) {
-      this.updateJump(dt, maximum);
-      this.dash.tickCooldown(dt);
-      return;
+    const magnitude = Math.min(1, Math.hypot(x, y));
+    let maximum = speed * magnitude;
+    if (!input.sprinting && this.walkingSpeed * 2 !== this.runSpeed) {
+      maximum =
+        magnitude <= 0.5
+          ? this.walkingSpeed * magnitude * 2
+          : this.walkingSpeed +
+            (this.runSpeed - this.walkingSpeed) * (magnitude - 0.5) * 2;
+      if (this.desired.lengthSq() > 0) this.desired.setLength(maximum);
     }
+    if (this.desired.length() > maximum) this.desired.setLength(maximum);
     this.dashDirection.copy(this.desired);
     if (this.dashRequested) {
       this.dashRequested = false;
+      const airborne = this.requestedDashMode === "air";
+      this.requestedDashMode = null;
+      this.dash = airborne ? this.airDash : this.groundDash;
+      if (airborne && this.velocity.lengthSq() > 0.04)
+        this.dashDirection.copy(this.velocity);
       if (this.dashDirection.lengthSq() < 0.0001)
         this.dashDirection.set(
           -Math.sin(this.heading),
@@ -116,13 +142,26 @@ export class CharacterController {
         this.dash.start(
           this.dashDirection,
           Math.max(0, this.velocity.dot(this.dashDirection)),
-          maximum,
+          airborne
+            ? Math.max(
+                maximum,
+                this.velocity.length(),
+                this.config.aerialDash.exitSpeed,
+              )
+            : maximum,
         )
       ) {
-        this.movementState = "dash";
+        this.dash.sequence = ++this.dashSequence;
+        if (airborne) this.airDashesUsed++;
+        this.movementState = airborne ? "aerial-dash" : "dash";
       }
       // Releasing the stick during a dash retains its current trajectory.
       this.dashDirection.copy(this.desired);
+    }
+    if (!this.jump.ready) {
+      this.updateJump(dt, maximum);
+      this.tickDashCooldowns(dt);
+      return;
     }
     let remaining = dt;
     while (this.dash.active && remaining > 1e-10) {
@@ -147,7 +186,7 @@ export class CharacterController {
       }
     }
     if (remaining > 1e-10) this.updateLocomotion(remaining, maximum);
-    this.dash.tickCooldown(dt);
+    this.tickDashCooldowns(dt);
   }
 
   updateJump(dt, maximum) {
@@ -156,15 +195,40 @@ export class CharacterController {
       const step = Math.min(
         remaining,
         Math.max(1e-8, this.jump.timeToBoundary),
+        this.dash.active ? this.dash.config.maxSubstep : Infinity,
+        this.dash.active
+          ? Math.max(1e-8, this.dash.config.duration - this.dash.elapsed)
+          : Infinity,
       );
-      if (this.jump.airborne || this.jump.phase === "takeoff")
+      if (this.dash.active) {
+        const distance = this.dash.advance(step, this.dashDirection);
+        this.displacement.copy(this.dash.direction).multiplyScalar(distance);
+        this.velocity.copy(this.dash.direction).multiplyScalar(this.dash.speed);
+        const travelled = this.move(step);
+        this.dash.distanceTravelled += travelled;
+        if (
+          (distance > 1e-9 && travelled < 1e-9) ||
+          this.dash.elapsed >= this.dash.config.duration - 1e-10
+        )
+          this.dash.finish(
+            distance > 1e-9 && travelled < 1e-9 ? "blocked" : "completed",
+          );
+      } else if (this.jump.airborne || this.jump.phase === "takeoff")
         this.updateAir(step, maximum);
       else this.updateLocomotion(step, maximum);
+      const wasAirborne = this.jump.airborne;
       this.jump.advance(step);
+      if (wasAirborne && !this.jump.airborne) this.airDashesUsed = 0;
       this.root.position.y = this.jump.height;
       remaining -= step;
     }
-    this.movementState = this.jump.ready ? "locomotion" : "jump";
+    this.movementState = this.dash.active
+      ? this.jump.airborne
+        ? "aerial-dash"
+        : "dash"
+      : this.jump.ready
+        ? "locomotion"
+        : "jump";
   }
 
   updateAir(dt, maximum) {
@@ -249,6 +313,7 @@ export class CharacterController {
     this.velocity.set(0, 0, 0);
     this.speed = 0;
     this.dashRequested = false;
+    this.requestedDashMode = null;
     this.jumpRequested = false;
     if (this.dash.active) this.dash.finish("cancelled");
     this.movementState = this.jump.ready ? "locomotion" : "jump";

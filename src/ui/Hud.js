@@ -57,6 +57,7 @@ export class Hud {
     dash = null,
     proximity = null,
     jump = null,
+    movement = null,
   ) {
     this.frameCount++;
     this.sampleTime += dt;
@@ -71,21 +72,23 @@ export class Hud {
     if (this.hudTime < 0.08) return;
     this.hudTime = 0;
     const state =
-      jump && !jump.ready
-        ? jump.phase === "takeoff"
-          ? "TAKE-OFF"
-          : jump.phase === "landing"
-            ? "LANDING"
-            : jump.verticalVelocity >= 0
-              ? "ASCENT"
-              : "DESCENT"
-        : dash?.active
-          ? "DASH"
-          : speed < 0.08
-            ? "IDLE"
-            : sprinting && speed > 2.7
-              ? "SPRINT"
-              : "WALK";
+      dash?.active && dash.mode === "air"
+        ? "AIR DASH"
+        : jump && !jump.ready
+          ? jump.phase === "takeoff"
+            ? "TAKE-OFF"
+            : jump.phase === "landing"
+              ? "LANDING"
+              : jump.verticalVelocity >= 0
+                ? "ASCENT"
+                : "DESCENT"
+          : dash?.active
+            ? "DASH"
+            : speed < 0.08
+              ? "IDLE"
+              : sprinting && speed > 2.7
+                ? "SPRINT"
+                : "WALK";
     this.movementState.textContent = state;
     this.stanceLabel.textContent = combat?.blocking
       ? "BLOCKING"
@@ -105,14 +108,31 @@ export class Hud {
     if (dash) {
       this.dashButton.setAttribute(
         "aria-disabled",
-        String(!dash.ready || Boolean(jump && !jump.ready)),
+        String(
+          !(movement ? movement.canDash : dash.ready && (!jump || jump.ready)),
+        ),
       );
       this.dashButton.classList.toggle("is-active", dash.active);
-      this.dashCooldown.textContent = dash.ready
-        ? jump && !jump.ready
-          ? "LAND FIRST"
-          : "READY"
-        : `${Math.max(0, dash.cooldownRemaining).toFixed(1)}s`;
+      this.dashCooldown.textContent =
+        movement && jump?.airborne
+          ? dash.active
+            ? "AIR DASH"
+            : movement.airDashesRemaining === 0
+              ? "USED"
+              : movement.airDash.ready
+                ? "AIR READY"
+                : `${movement.airDash.cooldownRemaining.toFixed(1)}s`
+          : dash.active && dash.mode === "air"
+            ? "AIR DASH"
+            : (
+                  movement
+                    ? movement.groundDash.ready && !dash.active
+                    : dash.ready
+                )
+              ? jump && !jump.ready
+                ? "LAND FIRST"
+                : "READY"
+              : `${Math.max(0, movement ? movement.groundDash.cooldownRemaining : dash.cooldownRemaining).toFixed(1)}s`;
     }
     if (jump) {
       this.jumpButton.setAttribute(

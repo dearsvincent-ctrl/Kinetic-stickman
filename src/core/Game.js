@@ -163,7 +163,9 @@ export class Game {
           this.followCamera.yaw,
           this.controller.jump.ready ? this.proximity.target?.position : null,
         );
-        const groundedCombat = this.controller.jump.phase === "grounded";
+        const groundedCombat =
+          this.controller.jump.phase === "grounded" &&
+          !(this.controller.dash.active && this.controller.dash.mode === "air");
         const velocity = this.controller.velocity;
         const length = velocity.length();
         const context = this.combatContext;
@@ -214,6 +216,7 @@ export class Game {
       this.controller.dash,
       this.proximity,
       this.controller.jump,
+      this.controller,
     );
   }
 
@@ -238,7 +241,12 @@ export class Game {
       },
       dash: {
         active: this.controller.dash.active,
-        ready: this.controller.dash.ready,
+        ready: this.controller.canDash,
+        mode: this.controller.dash.mode,
+        airDashesUsed: this.controller.airDashesUsed,
+        airDashesRemaining: this.controller.airDashesRemaining,
+        maxAerialDashes: this.controller.config.maxAerialDashes,
+        groundCooldownRemaining: this.controller.groundDash.cooldownRemaining,
         elapsed: this.controller.dash.elapsed,
         progress: this.controller.dash.progress,
         cooldownRemaining: this.controller.dash.cooldownRemaining,
@@ -303,6 +311,7 @@ export class Game {
         dashWeight: this.animator.dashWeight,
         attackWeight: this.animator.attackWeight,
         jumpWeight: this.animator.jumpWeight,
+        airDashWeight: this.animator.airDashWeight,
       },
       halfSize: this.arena.halfSize,
       radius: this.controller.radius,

@@ -5,6 +5,7 @@ import { LegIK } from "./LegIK.js";
 import { DashAnimator } from "./DashAnimator.js";
 import { AttackAnimator } from "./AttackAnimator.js";
 import { JumpAnimator } from "./JumpAnimator.js";
+import { AerialDashAnimator } from "./AerialDashAnimator.js";
 
 const TAU = Math.PI * 2;
 const fract = (value) => value - Math.floor(value);
@@ -38,6 +39,8 @@ export class CharacterAnimator {
     this.dashAnimation = new DashAnimator(character);
     this.attackAnimation = new AttackAnimator();
     this.jumpAnimation = new JumpAnimator(character);
+    this.aerialDashAnimation = new AerialDashAnimator(character);
+    this.airDashWeight = 0;
     this.jumpWeight = 0;
     this.attackWeight = 0;
     this.dashWeight = 0;
@@ -82,7 +85,9 @@ export class CharacterAnimator {
       .multiplyScalar(1 / dt);
     this.previousPosition.copy(root.position);
     this.rootYaw.copy(root.quaternion);
-    const dashOwnsFeet = Boolean(dash?.active) || this.dashAnimation.ownsFeet;
+    const groundDash = dash?.mode === "air" ? null : dash;
+    const dashOwnsFeet =
+      Boolean(groundDash?.active) || this.dashAnimation.ownsFeet;
     const jumpOwnsFeet =
       Boolean(jump && jump.phase !== "grounded") || this.jumpAnimation.ownsFeet;
     if (jumpOwnsFeet) this.velocity.y = 0;
@@ -116,7 +121,7 @@ export class CharacterAnimator {
     }
     this.initialized = true;
     this.wasMoving = moving;
-    this.dashAnimation.update(dt, dash, this.footList, this.combatWeight);
+    this.dashAnimation.update(dt, groundDash, this.footList, this.combatWeight);
     this.dashWeight = this.dashAnimation.weight;
     this.jumpAnimation.update(
       dt,
@@ -127,6 +132,8 @@ export class CharacterAnimator {
       blocking,
     );
     this.jumpWeight = this.jumpAnimation.weight;
+    this.aerialDashAnimation.update(dt, dash, jump, this.footList, blocking);
+    this.airDashWeight = this.aerialDashAnimation.weight;
     if (dashOwnsFeet || jumpOwnsFeet) {
       // Resume the ordinary planner from the physical landing, without a
       // stale pre-dash world anchor or a phase-wrap contact reset.
@@ -149,6 +156,7 @@ export class CharacterAnimator {
     this.dashAnimation.apply(this.pose, this.combatWeight);
     this.attackAnimation.apply(this.pose);
     this.jumpAnimation.apply(this.pose);
+    this.aerialDashAnimation.apply(this.pose);
     const pose = this.pose;
     j.hips.position.set(pose.hipX, pose.hipY, 0);
     j.hips.rotation.set(0, pose.hipYaw, pose.hipRoll);
@@ -162,6 +170,11 @@ export class CharacterAnimator {
             this.jumpWeight,
           )
         : this.dashAnimation.spineRoll,
+    );
+    j.spine.rotation.z = MathUtils.lerp(
+      j.spine.rotation.z,
+      this.aerialDashAnimation.spineRoll,
+      this.airDashWeight,
     );
     j.head.rotation.set(pose.headPitch, -pose.spineYaw * 0.65, 0);
     for (let index = 0; index < 2; index++) {

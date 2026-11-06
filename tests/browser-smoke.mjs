@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
 import { checkLayoutEditorEdges } from "./layout-editor-edge-cases.mjs";
+import { checkAerialDashes } from "./aerial-dash-browser.mjs";
 
 // Run against `npm run dev`. CDP dispatches native multi-touch input rather
 // than directly mutating the controller. This is emulation, not device testing.
@@ -1233,7 +1234,6 @@ try {
       if (!airRequestsSent && sample.jump.height > 0.15) {
         airRequestsSent = true;
         await page.keyboard.press("Space");
-        await page.keyboard.press("e");
         await page.keyboard.press("f");
       }
       if (!landingRequestsSent && sample.jump.phase === "landing") {
@@ -1275,7 +1275,7 @@ try {
     assert.equal(
       sample.dash.sequence,
       idleJumpStart.dash.sequence,
-      "Dash is rejected throughout takeoff, flight and landing",
+      "Dash requests during takeoff and landing are discarded",
     );
     closeTo(sample.dash.cooldownRemaining, 0, 0.000001);
     closeTo(sample.position[0], idleJumpStart.position[0], 0.000001);
@@ -1323,7 +1323,7 @@ try {
   await native("touchEnd", [heldJumpFinger]);
   await step();
   console.log(
-    "PASS: continuous configured-height ballistic jump, animation blending, camera invariants, no double jump, no held repeat and rejected airborne actions",
+    "PASS: continuous configured-height ballistic jump, animation blending, camera invariants, no double jump, no held repeat and no aerial attacks",
   );
 
   for (const sprinting of [false, true]) {
@@ -1458,26 +1458,24 @@ try {
     "Sliding Jump to Block immediately holds guard in flight",
   );
   assert.ok(airBlock.jump.airborne);
-  const beforeRejectedDash = airBlock.dash;
+  const beforeAirDash = airBlock.dash;
   jumpFingers[2] = touch(113, dash);
   await native("touchMove", jumpFingers, [jumpFingers[2]]);
-  const rejectedDash = await step();
+  const airDash = await step();
   assert.equal(
-    rejectedDash.input.blocking,
+    airDash.input.blocking,
     false,
     "Leaving Block releases guard in flight",
   );
-  assert.equal(rejectedDash.dash.sequence, beforeRejectedDash.sequence);
-  closeTo(
-    rejectedDash.dash.cooldownRemaining,
-    beforeRejectedDash.cooldownRemaining,
-    0.000001,
-  );
+  assert.equal(airDash.dash.sequence, beforeAirDash.sequence + 1);
+  assert.equal(airDash.dash.mode, "air");
+  assert.equal(airDash.dash.active, true);
+  assert.equal(airDash.dash.airDashesRemaining, 0);
   await step(1000);
   assert.equal(
     (await snapshot()).dash.sequence,
-    beforeRejectedDash.sequence,
-    "A rejected slide onto Dash never queues a landing dash",
+    beforeAirDash.sequence + 1,
+    "Holding an aerial Dash entry never queues a landing dash",
   );
   jumpFingers[2] = touch(113, sprint);
   await native("touchMove", jumpFingers, [jumpFingers[2]]);
@@ -1487,7 +1485,7 @@ try {
   const groundDash = await step();
   assert.equal(
     groundDash.dash.sequence,
-    beforeRejectedDash.sequence + 1,
+    beforeAirDash.sequence + 2,
     "Dash re-entry is accepted after landing",
   );
   for (const owner of ["joystickPointer", "cameraPointer"])
@@ -1957,13 +1955,14 @@ try {
   for (const owner of ["joystickPointer", "cameraPointer"])
     assert.equal(customJump.input[owner], customOwners.input[owner]);
   assert.equal((await customSlide("block")).input.blocking, true);
-  const customDashRejected = await customSlide("dash");
-  assert.equal(customDashRejected.input.blocking, false);
-  assert.equal(customDashRejected.dash.sequence, 0);
+  const customAirDash = await customSlide("dash");
+  assert.equal(customAirDash.input.blocking, false);
+  assert.equal(customAirDash.dash.sequence, 1);
+  assert.equal(customAirDash.dash.mode, "air");
   await step(1100);
-  assert.equal((await snapshot()).dash.sequence, 0);
+  assert.equal((await snapshot()).dash.sequence, 1);
   assert.equal((await customSlide("sprint")).input.sprinting, true);
-  assert.equal((await customSlide("dash")).dash.sequence, 1);
+  assert.equal((await customSlide("dash")).dash.sequence, 2);
   await native("touchCancel", [], []);
   await step(800);
   await page.screenshot({ path: "test-results/custom-landscape.png" });
@@ -2050,6 +2049,7 @@ try {
     "PASS: relocated native slide/multitouch, mouse/touch editing, Cancel/Reset/Save semantics, orientation containment and invalid-storage fallback",
   );
   await checkLayoutEditorEdges(page, step);
+  await checkAerialDashes(page);
   await page.clock.resume();
   assert.deepEqual(errors, [], "No browser runtime errors");
   console.log(

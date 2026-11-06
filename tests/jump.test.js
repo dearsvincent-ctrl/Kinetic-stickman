@@ -230,13 +230,13 @@ test("repeat input during takeoff, flight and landing is rejected rather than bu
   assert.equal(c.jump.sequence, 2);
 });
 
-test("Jump and Dash keep distinct states and cannot buffer one another", () => {
+test("ground skills keep request order without buffering takeoff or landing requests", () => {
   const jumpFirst = actor().controller;
   assert.equal(jumpFirst.requestJump(), true);
   assert.equal(jumpFirst.requestDash(), false);
   jumpFirst.update(DT, input(), 0);
   while (!jumpFirst.jump.ready) {
-    assert.equal(jumpFirst.requestDash(), false);
+    if (!jumpFirst.jump.airborne) assert.equal(jumpFirst.requestDash(), false);
     jumpFirst.update(DT, input(), 0);
   }
   assert.equal(jumpFirst.dash.sequence, 0);

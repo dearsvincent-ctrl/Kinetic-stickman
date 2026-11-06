@@ -1,6 +1,6 @@
-# Kinetic — Movement Lab v0.6.1
+# Kinetic — Movement Lab v0.6.2
 
-A mobile-first, third-person 3D stickman prototype built with JavaScript, Three.js, and Vite. The arena opens directly into play. Version 0.6.1 adds a mobile control-layout editor under **Settings → Edit Controls**. Move the joystick, Sprint, Dash, Block, and Jump independently, then save their positions in this browser. The default layout and all Version 0.6 gameplay remain unchanged: ballistic Jump, Sprint, directional Dash, held Block, and grounded proximity punches against the stationary dummy. There is no visible Attack button or manual combat-mode switch.
+A mobile-first, third-person 3D stickman prototype built with JavaScript, Three.js, and Vite. The arena opens directly into play. Version 0.6.2 adds one steerable aerial dash per jump, with continuous gravity and separate ground/air tuning. The completed Version 0.6.1 control editor and saved layouts remain compatible under **Settings → Edit Controls**. Existing gameplay is preserved: ballistic Jump, Sprint, directional Dash, held Block, and grounded proximity punches against the stationary dummy. There is no visible Attack button or manual combat-mode switch.
 
 The existing camera angle and controls, progressive joystick, acceleration/deceleration, 2.6 m/s movement speed, 5.2 m/s sprint speed, arena, boundaries, and rendering settings are preserved. The locomotion layers coordinate arms and legs, bend the knees, move the hips and torso, and blend between idle and faster gaits using actual travel speed. Planted feet and two-bone leg IK reduce sliding on the flat floor.
 
@@ -10,9 +10,9 @@ Hold or slide onto **BLOCK** to maintain a defensive guard while moving. Block s
 
 Tap or slide onto **JUMP** for a 0.8-metre jump with a short takeoff, ballistic rise and fall, and soft landing recovery. Jumping carries horizontal movement into flight; the joystick provides smooth air steering instead of immediately resetting momentum. Holding Block maintains a manual air guard. Starting a jump cancels a ground punch smoothly and suspends attacks and automatic target-facing throughout takeoff, flight, and landing recovery. Grounded proximity combat can reacquire the dummy afterwards.
 
-Tap **DASH** for a short movement burst, normally 2.5 metres over 0.25 seconds. The dash starts in the camera-relative joystick direction, or the character's facing direction when the joystick is centred. Steer during the dash to curve its path; releasing the joystick keeps the current trajectory. A push-off, directional torso lean, low bound, and recovery blend over the existing animation, including while guarding. The dummy has a solid 0.32-metre collision radius: walking, sprinting, and dashing collide and slide around it continuously instead of passing through it.
+Tap **DASH** for a short movement burst, normally 2.5 metres over 0.25 seconds. On the ground, it starts in the camera-relative joystick direction, or the character's facing direction when the joystick is centred. Steer during the dash to curve its path; releasing the joystick keeps the current trajectory. Ground push-off and recovery, or aerial balance and limb posing, blend over the existing animation, including while guarding. The dummy has a solid 0.32-metre collision radius: walking, sprinting, and dashing collide and slide around it continuously instead of passing through it.
 
-Version 0.6.1 changes only control customization and its interface. It adds no combat behavior, physics, or camera changes. There are no airborne attacks, midair dash, enemy AI, health, damage, combos, contextual strikes, special abilities, invincibility frames, stamina costs, progression, multiplayer, ragdolls, or rigid-body simulation. The dummy is a passive stationary prop; punches and Block do not implement hits or damage. Advanced movement-combat integration is outside this version.
+Version 0.6.2 changes dash movement, aerial posing, and movement-parameter organization. It adds no combat behavior or camera changes. There are no airborne attacks, enemy AI, health, damage, combos, contextual strikes, special abilities, invincibility frames, stamina costs, progression, multiplayer, ragdolls, or rigid-body simulation. The dummy is a passive stationary prop; punches and Block do not implement hits or damage. Advanced movement-combat integration is outside this version.
 
 ## Play on Android with GitHub Pages
 
@@ -63,11 +63,13 @@ For an Android phone, connect the phone and development computer to the same Wi-
 Start a finger on any gameplay action button, then slide it between buttons without lifting:
 
 - **HOLD — SPRINT and BLOCK:** active while a finger is inside. Leaving releases the action; sliding back immediately resumes it. Block raises and maintains guard rather than selecting a persistent mode.
-- **PRESS — DASH and JUMP:** requests an action once on entry. Dash requires its cooldown to finish, and Jump requires the full jump and landing recovery to finish. Staying inside does not repeat, queue an action, or activate it automatically when it becomes available.
+- **PRESS — DASH and JUMP:** requests an action once on entry. Ground Dash requires its cooldown to finish; aerial Dash requires an unused per-jump allowance. Jump requires the full jump and landing recovery to finish. Staying inside does not repeat, queue an action, or activate it automatically when it becomes available.
 
 Sliding from SPRINT onto DASH releases sprint and requests a dash. Sliding onto JUMP requests one jump, just as a tap does; leave and re-enter after landing recovery to jump again. Sliding off BLOCK releases guard; automatic punching can resume when grounded and its proximity, facing, and recovery conditions are met. Crossing a gap releases any HOLD action but keeps that finger assigned to gameplay buttons until it lifts or is cancelled. Joystick and camera fingers retain their original controls when crossing buttons. Multiple action fingers work independently; if two hold the same HOLD action, it remains active until both leave. This allows simultaneous joystick steering, camera dragging, and action input.
 
-Jump and Dash are mutually exclusive ground skills. A Jump request during a dash, a Dash request during any jump phase, or another Jump request before landing recovery finishes is discarded rather than queued. Entries arriving before the next simulation step are read in their original order; the first accepted skill takes priority, and rejected requests never activate later. There is no double jump or midair dash. Holding JUMP through landing does not jump again. On desktop, Space normally requests Jump; if a gameplay button has keyboard focus, Space activates that focused action instead.
+Dash can start immediately during ascent, at the apex, or during descent. One aerial dash is available per jump and replenishes on touchdown. It uses the same 2.5-metre, 0.25-second burst as the ground dash, with independent availability; a recent ground dash does not delay it. Existing horizontal momentum provides the initial heading while moving, then the camera-relative joystick smoothly redirects it with a bounded turn rate. At rest, the joystick or character-facing direction supplies the heading. Gravity continues unchanged; the dash neither lifts nor pulls the character towards a target. Afterward, ordinary air steering resumes from the exit momentum. A late descending dash carries its remaining horizontal burst through landing. The button shows AIR READY, AIR DASH, or USED in flight.
+
+A Jump request during a dash, Dash during takeoff or landing recovery, or another Jump before landing recovery finishes is discarded rather than queued. Entries arriving before the next simulation step are read in their original order; the first accepted skill takes priority, and rejected requests never activate later. There is no double jump. Holding JUMP through landing does not jump again. On desktop, Space normally requests Jump; if a gameplay button has keyboard focus, Space activates that focused action instead.
 
 Block takes priority over Attack. A punch requested while Block is held is rejected. Raising Block during a punch cancels its remaining extension into a smooth recovery; releasing Block does not resume the cancelled punch. Automatic attacks start afresh only after recovery, while grounded and an eligible target is selected. Outside target range, releasing Block lets the automatic posture settle smoothly back to the current movement gait. Block input remains responsive during a jump, but air guard does not enable attacks or automatic target-facing.
 
@@ -133,6 +135,7 @@ For other static HTTPS hosts, use the ordinary `npm run build` command without t
 | `src/input/InputController.js`          | Pointer ownership, joystick normalization, keyboard state, camera deltas            |
 | `src/input/TouchActionRouter.js`        | Shared HOLD/PRESS/TOGGLE registry, slide routing, cancellation, keyboard activation |
 | `src/movement/CharacterController.js`   | Locomotion/dash/jump states, camera-relative steering, facing, world movement       |
+| `src/movement/MovementConfig.js`       | Central per-character locomotion, ground/air dash, jump and allowance tuning         |
 | `src/movement/DashState.js`             | Configurable dash timing, acceleration profile, steering, and cooldown              |
 | `src/movement/JumpState.js`             | Configurable ballistic elevation, vertical velocity, and jump phase timing          |
 | `src/combat/CombatController.js`         | Punch phases and recovery, held Block, automatic posture, technique selection boundary |
@@ -147,6 +150,7 @@ For other static HTTPS hosts, use the ordinary `npm run build` command without t
 | `src/character/CombatStanceAnimator.js` | Smooth defensive guard and balanced stance poses                                    |
 | `src/character/DashAnimator.js`         | Dash push-off, directional lean, foot targets, and recovery overlay                 |
 | `src/character/AttackAnimator.js`       | Basic right-punch upper-body extension, torso rotation, and recovery overlay         |
+| `src/character/AerialDashAnimator.js` | Directional air balance, limb posing, Block and landing blending without root movement |
 | `src/character/JumpAnimator.js`         | Takeoff, flight, landing, and recovery poses without root movement                    |
 | `src/character/LegIK.js`                | Lightweight two-bone leg posing and floor contact                                   |
 | `src/style.css`                         | Responsive HUD, touch controls, safe-area spacing                                   |
@@ -166,7 +170,7 @@ The movement controller owns the character root position and heading. `JumpState
 
 World-space foot contacts reduce stance-foot drift; they can replant during turns and transitions. This remains a procedural visual animation system rather than physical foot collision or motion capture. Attacks do not freeze navigation or alter dash state, steering, or cooldown. The solid dummy is a horizontal world obstacle shared by normal movement, dash, and jump collision.
 
-`CharacterController.requestDash()` and `requestJump()` request their respective ground skills on the next simulation step. `movementState` is `"locomotion"`, `"dash"`, or `"jump"`; `JumpState.phase` distinguishes `"grounded"`, `"takeoff"`, `"airborne"`, and `"landing"`. Jump and Dash reject requests while the other is active, and rejected requests are not buffered. The controller carries resolved dash exit velocity into ordinary locomotion damping and carries horizontal jump momentum into air control. `stop()` cancels pending skill requests and active dashes while retaining dash cooldown; it preserves jump elevation and vertical velocity. `DashState` and `JumpState` own movement timing, while their animation modules only pose the existing hierarchy.
+`CharacterController.requestDash()` selects the ground or aerial profile for the next simulation step; `requestJump()` requests takeoff. `movementState` is `"locomotion"`, `"dash"`, `"aerial-dash"`, or `"jump"`; `JumpState.phase` distinguishes `"grounded"`, `"takeoff"`, `"airborne"`, and `"landing"`. Aerial Dash composes horizontal dash motion with ballistic jump elevation. Separate `DashState` instances retain ground cooldown and air availability independently, while a shared sequence counts accepted dashes. The controller owns the per-jump allowance; animation and input cannot refill it. Rejected requests are not buffered. The controller carries resolved dash exit velocity into ordinary locomotion damping and carries horizontal jump momentum into air control. `stop()` cancels pending skill requests and active dashes while retaining dash cooldown; it preserves jump elevation, vertical velocity, and the used aerial allowance. `DashState` and `JumpState` own movement timing, while their animation modules only pose the existing hierarchy.
 
 `ArenaBounds.move(position, displacement, radius, out)` is the current world-movement contract. It constrains the character's horizontal radius inside the arena and sweeps movement against stationary circular obstacle footprints. The controller keeps the jump's elevation separate from this flat-floor collision adapter. The dummy supplies the same position and radius to targeting and collision. Resolved motion can slide along obstacle contacts instead of tunnelling through them, including in the air. For Rapier, introduce a world adapter backed by a kinematic character controller and static floor/wall/prop colliders. The controller already derives animation speed from resolved travel and cancels blocked velocity components. Extend that response for slopes and physical contacts when integrating Rapier, which is intentionally not installed yet.
 
@@ -174,7 +178,7 @@ Dash motion integrates the acceleration/cruise/braking profile continuously in s
 
 ### Extending touchscreen actions
 
-`InputController.actions` exposes the reusable `TouchActionRouter`. Register a button with an ID, DOM element, and `ActionBehavior`; use `onHoldChange` for HOLD and `onActivate` for PRESS or TOGGLE. Sprint and Block use HOLD, while Dash and Jump use PRESS. The router is unchanged, and TOGGLE remains supported for future bindings; Version 0.6.1 has no toggled combat mode or visible Attack button. For example, a future action can be wired without changing the router:
+`InputController.actions` exposes the reusable `TouchActionRouter`. Register a button with an ID, DOM element, and `ActionBehavior`; use `onHoldChange` for HOLD and `onActivate` for PRESS or TOGGLE. Sprint and Block use HOLD, while Dash and Jump use PRESS. The router is unchanged, and TOGGLE remains supported for future bindings; Version 0.6.2 has no toggled combat mode or visible Attack button. For example, a future action can be wired without changing the router:
 
 ```js
 import { ActionBehavior } from "./src/input/TouchActionRouter.js";
@@ -207,9 +211,27 @@ The controller accepts a technique registry and optional `selectTechnique(contex
 
 Target-facing uses a response of 13 per second and a maximum turn rate of 6 radians per second. It changes only heading; camera-relative translation, movement acceleration, and dash steering retain their existing behavior. `TRAINING_DUMMY_CONFIG` in `src/world/TrainingDummy.js` defines its `(2, 0, −5)` position and 0.32-metre collision radius. The collision radius combines with the character footprint to keep their bodies separated.
 
+### Movement profiles
+
+`MOVEMENT_DEFAULTS` in `src/movement/MovementConfig.js` centralizes per-character settings. Supply `movementConfig` to `CharacterController` to override profiles without changing input, collision, animation, or combat code. These are developer settings; no character stats or upgrade interface are implemented.
+
+```js
+new CharacterController(root, world, {
+  movementConfig: {
+    locomotion: { walkSpeed: 1.3, runSpeed: 2.6, sprintSpeed: 5.2 },
+    groundDash: { distance: 2.5, speed: 10 },
+    aerialDash: { distance: 2.5, speed: 10, exitSpeed: 2.6, cooldown: 0 },
+    jump: { height: 0.8, gravity: 18, airControl: 3.5 },
+    maxAerialDashes: 1,
+  },
+});
+```
+
+`walkSpeed` is the half-stick speed and `runSpeed` the full-stick normal speed. Their defaults preserve the original linear progressive joystick curve; Sprint still scales 5.2 m/s by joystick magnitude. The legacy top-level `walkSpeed` option retains its original full-stick meaning. All speeds are metres per second. Dash `speed` denotes average travel speed, deriving duration as distance/speed; the acceleration profile determines peak speed. Explicit legacy `duration` overrides remain supported. Ground and air profiles independently accept the ramp and steering settings below. Set `maxAerialDashes` to zero to disable aerial dashes or a larger integer for future abilities. Landing replenishes the allowance; opening Settings does not.
+
 ### Jump tuning
 
-Defaults live in `JUMP_CONFIG` in `src/movement/JumpState.js`. Pass a `jumpConfig` object to the `CharacterController` constructor to override individual values.
+Jump defaults originate in `JUMP_CONFIG` in `src/movement/JumpState.js` and are exposed through `MOVEMENT_DEFAULTS.jump`. Supply `movementConfig.jump` to the controller; the existing `jumpConfig` constructor option remains supported.
 
 | Setting           | Default | Meaning                                                    |
 | ----------------- | ------- | ---------------------------------------------------------- |
@@ -220,11 +242,11 @@ Defaults live in `JUMP_CONFIG` in `src/movement/JumpState.js`. Pass a `jumpConfi
 | `takeoffDuration` | 0.08 s  | Short preparation before leaving the floor                  |
 | `landingDuration` | 0.18 s  | Recovery before another ground skill or attack can start    |
 
-`JumpState` advances vertical motion ballistically and resolves the exact floor-contact time, so height remains nonnegative across different frame rates. Horizontal movement uses the existing world adapter; changing elevation does not disable wall or dummy collisions. Animation reads jump phases and progress without modifying root position. The landing phase finishes before another Jump or Dash can be accepted and before automatic combat resumes.
+`JumpState` advances vertical motion ballistically and resolves the exact floor-contact time, so height remains nonnegative across different frame rates. Horizontal movement uses the existing world adapter; changing elevation does not disable wall or dummy collisions. Animation reads jump phases and progress without modifying root position. Aerial Dash is accepted only during flight; the landing phase finishes before a new ground Jump or Dash can be accepted. Automatic combat also waits for landing recovery and any continuing aerial dash to finish.
 
 ### Dash tuning
 
-Defaults live in `DASH_CONFIG` in `src/movement/DashState.js`. Pass a `dashConfig` object to the `CharacterController` constructor to override individual values.
+Ground defaults originate in `DASH_CONFIG` in `src/movement/DashState.js` and are exposed through `MOVEMENT_DEFAULTS.groundDash`. Aerial defaults use the same distance, speed, ramps and steering, with zero independent cooldown and a per-jump limit. Existing `dashConfig` overrides ground settings; `airDashConfig` overrides aerial settings.
 
 | Setting            | Default | Meaning                                                   |
 | ------------------ | ------- | --------------------------------------------------------- |
@@ -237,7 +259,7 @@ Defaults live in `DASH_CONFIG` in `src/movement/DashState.js`. Pass a `dashConfi
 | `maxTurnRate`      | 9 rad/s | Maximum steering rate, including reversals                |
 | `maxSubstep`       | 1/120 s | Largest collision-aware movement substep                  |
 
-Peak speed is derived from distance, duration, ramp times, and the entry/exit speeds so the profile covers the requested distance. Increasing steering response or turn rate makes redirection sharper; acceleration and braking remain independent of normal walking and sprinting.
+Peak speed is derived from distance, duration, ramp times, and the entry/exit speeds so the profile covers the requested distance. Aerial exit speed retains incoming momentum or requested movement speed, with a 2.6 m/s minimum; it then blends through normal air control or ground deceleration. Increasing steering response or turn rate makes redirection sharper; acceleration and braking remain independent of normal walking and sprinting.
 
 The game uses a fixed 60 Hz movement step, with rendering and camera smoothing separate. Frame delta is capped at 80 ms and catch-up work at five steps, preventing a backgrounded tab or long stall from producing a large movement jump. Add Rapier stepping to that simulation boundary rather than tying physics to display refresh rate. Keep character root ownership in one system when introducing physics or root-motion animation.
 
@@ -247,9 +269,9 @@ The scene uses shared low-poly geometry and materials, instanced arena details, 
 
 ## Validation
 
-Version 0.6.1 passed all 240 unit and integration tests, the production build, and both Chromium browser smoke suites. Checks include independent mouse/touch dragging, persistence, Cancel/Reset, resizing, relocated slide controls, editor input isolation, storage failure recovery, and short-screen reachability. Production assets were verified under `/Kinetic-stickman/`.
+Version 0.6.2 passed all 251 unit and integration tests, the production build, and both Chromium browser smoke suites. Checks include aerial Dash during ascent/apex/descent, landing resets, Block, ground recovery, independent mouse/touch dragging, persistence, Cancel/Reset, resizing, relocated slide controls, editor input isolation, storage failure recovery, and short-screen reachability. Production assets were verified under `/Kinetic-stickman/`.
 
-Run the checks below and inspect the GitHub Actions run for the current commit. Unit tests cover movement, camera limits, input ownership, Pages base paths, proximity thresholds and facing, repeat-punch recovery, Block priority, automatic posture transitions, dummy collision, animation blending, and character-root ownership. Layout checks cover normalized positioning, validation, responsive constraints, and saved-data handling. Jump checks cover height, gravity, phases, horizontal momentum and steering, skill exclusion, repeated-input rejection, pause continuity, collision, and grounded-combat suspension. Dash checks cover distance, steering, cooldown, wall containment, state transitions, and animation blending. Action-router checks cover HOLD/PRESS/TOGGLE entry and re-entry, multiple fingers, cancellation, keyboard activation, and binding replacement. Browser checks cover control editing, Save/Cancel/reset, storage failure, refresh and rotation, gameplay-input isolation, rendering, Jump taps and slides, moving jumps, approaching and leaving the dummy, automatic grounded attacks, held Block, native emulated multi-touch input and cancellation, action slides, recovery and dash cooldown, camera reset/pitch limits, instructions, and responsive layout. Screenshots are saved under `test-results/` by the browser scripts. UI fonts are bundled locally; the game makes no external asset requests.
+Run the checks below and inspect the GitHub Actions run for the current commit. Unit tests cover movement, camera limits, input ownership, Pages base paths, proximity thresholds and facing, repeat-punch recovery, Block priority, automatic posture transitions, dummy collision, animation blending, and character-root ownership. Layout checks cover normalized positioning, validation, responsive constraints, and saved-data handling. Jump checks cover height, gravity, phases, horizontal momentum and steering, ground-skill ordering, repeated-input rejection, pause continuity, collision, and grounded-combat suspension. Dash checks cover ground and aerial distance at 30/60/120 Hz, ascent/apex/descent activation, momentum and steering, cooldown, per-jump limits and landing resets, wall/dummy containment, late-dash landing, configuration overrides, state transitions, and animation blending. Action-router checks cover HOLD/PRESS/TOGGLE entry and re-entry, multiple fingers, cancellation, keyboard activation, and binding replacement. Browser checks cover control editing, Save/Cancel/reset, storage failure, refresh and rotation, gameplay-input isolation, rendering, Jump taps and slides, moving jumps, approaching and leaving the dummy, automatic grounded attacks, held Block, native emulated multi-touch input and cancellation, action slides, recovery and dash cooldown, camera reset/pitch limits, instructions, and responsive layout. Screenshots are saved under `test-results/` by the browser scripts. UI fonts are bundled locally; the game makes no external asset requests.
 
 ```sh
 npm test
@@ -272,7 +294,7 @@ CHROMIUM_PATH=/path/to/chromium npm run test:browser
 
 In development, opening `http://localhost:5173/?debug` exposes a read-only `window.__KINETIC__.snapshot()` function for inspecting position, inputs, movement state, dash timing, jump phases and elevation, combat phases and proximity targeting, camera limits, and render statistics. This hook is excluded from production builds.
 
-Version 0.6.1 has not been verified on a physical Android device by the implementer. Desktop Chromium and touch emulation can check rendering, pointer behavior, and responsive layouts, but cannot establish real mobile GPU performance, thermals, browser chrome behavior, or device-specific touch handling.
+Version 0.6.2 has not been verified on a physical Android device by the implementer. Desktop Chromium and touch emulation can check rendering, pointer behavior, and responsive layouts, but cannot establish real mobile GPU performance, thermals, browser chrome behavior, or device-specific touch handling.
 
 Before shipping to phones, verify on physical Android devices:
 
@@ -283,12 +305,13 @@ Before shipping to phones, verify on physical Android devices:
 - Open Settings while airborne, enter and leave the editor, and resume. Confirm the paused jump keeps its height and vertical motion without a floor reset or teleport.
 - Move the joystick while dragging the camera and holding sprint; release/cancel each finger independently.
 - Jump at rest, while walking, and while sprinting. Check takeoff, height, smooth ballistic travel, landing, and return to the current gait. Release or redirect the joystick in flight; momentum should decay gently or steer smoothly.
-- Hold JUMP through landing and confirm there is no repeat. Slide away and re-enter after landing recovery to jump again. Request Jump during Dash and Dash during takeoff, flight, or landing; neither should queue a later action or create a midair dash.
+- Hold JUMP through landing and confirm there is no repeat. Slide away and re-enter after landing recovery to jump again. Request Jump during Dash and Dash during takeoff or landing recovery; neither should queue a later action. Dash during flight should activate immediately.
 - Jump beside the dummy during a punch. Check that the punch cancels smoothly, automatic attacks and target-facing remain suspended throughout the jump, manual BLOCK still raises guard, and grounded combat reacquires only after landing recovery.
 - Approach the dummy slowly from multiple directions. Check smooth facing, the first punch once aligned, and repeat punches after full recovery. Move near the range edge and confirm targeting does not flicker; leave beyond the exit threshold and confirm no new punches start.
 - Walk, run, sprint, and dash past or around the dummy. Check the right punch, torso twist, natural recovery, smooth target-facing, and uninterrupted joystick movement and dash steering without being pulled towards the target.
 - Hold BLOCK at rest and while moving near the dummy. Guard should remain raised and prevent new punches. Raise Block during a punch and confirm it cancels smoothly into recovery. Release Block in range and confirm a new automatic punch begins only after recovery and correct facing; release out of range and confirm return to normal movement.
 - Vary joystick travel from slow walking through full movement and sprint. Check cadence, opposite arm/leg motion, foot contacts, and controlled guard steps.
+- Air dash during ascent, at the apex, and during descent. Reverse the joystick during the burst, release it, and steer normally afterward. Confirm continuous gravity, visible torso/limb posing, smooth landing, and no second air dash until landing. Try a late air dash into a wall and around the dummy, then ground dash after recovery.
 - Dash at rest, while moving, and while blocking. Steer through the burst, reverse the joystick, and release it midway; check push-off, bounded turning, recovery, and cooldown.
 - Move the joystick while dragging the camera and activating action buttons; nearby controls should not activate accidentally.
 - Slide SPRINT → JUMP → BLOCK → SPRINT without lifting while other fingers move and look. Confirm each PRESS entry is a single request, HOLD actions release on exit, and Block can guard in flight. Also slide SPRINT → DASH → SPRINT, then re-enter DASH after cooldown.
