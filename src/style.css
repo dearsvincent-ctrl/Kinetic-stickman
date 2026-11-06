@@ -779,6 +779,124 @@ h1 {
   color: #1b2722;
   background: #ffab88;
 }
+.settings-dialog {
+  width: min(360px, calc(100% - 28px));
+}
+.settings-dialog .primary-button {
+  min-height: 44px;
+  text-transform: uppercase;
+}
+.settings-dialog .dialog-close {
+  width: 44px;
+  height: 44px;
+}
+.control-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: #09181759;
+  touch-action: none;
+}
+.control-editor-toolbar {
+  position: fixed;
+  top: 108px;
+  left: 50%;
+  z-index: 44;
+  width: min(650px, calc(100% - 32px));
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #96ac9059;
+  border-radius: 8px;
+  background: #1b2929f5;
+  box-shadow: 0 8px 28px #07131166;
+  touch-action: none;
+}
+.control-editor-copy h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.control-editor-copy {
+  min-width: 0;
+}
+.control-editor-copy p {
+  margin: 0;
+  color: #b0bdb0;
+  font-size: 10px;
+  line-height: 1.4;
+  height: 1.4em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.control-editor-actions {
+  display: flex;
+  gap: 8px;
+}
+.layout-button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 9px 13px;
+  border: 1px solid #b9cbb84d;
+  border-radius: 5px;
+  background: #263a34;
+  color: #dce4d7;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.layout-save {
+  border-color: var(--orange);
+  background: var(--orange);
+  color: #252b24;
+}
+.layout-save:hover {
+  color: #252b24;
+  background: #ff9e7a;
+}
+.layout-button:active {
+  transform: none;
+}
+.has-custom-controls .sprint-caption,
+.has-custom-controls .joystick-caption,
+.has-custom-controls .keyboard-label {
+  visibility: hidden;
+}
+.has-custom-controls .right-controls {
+  pointer-events: none;
+}
+.has-custom-controls [data-layout-control] {
+  pointer-events: auto;
+}
+.is-layout-editing .arena-heading,
+.is-layout-editing .camera-tools {
+  visibility: hidden;
+}
+.is-layout-editing .right-controls {
+  z-index: 42;
+  pointer-events: none;
+}
+.is-layout-editing [data-layout-control] {
+  z-index: 42;
+  outline: 1px dashed #ffd7ad99;
+  outline-offset: 4px;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  transform: none;
+}
+.is-layout-editing [data-layout-control].is-layout-dragging {
+  outline: 2px solid var(--orange);
+  outline-offset: 5px;
+  box-shadow: 0 0 20px #ff885e30;
+  cursor: grabbing;
+}
 .error-panel {
   position: absolute;
   inset: 0;
@@ -834,6 +952,9 @@ h1 {
   }
 }
 @media (max-height: 600px) {
+  .control-editor-toolbar {
+    top: 74px;
+  }
   .dash-button {
     right: calc(100% + 16px);
     bottom: 114px;
@@ -984,6 +1105,38 @@ h1 {
   }
 }
 @media (max-width: 600px) and (orientation: portrait) {
+  .control-editor-toolbar {
+    top: 86px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .control-editor-copy {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .control-editor-copy h2 {
+    margin: 0;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .control-editor-copy p {
+    font-size: 9px;
+    text-align: right;
+    flex: 1;
+  }
+  .control-editor-actions {
+    gap: 6px;
+  }
+  .control-editor-actions .layout-button {
+    flex: 1;
+    padding: 8px;
+  }
+  .control-editor-actions #layout-reset {
+    flex: 1.6;
+  }
   .dash-button {
     right: 0;
     bottom: calc(100% + 74px + var(--reset-stack-space));
@@ -1159,6 +1312,25 @@ h1 {
 }
 
 @media (max-width: 340px) and (max-height: 700px) and (orientation: portrait) {
+  .brand {
+    gap: 6px;
+  }
+  .brand-name {
+    font-size: 24px;
+  }
+  .brand-mark {
+    width: 22px;
+  }
+  .top-actions {
+    gap: 4px;
+  }
+  .fps {
+    margin-right: 0;
+    gap: 4px;
+  }
+  .live-dot {
+    margin-right: 0;
+  }
   .camera-tools {
     top: 64px;
   }

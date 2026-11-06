@@ -1,6 +1,6 @@
-# Kinetic — Movement Lab v0.6
+# Kinetic — Movement Lab v0.6.1
 
-A mobile-first, third-person 3D stickman prototype built with JavaScript, Three.js, and Vite. The arena opens directly into play. Version 0.6 adds a moderate ballistic jump through the existing slide-to-activate controls. Sprint, directional dash, held Block, and grounded proximity punches against the stationary dummy remain available. There is no visible Attack button or manual combat-mode switch.
+A mobile-first, third-person 3D stickman prototype built with JavaScript, Three.js, and Vite. The arena opens directly into play. Version 0.6.1 adds a mobile control-layout editor under **Settings → Edit Controls**. Move the joystick, Sprint, Dash, Block, and Jump independently, then save their positions in this browser. The default layout and all Version 0.6 gameplay remain unchanged: ballistic Jump, Sprint, directional Dash, held Block, and grounded proximity punches against the stationary dummy. There is no visible Attack button or manual combat-mode switch.
 
 The existing camera angle and controls, progressive joystick, acceleration/deceleration, 2.6 m/s movement speed, 5.2 m/s sprint speed, arena, boundaries, and rendering settings are preserved. The locomotion layers coordinate arms and legs, bend the knees, move the hips and torso, and blend between idle and faster gaits using actual travel speed. Planted feet and two-bone leg IK reduce sliding on the flat floor.
 
@@ -12,7 +12,7 @@ Tap or slide onto **JUMP** for a 0.8-metre jump with a short takeoff, ballistic 
 
 Tap **DASH** for a short movement burst, normally 2.5 metres over 0.25 seconds. The dash starts in the camera-relative joystick direction, or the character's facing direction when the joystick is centred. Steer during the dash to curve its path; releasing the joystick keeps the current trajectory. A push-off, directional torso lean, low bound, and recovery blend over the existing animation, including while guarding. The dummy has a solid 0.32-metre collision radius: walking, sprinting, and dashing collide and slide around it continuously instead of passing through it.
 
-Version 0.6 has no airborne attacks, midair dash, enemy AI, health, damage, combos, contextual strikes, special abilities, invincibility frames, stamina costs, progression, multiplayer, ragdolls, or rigid-body simulation. The dummy is a passive stationary prop; punches and Block do not implement hits or damage. Advanced movement-combat integration is outside this version.
+Version 0.6.1 changes only control customization and its interface. It adds no combat behavior, physics, or camera changes. There are no airborne attacks, midair dash, enemy AI, health, damage, combos, contextual strikes, special abilities, invincibility frames, stamina costs, progression, multiplayer, ragdolls, or rigid-body simulation. The dummy is a passive stationary prop; punches and Block do not implement hits or damage. Advanced movement-combat integration is outside this version.
 
 ## Play on Android with GitHub Pages
 
@@ -25,7 +25,7 @@ To check or rerun deployment from your phone:
 3. Open [Settings → Pages](https://github.com/dearsvincent-ctrl/Kinetic-stickman/settings/pages). Under **Build and deployment → Source**, choose **GitHub Actions**. Do not select a branch or create a `gh-pages` branch. If Settings or the controls are hidden on the mobile layout, open Chrome's three-dot menu and enable **Desktop site**.
 4. Open [Actions](https://github.com/dearsvincent-ctrl/Kinetic-stickman/actions), choose **Deploy GitHub Pages**, tap **Run workflow**, select **main**, and tap **Run workflow** again. This also retries an initial run that failed before Pages was enabled.
 5. Wait for that run's build and deploy jobs to finish with green check marks. Open its **github-pages** deployment link, or return to **Settings → Pages → Visit site**.
-6. Rotate the phone to landscape and play. Drag the left joystick to move, drag the right side to look, hold **SPRINT** to run, tap or slide onto **DASH** or **JUMP**, and hold **BLOCK** to guard. Approach the stationary dummy while grounded to punch automatically.
+6. Rotate the phone to landscape and play. Drag the **MOVE** joystick to move, drag the right side to look, hold **SPRINT** to run, tap or slide onto **DASH** or **JUMP**, and hold **BLOCK** to guard. Approach the stationary dummy while grounded to punch automatically.
 
 Every later push or merged pull request to `main` automatically rebuilds and deploys the game. Pull requests run checks without publishing. If a page initially returns 404, confirm the deployment job succeeded and allow GitHub a short time to publish it, then reload the exact URL above, including its final slash.
 
@@ -48,7 +48,7 @@ For an Android phone, connect the phone and development computer to the same Wi-
 
 | Action               | Touch                                     | Desktop                        |
 | -------------------- | ----------------------------------------- | ------------------------------ |
-| Move                 | Drag the bottom-left joystick             | WASD or arrow keys             |
+| Move                 | Drag MOVE joystick (default: bottom-left) | WASD or arrow keys             |
 | Look                 | Drag the right side of the viewport       | Click and drag the right side  |
 | Sprint               | Hold or slide onto SPRINT                 | Hold Shift                     |
 | Basic punch          | Approach the training dummy               | Approach the training dummy    |
@@ -56,6 +56,7 @@ For an Android phone, connect the phone and development computer to the same Wi-
 | Directional dash     | Tap or slide onto DASH                    | Press E                        |
 | Jump                 | Tap or slide onto JUMP                    | Press Space                    |
 | Reset camera         | Tap RESET VIEW                            | Press R                        |
+| Edit control layout  | Settings → Edit Controls                  | Settings → Edit Controls       |
 | Instructions / pause | Tap the question-mark button              | Click the question-mark button |
 | Fullscreen           | Tap the fullscreen button where supported | Click the fullscreen button    |
 
@@ -79,6 +80,21 @@ DASH triggers once per button entry or keyboard press. Its cooldown starts when 
 Touch gestures, page scrolling, text selection, and dragging are suppressed within the game. Momentary input clears when a touch is cancelled, the page loses focus, becomes hidden, or changes size/orientation to prevent stuck movement or Block. Pausing or losing focus cancels an active or pending dash without clearing its cooldown and cancels a punch into recovery. Simulation time, including cooldown and recovery, pauses while the game is paused or backgrounded. Focused gameplay buttons also support Space and Enter through the shared action system.
 
 Pausing during a jump preserves its current height and vertical velocity. Resuming continues the same jump rather than resetting the character to the floor or teleporting it. Arena walls and the dummy's horizontal collision footprint still apply in the air; this version does not implement jumping over or onto physical bodies.
+
+## Customize touchscreen controls
+
+1. Open **Settings**, then select **Edit Controls**. Settings and the editor pause the game and disable gameplay input, so dragging a control cannot move the character or trigger an action.
+2. Drag the **Move joystick**, **SPRINT**, **DASH**, **BLOCK**, and **JUMP** controls to comfortable positions. Each control moves independently. Placement stays within the usable screen area and avoids other controls and protected HUD areas.
+3. Select **Save** to keep the layout for later visits in this browser, or **Cancel** to restore the previously saved layout. If no custom layout was saved, Cancel restores the default layout.
+4. To return to the original arrangement, select **Reset to Default**, check the preview, and select **Save**. Reset is a preview until saved; **Cancel** also undoes a reset preview.
+
+On compact screens, the editor may temporarily fit its default preview around protected UI. Saving defaults restores the original responsive arrangement. Saving a custom layout keeps the positions shown in the editor.
+
+One layout is shared between portrait and landscape. Saved control centres use normalized screen coordinates, so they are reprojected when the screen resizes or rotates rather than staying at fixed pixel positions. Layout constraints keep the resulting controls visible and separated from each other and the HUD. Short helper captions may be hidden for custom layouts, but the action labels remain visible. Without a saved custom layout, the original default positions are used.
+
+Layouts are stored in `localStorage` under `kinetic.controls.v1`, using schema version 1. Invalid or outdated saved data is ignored and the default layout is used. If browser storage is unavailable, Save shows an error and leaves the editor open; Cancel remains available to return to the previous layout. Layouts are local to the current browser and site, and do not require an account or server.
+
+Slide-to-activate behavior is the same after repositioning: Sprint and Block remain HOLD actions, while Dash and Jump remain PRESS actions. Multiple fingers can still move, look, and use actions independently. Opening Settings or the editor clears momentary input and pauses simulation like the instructions panel, including preserving jump height and vertical velocity until play resumes.
 
 ## Production builds and deployment
 
@@ -112,6 +128,8 @@ For other static HTTPS hosts, use the ordinary `npm run build` command without t
 | `src/core/Game.js`                      | Renderer, scene composition, game loop, simulation ownership                        |
 | `src/core/math.js`                      | Shared damping and angle helpers                                                    |
 | `src/ui/Hud.js`                         | FPS/speed readouts, dash/jump availability, combat posture, instructions, fullscreen  |
+| `src/ui/ControlLayoutEditor.js`          | Settings/editor flow, drag placement, Save/Cancel/reset, and browser storage          |
+| `src/ui/controlLayoutModel.js`           | Versioned normalized layouts, validation, and responsive placement constraints        |
 | `src/input/InputController.js`          | Pointer ownership, joystick normalization, keyboard state, camera deltas            |
 | `src/input/TouchActionRouter.js`        | Shared HOLD/PRESS/TOGGLE registry, slide routing, cancellation, keyboard activation |
 | `src/movement/CharacterController.js`   | Locomotion/dash/jump states, camera-relative steering, facing, world movement       |
@@ -156,7 +174,7 @@ Dash motion integrates the acceleration/cruise/braking profile continuously in s
 
 ### Extending touchscreen actions
 
-`InputController.actions` exposes the reusable `TouchActionRouter`. Register a button with an ID, DOM element, and `ActionBehavior`; use `onHoldChange` for HOLD and `onActivate` for PRESS or TOGGLE. Sprint and Block use HOLD, while Dash and Jump use PRESS. The router is unchanged, and TOGGLE remains supported for future bindings; Version 0.6 has no toggled combat mode or visible Attack button. For example, a future action can be wired without changing the router:
+`InputController.actions` exposes the reusable `TouchActionRouter`. Register a button with an ID, DOM element, and `ActionBehavior`; use `onHoldChange` for HOLD and `onActivate` for PRESS or TOGGLE. Sprint and Block use HOLD, while Dash and Jump use PRESS. The router is unchanged, and TOGGLE remains supported for future bindings; Version 0.6.1 has no toggled combat mode or visible Attack button. For example, a future action can be wired without changing the router:
 
 ```js
 import { ActionBehavior } from "./src/input/TouchActionRouter.js";
@@ -174,6 +192,8 @@ const unregister = input.actions.register({
 The future action above is an integration example, not an implemented feature. The `InputController` constructor also accepts an `actionBindings` array using the same registration objects. Registering the same ID or element replaces its old binding and releases its held state; an ongoing action finger can enter the replacement on its next move. The returned disposer only removes its own binding, so an old disposer cannot remove a later reassignment.
 
 The router captures each action finger on a stable root and hit-tests current coordinates with `document.elementFromPoint()`, including coalesced movement samples. Layout changes need no cached hit-box updates. Registration adds `data-touch-action` and `data-touch-behavior`; CSS keeps registered button bounds stable while active. HOLD tracks all occupying fingers, while PRESS and TOGGLE run once per entry. Blur, visibility changes, cancellation, reset, and teardown release momentary ownership. Reset View is deliberately outside this registry.
+
+`ControlLayoutEditor` changes the existing control elements' placement without changing their action bindings. `controlLayoutModel` validates versioned normalized centres and resolves them against current screen bounds and reserved areas. The router continues hit-testing the actual elements after editing, refreshing, or rotating; it does not use stale saved pixel hit boxes. Layout code has no ownership of character movement, animation, combat, or camera state.
 
 ### Combat timing
 
@@ -227,9 +247,9 @@ The scene uses shared low-poly geometry and materials, instanced arena details, 
 
 ## Validation
 
-Version 0.6 passed all 219 unit and integration tests, the production build, and both Chromium browser smoke suites. The production suite served the exact build under `/Kinetic-stickman/` to verify asset paths, Jump controls, grounded combat, and mobile layouts.
+Version 0.6.1 passed all 240 unit and integration tests, the production build, and both Chromium browser smoke suites. Checks include independent mouse/touch dragging, persistence, Cancel/Reset, resizing, relocated slide controls, editor input isolation, storage failure recovery, and short-screen reachability. Production assets were verified under `/Kinetic-stickman/`.
 
-Run the checks below and inspect the GitHub Actions run for the current commit. Unit tests cover movement, camera limits, input ownership, Pages base paths, proximity thresholds and facing, repeat-punch recovery, Block priority, automatic posture transitions, dummy collision, animation blending, and character-root ownership. Jump checks cover height, gravity, phases, horizontal momentum and steering, skill exclusion, repeated-input rejection, pause continuity, collision, and grounded-combat suspension. Dash checks cover distance, steering, cooldown, wall containment, state transitions, and animation blending. Action-router checks cover HOLD/PRESS/TOGGLE entry and re-entry, multiple fingers, cancellation, keyboard activation, and binding replacement. Browser checks cover rendering, Jump taps and slides, moving jumps, approaching and leaving the dummy, automatic grounded attacks, held Block, native emulated multi-touch input and cancellation, action slides, recovery and dash cooldown, camera reset/pitch limits, instructions, and responsive layout. Screenshots are saved under `test-results/` by the browser scripts. UI fonts are bundled locally; the game makes no external asset requests.
+Run the checks below and inspect the GitHub Actions run for the current commit. Unit tests cover movement, camera limits, input ownership, Pages base paths, proximity thresholds and facing, repeat-punch recovery, Block priority, automatic posture transitions, dummy collision, animation blending, and character-root ownership. Layout checks cover normalized positioning, validation, responsive constraints, and saved-data handling. Jump checks cover height, gravity, phases, horizontal momentum and steering, skill exclusion, repeated-input rejection, pause continuity, collision, and grounded-combat suspension. Dash checks cover distance, steering, cooldown, wall containment, state transitions, and animation blending. Action-router checks cover HOLD/PRESS/TOGGLE entry and re-entry, multiple fingers, cancellation, keyboard activation, and binding replacement. Browser checks cover control editing, Save/Cancel/reset, storage failure, refresh and rotation, gameplay-input isolation, rendering, Jump taps and slides, moving jumps, approaching and leaving the dummy, automatic grounded attacks, held Block, native emulated multi-touch input and cancellation, action slides, recovery and dash cooldown, camera reset/pitch limits, instructions, and responsive layout. Screenshots are saved under `test-results/` by the browser scripts. UI fonts are bundled locally; the game makes no external asset requests.
 
 ```sh
 npm test
@@ -252,10 +272,15 @@ CHROMIUM_PATH=/path/to/chromium npm run test:browser
 
 In development, opening `http://localhost:5173/?debug` exposes a read-only `window.__KINETIC__.snapshot()` function for inspecting position, inputs, movement state, dash timing, jump phases and elevation, combat phases and proximity targeting, camera limits, and render statistics. This hook is excluded from production builds.
 
-Version 0.6 has not been verified on a physical Android device by the implementer. Desktop Chromium and touch emulation can check rendering, pointer behavior, and responsive layouts, but cannot establish real mobile GPU performance, thermals, browser chrome behavior, or device-specific touch handling.
+Version 0.6.1 has not been verified on a physical Android device by the implementer. Desktop Chromium and touch emulation can check rendering, pointer behavior, and responsive layouts, but cannot establish real mobile GPU performance, thermals, browser chrome behavior, or device-specific touch handling.
 
 Before shipping to phones, verify on physical Android devices:
 
+- Open Settings → Edit Controls, drag each of the five controls independently, and confirm the character and camera do not respond to those editor touches. Check that controls cannot cover each other or protected HUD areas.
+- Save a layout, refresh the page, and confirm it returns. Rotate between portrait and landscape and check usable positions, visible labels, and HUD spacing. Reopen the editor, make changes, and Cancel; confirm the saved arrangement returns.
+- Preview Reset to Default and Cancel it, then repeat and Save. Confirm Cancel restores the custom layout and Save restores the original arrangement, including after a refresh.
+- After editing, move the joystick while dragging the camera and sliding between action buttons at their new positions. Confirm HOLD release, PRESS entry, cooldowns, and cancellation behave as before, with no stale hit boxes or stuck inputs.
+- Open Settings while airborne, enter and leave the editor, and resume. Confirm the paused jump keeps its height and vertical motion without a floor reset or teleport.
 - Move the joystick while dragging the camera and holding sprint; release/cancel each finger independently.
 - Jump at rest, while walking, and while sprinting. Check takeoff, height, smooth ballistic travel, landing, and return to the current gait. Release or redirect the joystick in flight; momentum should decay gently or steer smoothly.
 - Hold JUMP through landing and confirm there is no repeat. Slide away and re-enter after landing recovery to jump again. Request Jump during Dash and Dash during takeoff, flight, or landing; neither should queue a later action or create a midair dash.

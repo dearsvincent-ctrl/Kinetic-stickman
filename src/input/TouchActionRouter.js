@@ -20,6 +20,7 @@ export class TouchActionRouter {
     this.document = root?.ownerDocument ?? eventTarget;
     this.onChange = onChange;
     this.canClaimPointer = canClaimPointer;
+    this.enabled = true;
     this.actions = new Map();
     this.pointers = new Map();
     this.keyboard = new Map();
@@ -36,6 +37,7 @@ export class TouchActionRouter {
       "pointerdown",
       (event) => {
         if (
+          !this.enabled ||
           this.pointers.has(event.pointerId) ||
           (event.pointerType === "mouse" && event.button !== 0) ||
           !this.canClaimPointer(event)
@@ -59,6 +61,7 @@ export class TouchActionRouter {
       eventTarget,
       "pointermove",
       (event) => {
+        if (!this.enabled) return;
         const pointer = this.pointers.get(event.pointerId);
         if (!pointer) return;
         this.consume(event);
@@ -85,6 +88,7 @@ export class TouchActionRouter {
         eventTarget,
         type,
         (event) => {
+          if (!this.enabled) return;
           if (!this.pointers.has(event.pointerId)) return;
           this.consume(event);
           this.endPointer(event.pointerId, event);
@@ -96,6 +100,7 @@ export class TouchActionRouter {
       eventTarget,
       "click",
       (event) => {
+        if (!this.enabled) return;
         const action = this.fromElement(event.target);
         if (!action) return;
         this.consume(event);
@@ -114,6 +119,7 @@ export class TouchActionRouter {
       eventTarget,
       "keydown",
       (event) => {
+        if (!this.enabled) return;
         if (event.code !== "Space" && event.code !== "Enter") return;
         const action = this.fromElement(event.target);
         if (!action) return;
@@ -131,6 +137,7 @@ export class TouchActionRouter {
       eventTarget,
       "keyup",
       (event) => {
+        if (!this.enabled) return;
         if (!this.keyboard.has(event.code)) return;
         this.consume(event);
         this.endKey(event.code, event);
@@ -141,6 +148,7 @@ export class TouchActionRouter {
       eventTarget,
       "focusout",
       (event) => {
+        if (!this.enabled) return;
         for (const [code, source] of this.keyboard)
           if (source.action.element.contains(event.target))
             this.endKey(code, event);
@@ -152,6 +160,7 @@ export class TouchActionRouter {
         eventTarget,
         type,
         (event) => {
+          if (!this.enabled) return;
           if (this.fromElement(event.target) || this.pointers.size)
             this.consume(event);
         },
@@ -194,6 +203,11 @@ export class TouchActionRouter {
     return () => {
       if (this.actions.get(id) === action) this.unregister(id);
     };
+  }
+
+  setEnabled(enabled) {
+    this.enabled = Boolean(enabled);
+    if (!this.enabled) this.reset();
   }
 
   unregister(id) {

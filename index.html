@@ -34,12 +34,25 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.6</b></span>
+          <span class="version">PROTOTYPE <b>0.6.1</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
           >
           <span class="action-divider"></span>
+          <button
+            id="settings-button"
+            class="icon-button"
+            aria-label="Settings"
+            aria-haspopup="dialog"
+            aria-controls="settings-dialog"
+            title="Settings"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 3-.7 2.6-2.4 1-2.3-.7-2 3.4 1.8 1.9v2.7l-1.8 1.9 2 3.4 2.3-.7 2.4 1L9 22h4l.7-2.5 2.4-1 2.3.7 2-3.4-1.8-1.9v-2.7l1.8-1.9-2-3.4-2.3.7-2.4-1L13 3z" />
+              <circle cx="11" cy="12.5" r="3" />
+            </svg>
+          </button>
           <button
             id="help-button"
             class="icon-button"
@@ -201,6 +214,49 @@
         </p>
         <button onclick="location.reload()">Try again</button>
       </div>
+      <div
+        id="control-editor-overlay"
+        class="control-editor-overlay"
+        aria-hidden="true"
+        hidden
+      ></div>
+      <section
+        id="control-editor-toolbar"
+        class="control-editor-toolbar"
+        aria-label="Edit controls"
+        hidden
+      >
+        <div class="control-editor-copy">
+          <h2>Edit Controls</h2>
+          <p id="layout-status" role="status">Drag buttons to move them.</p>
+        </div>
+        <div class="control-editor-actions">
+          <button id="layout-save" class="layout-button layout-save">Save</button>
+          <button id="layout-cancel" class="layout-button">Cancel</button>
+          <button id="layout-reset" class="layout-button">Reset to Default</button>
+        </div>
+      </section>
+      <dialog
+        id="settings-dialog"
+        class="help-dialog settings-dialog"
+        aria-labelledby="settings-title"
+      >
+        <form method="dialog">
+          <button
+            id="settings-close"
+            class="dialog-close icon-button"
+            aria-label="Close settings"
+          >
+            ×
+          </button>
+        </form>
+        <div class="eyebrow">KINETIC / PREFERENCES</div>
+        <h2 id="settings-title">Settings<span>.</span></h2>
+        <p>Place the controls where your thumbs feel comfortable.</p>
+        <button id="edit-controls-button" class="primary-button">
+          Edit Controls <span aria-hidden="true">↗</span>
+        </button>
+      </dialog>
       <dialog id="help-dialog" class="help-dialog">
         <form method="dialog">
           <button
@@ -210,7 +266,7 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.6</div>
+        <div class="eyebrow">KINETIC / VERSION 0.6.1</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
           Approach the training dummy.<br />Practise movement, jumps, and guard.
@@ -252,6 +308,10 @@
               Tap or slide onto JUMP
               <span>or Space</span>
             </dd>
+          </div>
+          <div>
+            <dt>Control layout</dt>
+            <dd>Settings → Edit Controls</dd>
           </div>
           <div>
             <dt>Reset view</dt>

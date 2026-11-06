@@ -10,6 +10,7 @@ import { Hud } from "../ui/Hud.js";
 import { CombatController } from "../combat/CombatController.js";
 import { ProximityCombatController } from "../combat/ProximityCombatController.js";
 import { TrainingDummy } from "../world/TrainingDummy.js";
+import { ControlLayoutEditor } from "../ui/ControlLayoutEditor.js";
 
 const STEP = 1 / 60;
 
@@ -57,6 +58,7 @@ export class Game {
       this.character.root.position,
     );
     this.helpOpen = false;
+    this.controlsOpen = false;
     this.contextLost = false;
     this.input = new InputController({
       joystick: document.querySelector("#joystick"),
@@ -69,9 +71,17 @@ export class Game {
       resetButton: document.querySelector("#reset-camera"),
       onReset: () => this.followCamera.reset(this.controller.heading),
     });
+    this.controlLayoutEditor = new ControlLayoutEditor({
+      onActiveChange: (active) => {
+        this.controlsOpen = active;
+        this.input.setEnabled(!active && !this.helpOpen);
+        this.clearMotion();
+      },
+    });
     this.hud = new Hud({
       onHelpChange: (open) => {
         this.helpOpen = open;
+        this.input.setEnabled(!open && !this.controlsOpen);
         this.clearMotion();
       },
     });
@@ -134,7 +144,8 @@ export class Game {
     // Bound catch-up work after a stall. A 60 Hz simulation is ready for a
     // future fixed-step physics world; rendering/camera use their own delta.
     const dt = Math.min(elapsed, 0.08);
-    const paused = this.helpOpen || document.hidden || this.contextLost;
+    const paused =
+      this.helpOpen || this.controlsOpen || document.hidden || this.contextLost;
     if (!paused) {
       this.accumulator = Math.min(this.accumulator + dt, STEP * 5);
       while (this.accumulator >= STEP) {
@@ -295,7 +306,12 @@ export class Game {
       },
       halfSize: this.arena.halfSize,
       radius: this.controller.radius,
-      paused: this.helpOpen,
+      paused: this.helpOpen || this.controlsOpen,
+      layout: {
+        active: this.controlLayoutEditor.active,
+        editing: this.controlLayoutEditor.editing,
+        custom: this.controlLayoutEditor.hasCustomLayout,
+      },
       renderer: {
         calls: this.renderer.info.render.calls,
         triangles: this.renderer.info.render.triangles,

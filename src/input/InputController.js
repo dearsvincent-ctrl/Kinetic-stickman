@@ -51,6 +51,7 @@ export class InputController {
     this.dashButton = dashButton;
     this.jumpButton = jumpButton;
     this.onReset = onReset ?? (() => {});
+    this.enabled = true;
 
     this.move = { x: 0, y: 0 };
     this.sprinting = false;
@@ -111,6 +112,7 @@ export class InputController {
       window,
       "pointermove",
       (event) => {
+        if (!this.enabled) return;
         if (event.pointerId === this.joystickPointer) {
           this.consumeEvent(event);
           this.updateJoystick(event);
@@ -125,18 +127,27 @@ export class InputController {
       pointerOptions,
     );
 
-    const release = (event) => this.endPointer(event.pointerId);
+    const release = (event) => {
+      if (this.enabled) this.endPointer(event.pointerId);
+    };
     listen(window, "pointerup", release);
     listen(window, "pointercancel", release);
     for (const element of [joystick, cameraSurface]) {
       listen(element, "lostpointercapture", release);
-      listen(element, "contextmenu", (event) => event.preventDefault());
-      listen(element, "dragstart", (event) => event.preventDefault());
+      listen(element, "contextmenu", (event) => {
+        if (this.enabled) event.preventDefault();
+      });
+      listen(element, "dragstart", (event) => {
+        if (this.enabled) event.preventDefault();
+      });
     }
 
     if (resetButton) {
-      listen(resetButton, "pointerdown", (event) => event.stopPropagation());
+      listen(resetButton, "pointerdown", (event) => {
+        if (this.enabled) event.stopPropagation();
+      });
       listen(resetButton, "click", (event) => {
+        if (!this.enabled) return;
         event.preventDefault();
         event.stopPropagation();
         this.lookDelta.x = 0;
@@ -148,6 +159,7 @@ export class InputController {
     this.actions = new TouchActionRouter({
       root: actionRoot,
       canClaimPointer: (event) =>
+        this.enabled &&
         event.pointerId !== this.joystickPointer &&
         event.pointerId !== this.cameraPointer,
     });
@@ -188,8 +200,14 @@ export class InputController {
       if (binding.element) this.actions.register(binding);
 
     listen(window, "keydown", (event) => {
-      if (!GAME_KEYS.has(event.code) || this.isTextOrDialogTarget(event.target))
+      if (
+        !this.enabled ||
+        !GAME_KEYS.has(event.code) ||
+        this.isTextOrDialogTarget(event.target)
+      )
         return;
+      // A key held through suspension needs a fresh press after controls resume.
+      if (event.repeat && !this.keys.has(event.code)) return;
       if (event.code === "Space" && this.isButtonOrLinkTarget(event.target))
         return;
       event.preventDefault();
@@ -218,7 +236,7 @@ export class InputController {
     });
     listen(window, "keyup", (event) => {
       // Always release held keys, including when focus moved into another UI.
-      if (!GAME_KEYS.has(event.code)) return;
+      if (!this.enabled || !GAME_KEYS.has(event.code)) return;
       if (
         !this.isTextOrDialogTarget(event.target) &&
         !(event.code === "Space" && this.isButtonOrLinkTarget(event.target))
@@ -238,7 +256,15 @@ export class InputController {
   }
 
   canStartPointer(event) {
-    return event.pointerType !== "mouse" || event.button === 0;
+    return (
+      this.enabled && (event.pointerType !== "mouse" || event.button === 0)
+    );
+  }
+
+  setEnabled(enabled) {
+    this.enabled = Boolean(enabled);
+    this.actions.setEnabled(this.enabled);
+    if (!this.enabled) this.reset();
   }
 
   isTextOrDialogTarget(target) {
@@ -266,6 +292,7 @@ export class InputController {
 
   requestAttack() {
     // Combat owns recovery and block eligibility; input records each entry only.
+    if (!this.enabled) return;
     this.attackRequested = true;
   }
 
@@ -277,7 +304,7 @@ export class InputController {
 
   requestDash() {
     // The movement state owns cooldown eligibility; HUD updates may lag a frame.
-    if (this.dashRequested) return;
+    if (!this.enabled || this.dashRequested) return;
     this.dashRequested = true;
     this.movementRequests.push("dash");
   }
@@ -292,7 +319,7 @@ export class InputController {
 
   requestJump() {
     // Grounding and jump eligibility belong to the movement controller.
-    if (this.jumpRequested) return;
+    if (!this.enabled || this.jumpRequested) return;
     this.jumpRequested = true;
     this.movementRequests.push("jump");
   }
@@ -332,6 +359,7 @@ export class InputController {
   }
 
   updateJoystick(event) {
+    if (!this.enabled) return;
     const bounds = this.joystick.getBoundingClientRect();
     const radius = Math.max(1, Math.min(bounds.width, bounds.height) * 0.34);
     const dx = event.clientX - (bounds.left + bounds.width / 2);

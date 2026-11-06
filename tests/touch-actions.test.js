@@ -676,3 +676,103 @@ test("Dash entry respects real movement cooldown without queueing or automatic r
   assert.equal(character.dash.sequence, 2);
   assert.equal(character.movementState, "dash");
 });
+
+test("disabling the router releases every HOLD source and capture without clearing registrations", (t) => {
+  const f = setup(t);
+  assert.equal(f.router.enabled, true);
+  f.pointer("pointerdown", 1, 535);
+  f.pointer("pointerdown", 2, 535);
+  f.key("keydown", " ", f.sprint);
+  f.pointer("pointerdown", 3, 635);
+  assert.equal(f.router.isHeld("sprint"), true);
+  assert.equal(f.router.pointers.size, 3);
+  assert.equal(f.router.keyboard.size, 1);
+  assert.equal(f.root.capturedPointers.size, 3);
+  f.router.setEnabled(false);
+  assert.equal(f.router.enabled, false);
+  assert.equal(f.router.isHeld("sprint"), false);
+  assert.deepEqual(f.holdChanges, [true, false]);
+  assert.equal(f.router.pointers.size, 0);
+  assert.equal(f.router.keyboard.size, 0);
+  assert.equal(f.root.capturedPointers.size, 0);
+  assert.equal(f.router.actions.size, 3);
+  assert.equal(f.sprint.getAttribute("data-touch-behavior"), "HOLD");
+  f.router.setEnabled(false);
+  assert.deepEqual(f.holdChanges, [true, false]);
+});
+
+test("disabled routing leaves editor pointer, keyboard and assistive events unconsumed", (t) => {
+  const f = setup(t);
+  f.router.setEnabled(false);
+  for (const [index, button] of [f.sprint, f.dash, f.fight].entries()) {
+    const x = button.rect.left + 35;
+    const id = index + 1;
+    assert.equal(f.pointer("pointerdown", id, x).defaultPrevented, false);
+    assert.equal(f.pointer("pointermove", id, 635).defaultPrevented, false);
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
+      assert.equal(f.pointer(type, id, 735).defaultPrevented, false);
+    for (const key of [" ", "Enter"])
+      for (const type of ["keydown", "keyup"])
+        assert.equal(f.key(type, key, button).defaultPrevented, false);
+    for (const type of ["click", "contextmenu", "dragstart"])
+      assert.equal(
+        dispatch(f.document, type, { detail: 0 }, button).defaultPrevented,
+        false,
+      );
+  }
+  assert.equal(f.router.pointers.size, 0);
+  assert.equal(f.router.keyboard.size, 0);
+  assert.equal(f.root.capturedPointers.size, 0);
+  assert.equal(f.router.isHeld("sprint"), false);
+  assert.equal(f.dashCount, 0);
+  assert.equal(f.fightCount, 0);
+  assert.deepEqual(f.holdChanges, []);
+});
+
+test("resumed routing requires fresh entries and uses relocated button hit positions", (t) => {
+  const f = setup(t);
+  f.pointer("pointerdown", 1, 535);
+  f.key("keydown", " ", f.sprint);
+  f.router.setEnabled(false);
+  f.pointer("pointerdown", 2, 635);
+  f.dash.rect.left = 300;
+  f.router.setEnabled(true);
+  assert.equal(f.router.enabled, true);
+  f.pointer("pointermove", 1, 335);
+  f.pointer("pointermove", 2, 335);
+  f.key("keydown", " ", f.sprint, { repeat: true });
+  assert.equal(f.router.isHeld("sprint"), false);
+  assert.equal(f.router.pointers.size, 0);
+  assert.equal(
+    f.dashCount,
+    0,
+    "contacts held through suspension are not replayed",
+  );
+  f.pointer("pointerdown", 3, 635);
+  assert.equal(
+    f.dashCount,
+    0,
+    "the previous Dash hit position is no longer active",
+  );
+  f.pointer("pointerdown", 4, 335);
+  assert.equal(f.dashCount, 1);
+  f.pointer("pointermove", 4, 535);
+  assert.equal(f.router.isHeld("sprint"), true);
+  f.router.setEnabled(true);
+  assert.equal(
+    f.router.getPointer("sprint"),
+    4,
+    "enabling twice does not interrupt a fresh gesture",
+  );
+  f.pointer("pointerup", 4, 535);
+  assert.equal(f.router.isHeld("sprint"), false);
+  f.key("keydown", " ", f.sprint);
+  assert.equal(f.router.isHeld("sprint"), true);
+  f.key("keyup", " ", f.sprint);
+  assert.equal(f.router.isHeld("sprint"), false);
+  f.key("keydown", "Enter", f.dash);
+  assert.equal(f.dashCount, 2);
+  f.key("keyup", "Enter", f.dash);
+  dispatch(f.document, "click", { detail: 0 }, f.fight);
+  assert.equal(f.fightCount, 1, "fresh assistive activation resumes normally");
+});

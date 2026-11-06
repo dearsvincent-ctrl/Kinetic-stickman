@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
+import { checkLayoutEditorEdges } from "./layout-editor-edge-cases.mjs";
 
 // Run against `npm run dev`. CDP dispatches native multi-touch input rather
 // than directly mutating the controller. This is emulation, not device testing.
@@ -21,6 +22,29 @@ const page = await browser.newPage({
 page.on("pageerror", (error) => errors.push(error.message));
 page.on("console", (message) => {
   if (message.type() === "error") errors.push(message.text());
+});
+await page.addInitScript(() => {
+  // Observe native delivery before the editor's capture listener consumes it.
+  window.__layoutNativeEvent = { sequence: 0, latest: null };
+  for (const type of [
+    "pointerdown",
+    "pointermove",
+    "pointerup",
+    "pointercancel",
+  ])
+    window.addEventListener(
+      type,
+      (event) => {
+        window.__layoutNativeEvent.sequence++;
+        window.__layoutNativeEvent.latest = {
+          type,
+          pointerType: event.pointerType,
+          x: event.clientX,
+          y: event.clientY,
+        };
+      },
+      true,
+    );
 });
 const snapshot = () => page.evaluate(() => window.__KINETIC__.snapshot());
 const wait = (predicate, timeout = 25000) =>
@@ -88,6 +112,7 @@ const checkActionLayout = async (width, height) => {
       "#joystick",
       "#reset-camera",
       "#help-button",
+      "#settings-button",
     ]) {
       const other = await page.locator(otherSelector).boundingBox();
       assert.ok(
@@ -898,7 +923,7 @@ try {
   await page.waitForTimeout(250);
   await page.keyboard.up("w");
   assert.deepEqual((await snapshot()).position, helpPosition);
-  await page.locator(".primary-button").tap();
+  await page.locator("#help-dialog .primary-button").tap();
   await wait(() => !window.__KINETIC__.snapshot().paused);
   assert.equal((await snapshot()).paused, false);
   console.log("PASS: instructions pause movement and close cleanly");
@@ -1602,6 +1627,430 @@ try {
     ),
     false,
   );
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.evaluate(() => localStorage.removeItem("kinetic.controls.v1"));
+  await freshScene();
+  const layoutSelectors = {
+    move: "#joystick",
+    sprint: "#sprint-button",
+    dash: "#dash-button",
+    block: "#block-button",
+    jump: "#jump-button",
+  };
+  const layoutIds = Object.keys(layoutSelectors);
+  const layoutRects = async () =>
+    Object.fromEntries(
+      await Promise.all(
+        layoutIds.map(async (id) => [
+          id,
+          await page.locator(layoutSelectors[id]).boundingBox(),
+        ]),
+      ),
+    );
+  const pointOf = (rect) => ({
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2,
+  });
+  const sameLayout = (actual, expected, message) => {
+    for (const id of layoutIds)
+      for (const axis of ["x", "y", "width", "height"])
+        assert.ok(
+          Math.abs(actual[id][axis] - expected[id][axis]) < 1,
+          `${message}: ${id}.${axis}`,
+        );
+  };
+  const overlap = (a, b) =>
+    a.x < b.x + b.width - 0.5 &&
+    a.x + a.width > b.x + 0.5 &&
+    a.y < b.y + b.height - 0.5 &&
+    a.y + a.height > b.y + 0.5;
+  const checkCustomLayout = async (width, height) => {
+    const rects = await layoutRects();
+    for (const [id, rect] of Object.entries(rects)) {
+      assert.ok(
+        rect.x >= 0 &&
+          rect.y >= 0 &&
+          rect.x + rect.width <= width + 0.5 &&
+          rect.y + rect.height <= height + 0.5,
+        `${id} fits a ${width}x${height} customized viewport`,
+      );
+      assert.ok(rect.width >= 44 && rect.height >= 44);
+      for (const other of layoutIds.filter((key) => key !== id))
+        assert.equal(
+          overlap(rect, rects[other]),
+          false,
+          `${id} does not overlap ${other}`,
+        );
+      for (const selector of [
+        ".topbar",
+        ".arena-heading",
+        ".camera-tools",
+        ".movement-readout",
+        "#settings-button",
+        "#reset-camera",
+      ]) {
+        const reserved = await page.locator(selector).boundingBox();
+        if (reserved)
+          assert.equal(
+            overlap(rect, reserved),
+            false,
+            `${id} avoids ${selector}`,
+          );
+      }
+    }
+    const resetRect = await page.locator("#reset-camera").boundingBox();
+    const settingsRect = await page.locator("#settings-button").boundingBox();
+    assert.equal(
+      overlap(resetRect, settingsRect),
+      false,
+      "Settings and Reset remain separate utilities",
+    );
+  };
+  const clickLayoutUi = async (selector) => {
+    const point = await center(selector);
+    await page.mouse.click(point.x, point.y);
+    await step(34);
+  };
+  const openEditor = async () => {
+    await clickLayoutUi("#settings-button");
+    assert.equal(await page.locator("#settings-dialog").isVisible(), true);
+    assert.equal((await snapshot()).paused, true);
+    await clickLayoutUi("#edit-controls-button");
+    assert.equal(await page.locator("#settings-dialog").isVisible(), false);
+    assert.equal(
+      await page.locator("#control-editor-toolbar").isVisible(),
+      true,
+    );
+    assert.equal((await snapshot()).layout.editing, true);
+  };
+  const frozenSimulation = (before, after) => {
+    assert.equal(after.paused, true);
+    for (const field of ["position", "velocity", "jump", "camera"])
+      assert.deepEqual(
+        after[field],
+        before[field],
+        `${field} stays frozen in Settings/editor`,
+      );
+    assert.equal(after.dash.sequence, before.dash.sequence);
+    assert.equal(after.dash.cooldownRemaining, before.dash.cooldownRemaining);
+    assert.equal(after.combat.attack.sequence, before.combat.attack.sequence);
+    assert.equal(after.combat.attack.elapsed, before.combat.attack.elapsed);
+    assert.deepEqual(after.input.move, { x: 0, y: 0 });
+    assert.equal(after.input.sprinting, false);
+    assert.equal(after.input.blocking, false);
+    for (const owner of [
+      "joystickPointer",
+      "cameraPointer",
+      "sprintPointer",
+      "jumpPointer",
+      "blockPointer",
+    ])
+      assert.equal(after.input[owner], null);
+  };
+  const editorTouch = async (type, points) => {
+    const eventType = {
+      touchStart: "pointerdown",
+      touchMove: "pointermove",
+      touchEnd: "pointerup",
+      touchCancel: "pointercancel",
+    }[type];
+    const sequence = await page.evaluate(
+      () => window.__layoutNativeEvent.sequence,
+    );
+    await session.send("Input.dispatchTouchEvent", {
+      type,
+      touchPoints: points,
+    });
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const observed = await page.evaluate(() => window.__layoutNativeEvent);
+      if (
+        observed.sequence > sequence &&
+        observed.latest?.type === eventType &&
+        observed.latest.pointerType === "touch"
+      )
+        return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error(`Editor native ${type} was not delivered`);
+  };
+  const dragLayout = async (id, delta, pointerType) => {
+    const before = await layoutRects();
+    const start = pointOf(before[id]);
+    const destination = { x: start.x + delta.x, y: start.y + delta.y };
+    if (pointerType === "mouse") {
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      assert.equal(
+        await page
+          .locator(layoutSelectors[id])
+          .evaluate((node) => node.classList.contains("is-layout-dragging")),
+        true,
+      );
+      await page.mouse.move(destination.x, destination.y, { steps: 3 });
+      await page.mouse.up();
+    } else {
+      await editorTouch("touchStart", [touch(180, start)]);
+      assert.equal(
+        await page
+          .locator(layoutSelectors[id])
+          .evaluate((node) => node.classList.contains("is-layout-dragging")),
+        true,
+      );
+      await editorTouch("touchMove", [touch(180, destination)]);
+      await editorTouch("touchEnd", [touch(180, destination)]);
+    }
+    await step(34);
+    const after = await layoutRects();
+    assert.ok(
+      Math.hypot(after[id].x - before[id].x, after[id].y - before[id].y) > 3,
+      `${id} moves with a ${pointerType} drag`,
+    );
+    assert.equal(
+      await page
+        .locator(layoutSelectors[id])
+        .evaluate((node) => node.classList.contains("is-layout-dragging")),
+      false,
+    );
+    return after;
+  };
+  // The helper compares independent controls without assuming proposed drags
+  // bypass the editor's own collision/exclusion constraints.
+  const compareIndependent = async (id, before, after) => {
+    for (const other of layoutIds.filter((key) => key !== id))
+      for (const axis of ["x", "y", "width", "height"])
+        closeTo(after[other][axis], before[other][axis], 1);
+  };
+  const defaultLayout = await layoutRects();
+  assert.equal(await page.locator("[data-layout-control]").count(), 5);
+  await page.keyboard.down("d");
+  await page.keyboard.down("Shift");
+  await step(650);
+  await page.keyboard.press("Space");
+  const beforeSettings = await step(140);
+  assert.equal(beforeSettings.jump.airborne, true);
+  await clickLayoutUi("#settings-button");
+  const settingsPaused = await snapshot();
+  assert.equal(settingsPaused.paused, true);
+  assert.deepEqual(
+    settingsPaused.position,
+    beforeSettings.position,
+    "Settings never teleports an airborne character",
+  );
+  assert.deepEqual(
+    settingsPaused.jump,
+    beforeSettings.jump,
+    "Entering Settings retains jump height, velocity and phase",
+  );
+  await page.keyboard.up("d");
+  await page.keyboard.up("Shift");
+  await step(600);
+  frozenSimulation(settingsPaused, await snapshot());
+  await clickLayoutUi("#edit-controls-button");
+  const editorPaused = await snapshot();
+  assert.equal(editorPaused.layout.editing, true);
+  const deltas = {
+    move: { x: 25, y: -18 },
+    sprint: { x: 0, y: 14 },
+    dash: { x: 10, y: -10 },
+    block: { x: -10, y: 14 },
+    jump: { x: -22, y: 14 },
+  };
+  for (const [index, id] of layoutIds.entries()) {
+    const before = await layoutRects();
+    const after = await dragLayout(
+      id,
+      deltas[id],
+      index % 2 ? "mouse" : "touch",
+    );
+    await compareIndependent(id, before, after);
+    frozenSimulation(editorPaused, await snapshot());
+  }
+  // Test gameplay shortcuts with focus on the editor background, rather than
+  // activating the intentionally focused Cancel utility with Space.
+  await page.evaluate(() => document.activeElement?.blur());
+  for (const key of ["w", "Shift", "Space", "e", "q", "f", "r"])
+    await page.keyboard.down(key);
+  await editorTouch("touchStart", [touch(181, { x: 440, y: 210 })]);
+  await editorTouch("touchMove", [touch(181, { x: 475, y: 185 })]);
+  await editorTouch("touchEnd", [touch(181, { x: 475, y: 185 })]);
+  await step(500);
+  frozenSimulation(editorPaused, await snapshot());
+  await page.screenshot({ path: "test-results/control-editor.png" });
+  const draftLayout = await layoutRects();
+  await clickLayoutUi("#layout-save");
+  const savedState = await snapshot();
+  assert.equal(savedState.layout.editing, false);
+  assert.equal(savedState.layout.custom, true);
+  assert.equal(savedState.paused, false);
+  assert.ok(
+    savedState.jump.height > editorPaused.jump.height,
+    "Saving resumes the paused airborne jump instead of resetting its height",
+  );
+  assert.deepEqual(savedState.input.move, { x: 0, y: 0 });
+  assert.equal(savedState.input.sprinting, false);
+  assert.equal(savedState.input.blocking, false);
+  for (const key of ["w", "Shift", "Space", "e", "q", "f", "r"])
+    await page.keyboard.up(key);
+  await step(1100);
+  const resumedLayoutState = await snapshot();
+  assert.equal(
+    resumedLayoutState.jump.sequence,
+    beforeSettings.jump.sequence,
+    "Ignored editor Jump input is never queued",
+  );
+  assert.equal(
+    resumedLayoutState.dash.sequence,
+    beforeSettings.dash.sequence,
+    "Ignored editor Dash input is never queued",
+  );
+  assert.equal(
+    resumedLayoutState.combat.attack.sequence,
+    beforeSettings.combat.attack.sequence,
+    "Ignored editor punch input is never queued",
+  );
+  const storedText = await page.evaluate(() =>
+    localStorage.getItem("kinetic.controls.v1"),
+  );
+  const stored = JSON.parse(storedText);
+  assert.equal(stored.version, 1);
+  assert.deepEqual(Object.keys(stored.positions).sort(), [...layoutIds].sort());
+  for (const id of layoutIds) {
+    const point = pointOf(draftLayout[id]);
+    closeTo(stored.positions[id].x, point.x / 844, 0.002);
+    closeTo(stored.positions[id].y, point.y / 390, 0.002);
+  }
+  await freshScene();
+  const savedLayout = await layoutRects();
+  sameLayout(savedLayout, draftLayout, "Saved centers survive reload");
+  await checkCustomLayout(844, 390);
+  console.log(
+    "PASS: Settings/editor freeze airborne simulation, drag all controls independently, ignore gameplay input and persist normalized centers",
+  );
+
+  // Actual relocated controls retain the centralized hit-test actions.
+  const customMove = pointOf(savedLayout.move);
+  const customAction = Object.fromEntries(
+    ["sprint", "jump", "block", "dash"].map((id) => [
+      id,
+      pointOf(savedLayout[id]),
+    ]),
+  );
+  let customFingers = [
+    touch(191, customMove),
+    touch(192, { x: 440, y: 205 }),
+    touch(193, customAction.sprint),
+  ];
+  await native("touchStart", customFingers);
+  customFingers[0] = touch(191, { x: customMove.x + 32, y: customMove.y });
+  customFingers[1] = touch(192, { x: 475, y: 215 });
+  await native("touchMove", customFingers, customFingers.slice(0, 2));
+  const customOwners = await step(300);
+  const customSlide = async (id, milliseconds = 34) => {
+    customFingers[2] = touch(193, customAction[id]);
+    await native("touchMove", customFingers, [customFingers[2]]);
+    return step(milliseconds);
+  };
+  const customJump = await customSlide("jump", 120);
+  assert.equal(customJump.input.sprinting, false);
+  assert.equal(customJump.jump.sequence, 1);
+  for (const owner of ["joystickPointer", "cameraPointer"])
+    assert.equal(customJump.input[owner], customOwners.input[owner]);
+  assert.equal((await customSlide("block")).input.blocking, true);
+  const customDashRejected = await customSlide("dash");
+  assert.equal(customDashRejected.input.blocking, false);
+  assert.equal(customDashRejected.dash.sequence, 0);
+  await step(1100);
+  assert.equal((await snapshot()).dash.sequence, 0);
+  assert.equal((await customSlide("sprint")).input.sprinting, true);
+  assert.equal((await customSlide("dash")).dash.sequence, 1);
+  await native("touchCancel", [], []);
+  await step(800);
+  await page.screenshot({ path: "test-results/custom-landscape.png" });
+  await openEditor();
+  for (const [index, id] of layoutIds.entries()) {
+    const before = await layoutRects();
+    const after = await dragLayout(
+      id,
+      { x: index % 2 ? -10 : 10, y: index % 2 ? -6 : 6 },
+      index % 2 ? "touch" : "mouse",
+    );
+    await compareIndependent(id, before, after);
+  }
+  await clickLayoutUi("#layout-cancel");
+  sameLayout(await layoutRects(), savedLayout, "Cancel restores saved layout");
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem("kinetic.controls.v1")),
+    storedText,
+  );
+  await openEditor();
+  await clickLayoutUi("#layout-reset");
+  sameLayout(await layoutRects(), defaultLayout, "Reset previews CSS defaults");
+  await clickLayoutUi("#layout-cancel");
+  sameLayout(await layoutRects(), savedLayout, "Cancel undoes Reset preview");
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem("kinetic.controls.v1")),
+    storedText,
+  );
+  for (const viewport of [
+    { width: 740, height: 360 },
+    { width: 390, height: 844 },
+    { width: 320, height: 568 },
+    { width: 568, height: 320 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await step(100);
+    await checkCustomLayout(viewport.width, viewport.height);
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem("kinetic.controls.v1")),
+      storedText,
+      "Orientation never mutates raw saved anchors",
+    );
+    if (viewport.width === 390)
+      await page.screenshot({ path: "test-results/custom-portrait.png" });
+  }
+  await page.setViewportSize({ width: 844, height: 390 });
+  await step(100);
+  sameLayout(
+    await layoutRects(),
+    savedLayout,
+    "Returning to landscape restores anchor intent",
+  );
+  await openEditor();
+  await clickLayoutUi("#layout-reset");
+  await clickLayoutUi("#layout-save");
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem("kinetic.controls.v1")),
+    null,
+  );
+  sameLayout(
+    await layoutRects(),
+    defaultLayout,
+    "Saving Reset restores unchanged CSS defaults",
+  );
+  for (const invalid of [
+    "{",
+    JSON.stringify({ ...stored, version: 0 }),
+    JSON.stringify({ version: 1, positions: { move: { x: 0.2, y: 0.5 } } }),
+  ]) {
+    await page.evaluate(
+      (value) => localStorage.setItem("kinetic.controls.v1", value),
+      invalid,
+    );
+    await freshScene();
+    assert.equal((await snapshot()).layout.custom, false);
+    sameLayout(
+      await layoutRects(),
+      defaultLayout,
+      "Invalid/outdated saved data safely uses defaults",
+    );
+  }
+  await page.evaluate(() => localStorage.removeItem("kinetic.controls.v1"));
+  console.log(
+    "PASS: relocated native slide/multitouch, mouse/touch editing, Cancel/Reset/Save semantics, orientation containment and invalid-storage fallback",
+  );
+  await checkLayoutEditorEdges(page, step);
+  await page.clock.resume();
   assert.deepEqual(errors, [], "No browser runtime errors");
   console.log(
     "PASS: portrait adaptation, controls within viewport, no page overflow or runtime errors",

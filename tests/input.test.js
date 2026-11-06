@@ -1447,3 +1447,198 @@ test("lifecycle resets discard ordered movement requests and release their pendi
     assert.equal(f.input.movementRequests.length, 0);
   }
 });
+
+test("disabling input immediately releases controls, captures, keys and pending requests", (t) => {
+  const f = setup(t);
+  assert.equal(f.input.enabled, true);
+  assert.equal(f.input.actions.enabled, true);
+  dispatch(f.joystick, "pointerdown", f.joystickPoint(1, 1, 0));
+  f.pointer(f.cameraSurface, "pointerdown", 2, 500, 200);
+  f.pointer(f.window, "pointermove", 2, 520, 210);
+  f.pointer(f.sprintButton, "pointerdown", 3);
+  f.pointer(f.blockButton, "pointerdown", 4);
+  f.key("keydown", "KeyQ");
+  f.key("keydown", "ShiftLeft");
+  f.key("keydown", "KeyW");
+  f.input.requestDash();
+  f.input.requestJump();
+  f.input.requestAttack();
+  assert.equal(f.input.sprinting, true);
+  assert.equal(f.input.blocking, true);
+  assert.equal(f.input.movementRequests.length, 2);
+
+  f.input.setEnabled(false);
+  assert.equal(f.input.enabled, false);
+  assert.equal(f.input.actions.enabled, false);
+  assertStopped(f.input);
+  assert.equal(f.input.joystickPointer, null);
+  assert.equal(f.input.cameraPointer, null);
+  assert.equal(f.input.sprintPointer, null);
+  assert.equal(f.input.blockPointer, null);
+  assert.equal(f.input.keys.size, 0);
+  assert.equal(f.input.actions.pointers.size, 0);
+  assert.equal(f.input.actions.keyboard.size, 0);
+  assert.equal(f.input.consumeMovementRequest(), null);
+  assert.equal(f.input.consumeDashRequest(), false);
+  assert.equal(f.input.consumeJumpRequest(), false);
+  assert.equal(f.input.consumeAttackRequest(), false);
+  for (const element of [f.joystick, f.cameraSurface, f.actionRoot])
+    assert.equal(element.capturedPointers.size, 0);
+  assert.equal(f.sprintButton.getAttribute("aria-pressed"), "false");
+  assert.equal(f.blockButton.getAttribute("aria-pressed"), "false");
+  f.input.setEnabled(false);
+  assertStopped(f.input);
+});
+
+test("disabled input leaves editor gestures, native button events and game keys unconsumed", (t) => {
+  const f = setup(t);
+  f.input.setEnabled(false);
+  let propagatedDown = 0;
+  f.window.addEventListener("pointerdown", () => propagatedDown++);
+  const controls = [
+    f.joystick,
+    f.cameraSurface,
+    f.sprintButton,
+    f.blockButton,
+    f.attackButton,
+    f.dashButton,
+    f.jumpButton,
+    f.resetButton,
+  ];
+  for (const [index, element] of controls.entries()) {
+    const id = index + 1;
+    assert.equal(f.pointer(element, "pointerdown", id).defaultPrevented, false);
+    assert.equal(
+      f.pointer(f.window, "pointermove", id, 700, 300).defaultPrevented,
+      false,
+    );
+    assert.equal(f.pointer(f.window, "pointerup", id).defaultPrevented, false);
+    assert.equal(
+      dispatch(element, "click", { detail: 0 }).defaultPrevented,
+      false,
+    );
+    assert.equal(dispatch(element, "contextmenu").defaultPrevented, false);
+    assert.equal(dispatch(element, "dragstart").defaultPrevented, false);
+  }
+  assert.equal(
+    propagatedDown,
+    controls.length,
+    "disabled controls do not stop editor pointer propagation",
+  );
+  for (const code of [
+    "KeyW",
+    "ArrowLeft",
+    "ShiftLeft",
+    "KeyQ",
+    "KeyF",
+    "KeyE",
+    "KeyR",
+    "Space",
+  ])
+    for (const type of ["keydown", "keyup"])
+      assert.equal(f.key(type, code).defaultPrevented, false);
+  for (const button of [
+    f.sprintButton,
+    f.blockButton,
+    f.attackButton,
+    f.dashButton,
+    f.jumpButton,
+  ])
+    for (const code of ["Space", "Enter"])
+      for (const type of ["keydown", "keyup"])
+        assert.equal(f.key(type, code, {}, button).defaultPrevented, false);
+  f.input.requestAttack();
+  f.input.requestDash();
+  f.input.requestJump();
+  assert.equal(f.input.consumeAttackRequest(), false);
+  assert.equal(f.input.consumeMovementRequest(), null);
+  assert.equal(f.input.consumeDashRequest(), false);
+  assert.equal(f.input.consumeJumpRequest(), false);
+  assert.equal(f.resetCount, 0);
+  assertStopped(f.input);
+  assert.equal(f.input.keys.size, 0);
+  assert.equal(f.input.actions.pointers.size, 0);
+});
+
+test("enabling input requires fresh entries and resumes touch, keyboard and reset controls", (t) => {
+  const f = setup(t);
+  f.key("keydown", "KeyW");
+  f.key("keydown", "KeyQ");
+  f.key("keydown", "Space");
+  f.input.setEnabled(false);
+  f.pointer(f.joystick, "pointerdown", 1);
+  f.pointer(f.cameraSurface, "pointerdown", 2, 500, 200);
+  f.pointer(f.dashButton, "pointerdown", 3);
+  f.input.setEnabled(true);
+  assert.equal(f.input.enabled, true);
+  assert.equal(f.input.actions.enabled, true);
+  f.pointer(f.window, "pointermove", 1, 700, 400);
+  f.pointer(f.window, "pointermove", 2, 520, 220);
+  f.pointer(f.window, "pointermove", 3, 770, 400);
+  for (const code of ["KeyW", "KeyQ", "ShiftLeft", "KeyF", "KeyE", "Space"])
+    f.key("keydown", code, { repeat: true });
+  assertStopped(f.input);
+  assert.equal(f.input.consumeMovementRequest(), null);
+  assert.equal(f.input.consumeAttackRequest(), false);
+  assert.equal(f.input.actions.pointers.size, 0);
+
+  f.key("keydown", "KeyW");
+  f.key("keydown", "KeyQ");
+  f.key("keydown", "ShiftLeft");
+  f.key("keydown", "KeyF");
+  f.key("keydown", "KeyE");
+  f.key("keydown", "Space");
+  near(f.input.move.y, 1);
+  assert.equal(f.input.blocking, true);
+  assert.equal(f.input.sprinting, true);
+  assert.equal(f.input.consumeAttackRequest(), true);
+  assert.equal(f.input.consumeMovementRequest(), "dash");
+  assert.equal(f.input.consumeMovementRequest(), "jump");
+  f.input.reset();
+  dispatch(f.joystick, "pointerdown", f.joystickPoint(10, -1, 0));
+  f.pointer(f.cameraSurface, "pointerdown", 11, 500, 200);
+  f.pointer(f.window, "pointermove", 11, 515, 207);
+  f.pointer(f.sprintButton, "pointerdown", 12);
+  f.pointer(f.blockButton, "pointerdown", 13);
+  f.pointer(f.dashButton, "pointerdown", 14);
+  f.pointer(f.jumpButton, "pointerdown", 15);
+  f.pointer(f.attackButton, "pointerdown", 16);
+  near(f.input.move.x, -1);
+  assert.equal(f.input.sprinting, true);
+  assert.equal(f.input.blocking, true);
+  assert.deepEqual(f.input.consumeLookDelta(), { x: 15, y: 7 });
+  assert.equal(f.input.consumeMovementRequest(), "dash");
+  assert.equal(f.input.consumeMovementRequest(), "jump");
+  assert.equal(f.input.consumeAttackRequest(), true);
+  f.input.setEnabled(true);
+  assert.equal(
+    f.input.sprintPointer,
+    12,
+    "enabling an already enabled controller preserves current input",
+  );
+  dispatch(f.resetButton, "click", { detail: 0 });
+  assert.equal(f.resetCount, 1);
+});
+
+test("buttons relocated while input is disabled use their current hit positions on resume", (t) => {
+  const f = setup(t);
+  f.input.setEnabled(false);
+  Object.assign(f.dashButton.rect, { left: 200, top: 260 });
+  Object.assign(f.jumpButton.rect, { left: 290, top: 260 });
+  f.input.setEnabled(true);
+  f.pointer(f.dashButton, "pointerdown", 1, 615, 400);
+  assert.equal(
+    f.input.consumeMovementRequest(),
+    null,
+    "the old Dash position no longer activates Dash",
+  );
+  f.pointer(f.sprintButton, "pointerdown", 2);
+  assert.equal(f.input.sprinting, true);
+  f.pointer(f.window, "pointermove", 2, 235, 300);
+  assert.equal(f.input.sprinting, false);
+  assert.equal(f.input.consumeMovementRequest(), "dash");
+  f.pointer(f.window, "pointermove", 2, 320, 300);
+  assert.equal(f.input.consumeMovementRequest(), "jump");
+  f.pointer(f.window, "pointerup", 2);
+  assert.equal(f.input.actions.ownsPointer(2), false);
+});

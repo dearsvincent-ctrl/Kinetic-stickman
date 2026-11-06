@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 import { resolvePagesBase } from "../build/pagesBase.js";
+import { checkLayoutEditorEdges } from "./layout-editor-edge-cases.mjs";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
 // the expected prefix makes root-relative asset mistakes fail with real 404s.
@@ -99,6 +100,28 @@ try {
       errors.push(`${response.status()} ${response.url()}`);
   });
 
+  await page.addInitScript(() => {
+    window.__layoutNativeEvent = { sequence: 0, latest: null };
+    for (const type of [
+      "pointerdown",
+      "pointermove",
+      "pointerup",
+      "pointercancel",
+    ])
+      window.addEventListener(
+        type,
+        (event) => {
+          window.__layoutNativeEvent.sequence++;
+          window.__layoutNativeEvent.latest = {
+            type,
+            pointerType: event.pointerType,
+            x: event.clientX,
+            y: event.clientY,
+          };
+        },
+        true,
+      );
+  });
   await page.clock.install();
   await page.goto(`${origin}${base}`, { waitUntil: "networkidle" });
   await page.waitForSelector("#loading", { state: "detached" });
@@ -188,6 +211,7 @@ try {
         "#joystick",
         "#reset-camera",
         "#help-button",
+        "#settings-button",
       ]) {
         assert.ok(
           separate(box, await page.locator(otherSelector).boundingBox()),
@@ -807,6 +831,364 @@ try {
   }
   await page.screenshot({ path: "test-results/pages-portrait.png" });
 
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.evaluate(() => localStorage.removeItem("kinetic.controls.v1"));
+  await page.reload({ waitUntil: "networkidle" });
+  await page.clock.runFor(500);
+  const layoutSelectors = {
+    move: "#joystick",
+    sprint: "#sprint-button",
+    dash: "#dash-button",
+    block: "#block-button",
+    jump: "#jump-button",
+  };
+  const layoutIds = Object.keys(layoutSelectors);
+  const layoutRects = async () =>
+    Object.fromEntries(
+      await Promise.all(
+        layoutIds.map(async (id) => [
+          id,
+          await page.locator(layoutSelectors[id]).boundingBox(),
+        ]),
+      ),
+    );
+  const pointOf = (rect) => ({
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2,
+  });
+  const sameLayout = (actual, expected, message) => {
+    for (const id of layoutIds)
+      for (const axis of ["x", "y", "width", "height"])
+        assert.ok(
+          Math.abs(actual[id][axis] - expected[id][axis]) < 1,
+          `${message}: ${id}.${axis}`,
+        );
+  };
+  const hudState = () =>
+    page.evaluate(() =>
+      Object.fromEntries(
+        [
+          "movement-state",
+          "speed-value",
+          "stance-label",
+          "jump-status",
+          "dash-cooldown",
+        ].map((id) => [id, document.getElementById(id).textContent]),
+      ),
+    );
+  const clickLayoutUi = async (selector) => {
+    const point = await center(selector);
+    await page.mouse.click(point.x, point.y);
+    await page.clock.runFor(34);
+  };
+  const openEditor = async () => {
+    await clickLayoutUi("#settings-button");
+    assert.equal(await page.locator("#settings-dialog").isVisible(), true);
+    await clickLayoutUi("#edit-controls-button");
+    assert.equal(await page.locator("#settings-dialog").isVisible(), false);
+    assert.equal(
+      await page.locator("#control-editor-toolbar").isVisible(),
+      true,
+    );
+    assert.equal(
+      await page
+        .locator("body")
+        .evaluate((node) => node.classList.contains("is-layout-editing")),
+      true,
+    );
+  };
+  const editorTouch = async (type, points) => {
+    const eventType = {
+      touchStart: "pointerdown",
+      touchMove: "pointermove",
+      touchEnd: "pointerup",
+      touchCancel: "pointercancel",
+    }[type];
+    const sequence = await page.evaluate(
+      () => window.__layoutNativeEvent.sequence,
+    );
+    await session.send("Input.dispatchTouchEvent", {
+      type,
+      touchPoints: points,
+    });
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const observed = await page.evaluate(() => window.__layoutNativeEvent);
+      if (
+        observed.sequence > sequence &&
+        observed.latest?.type === eventType &&
+        observed.latest.pointerType === "touch"
+      )
+        return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error(`Production editor ${type} was not delivered`);
+  };
+  const dragLayout = async (id, delta, pointerType) => {
+    const before = await layoutRects();
+    const start = pointOf(before[id]);
+    const destination = { x: start.x + delta.x, y: start.y + delta.y };
+    if (pointerType === "mouse") {
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      await page.mouse.move(destination.x, destination.y, { steps: 3 });
+      await page.mouse.up();
+    } else {
+      await editorTouch("touchStart", [touch(180, start)]);
+      await editorTouch("touchMove", [touch(180, destination)]);
+      await editorTouch("touchEnd", [touch(180, destination)]);
+    }
+    await page.clock.runFor(34);
+    const after = await layoutRects();
+    assert.ok(
+      Math.hypot(after[id].x - before[id].x, after[id].y - before[id].y) > 3,
+      `${id} moves with ${pointerType} in production`,
+    );
+    for (const other of layoutIds.filter((key) => key !== id))
+      for (const axis of ["x", "y", "width", "height"])
+        assert.ok(
+          Math.abs(after[other][axis] - before[other][axis]) < 1,
+          `Moving ${id} leaves ${other} independent`,
+        );
+  };
+  const checkCustomLayout = async (width, height) => {
+    const rects = await layoutRects();
+    for (const [id, box] of Object.entries(rects)) {
+      assert.ok(
+        box.x >= 0 &&
+          box.y >= 0 &&
+          box.x + box.width <= width + 0.5 &&
+          box.y + box.height <= height + 0.5,
+        `${id} fits custom ${width}x${height}`,
+      );
+      assert.ok(box.width >= 44 && box.height >= 44);
+      for (const other of layoutIds.filter((key) => key !== id))
+        assert.ok(separate(box, rects[other]), `${id} avoids ${other}`);
+      for (const selector of [
+        ".topbar",
+        ".arena-heading",
+        ".camera-tools",
+        ".movement-readout",
+        "#settings-button",
+        "#reset-camera",
+      ]) {
+        const reserved = await page.locator(selector).boundingBox();
+        if (reserved)
+          assert.ok(separate(box, reserved), `${id} avoids ${selector}`);
+      }
+    }
+    assert.ok(
+      separate(
+        await page.locator("#settings-button").boundingBox(),
+        await page.locator("#reset-camera").boundingBox(),
+      ),
+    );
+  };
+  const defaultLayout = await layoutRects();
+  await page.keyboard.press("Space");
+  await page.clock.runFor(160);
+  await openEditor();
+  const pausedHud = await hudState();
+  assert.ok(
+    ["TAKE-OFF", "ASCENT", "DESCENT", "LANDING"].includes(
+      pausedHud["movement-state"],
+    ),
+    "Editor freezes the existing airborne production state",
+  );
+  const deltas = {
+    move: { x: 25, y: -18 },
+    sprint: { x: 0, y: 14 },
+    dash: { x: 10, y: -10 },
+    block: { x: -10, y: 14 },
+    jump: { x: -22, y: 14 },
+  };
+  for (const [index, id] of layoutIds.entries()) {
+    await dragLayout(id, deltas[id], index % 2 ? "touch" : "mouse");
+    assert.deepEqual(
+      await hudState(),
+      pausedHud,
+      "Production editor dragging cannot advance movement or actions",
+    );
+  }
+  await page.evaluate(() => document.activeElement?.blur());
+  for (const key of ["w", "Shift", "Space", "e", "q", "f", "r"])
+    await page.keyboard.down(key);
+  await editorTouch("touchStart", [touch(181, { x: 440, y: 210 })]);
+  await editorTouch("touchMove", [touch(181, { x: 475, y: 185 })]);
+  await editorTouch("touchEnd", [touch(181, { x: 475, y: 185 })]);
+  await page.clock.runFor(500);
+  assert.deepEqual(
+    await hudState(),
+    pausedHud,
+    "Ignored keyboard/camera attempts cannot change production editor state",
+  );
+  assert.equal(await pressed("#sprint-button"), "false");
+  assert.equal(await pressed("#block-button"), "false");
+  const draftLayout = await layoutRects();
+  await clickLayoutUi("#layout-save");
+  for (const key of ["w", "Shift", "Space", "e", "q", "f", "r"])
+    await page.keyboard.up(key);
+  await page.clock.runFor(1100);
+  assert.equal(await page.locator("#jump-status").textContent(), "READY");
+  assert.equal(await page.locator("#dash-cooldown").textContent(), "READY");
+  assert.equal(await pressed("#sprint-button"), "false");
+  assert.equal(await pressed("#block-button"), "false");
+  assert.equal(
+    await page.locator("#stance-label").textContent(),
+    "FREE MOVEMENT",
+  );
+  const storedText = await page.evaluate(() =>
+    localStorage.getItem("kinetic.controls.v1"),
+  );
+  const stored = JSON.parse(storedText);
+  assert.equal(stored.version, 1);
+  assert.deepEqual(Object.keys(stored.positions).sort(), [...layoutIds].sort());
+  for (const id of layoutIds) {
+    const point = pointOf(draftLayout[id]);
+    assert.ok(Math.abs(stored.positions[id].x - point.x / 844) < 0.002);
+    assert.ok(Math.abs(stored.positions[id].y - point.y / 390) < 0.002);
+  }
+  await page.reload({ waitUntil: "networkidle" });
+  await page.clock.runFor(500);
+  const savedLayout = await layoutRects();
+  sameLayout(
+    savedLayout,
+    draftLayout,
+    "Custom layout persists in the production bundle",
+  );
+  await checkCustomLayout(844, 390);
+
+  const customMove = pointOf(savedLayout.move);
+  const customAction = Object.fromEntries(
+    ["sprint", "jump", "block", "dash"].map((id) => [
+      id,
+      pointOf(savedLayout[id]),
+    ]),
+  );
+  let customFingers = [
+    touch(191, customMove),
+    touch(192, { x: 440, y: 205 }),
+    touch(193, customAction.sprint),
+  ];
+  await native("touchStart", customFingers);
+  customFingers[0] = touch(191, { x: customMove.x + 32, y: customMove.y });
+  customFingers[1] = touch(192, { x: 475, y: 215 });
+  await native("touchMove", customFingers, customFingers.slice(0, 2));
+  await page.clock.runFor(300);
+  const customSlide = async (id, milliseconds = 100) => {
+    customFingers[2] = touch(193, customAction[id]);
+    await native("touchMove", customFingers, [customFingers[2]]);
+    await page.clock.runFor(milliseconds);
+  };
+  await customSlide("jump");
+  assert.equal(await pressed("#sprint-button"), "false");
+  assert.equal(await disabled("#jump-button"), "true");
+  for (const selector of ["#joystick", "#camera-surface"])
+    assert.equal(
+      await page
+        .locator(selector)
+        .evaluate((node) => node.classList.contains("is-active")),
+      true,
+    );
+  await customSlide("block");
+  assert.equal(await pressed("#block-button"), "true");
+  await customSlide("dash");
+  assert.equal(await pressed("#block-button"), "false");
+  assert.equal(
+    await page.locator("#dash-cooldown").textContent(),
+    "LAND FIRST",
+  );
+  await page.clock.runFor(1100);
+  assert.equal(await page.locator("#dash-cooldown").textContent(), "READY");
+  await customSlide("sprint");
+  assert.equal(await pressed("#sprint-button"), "true");
+  await customSlide("dash");
+  assert.equal(await disabled("#dash-button"), "true");
+  await native("touchCancel", [], []);
+  await page.clock.runFor(800);
+  await openEditor();
+  for (const [index, id] of layoutIds.entries())
+    await dragLayout(
+      id,
+      { x: index % 2 ? -10 : 10, y: index % 2 ? -6 : 6 },
+      index % 2 ? "mouse" : "touch",
+    );
+  await clickLayoutUi("#layout-cancel");
+  sameLayout(
+    await layoutRects(),
+    savedLayout,
+    "Production Cancel restores saved positions",
+  );
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem("kinetic.controls.v1")),
+    storedText,
+  );
+  await openEditor();
+  await clickLayoutUi("#layout-reset");
+  sameLayout(
+    await layoutRects(),
+    defaultLayout,
+    "Production Reset previews default positions",
+  );
+  await clickLayoutUi("#layout-cancel");
+  sameLayout(
+    await layoutRects(),
+    savedLayout,
+    "Production Cancel undoes a Reset preview",
+  );
+  for (const viewport of [
+    { width: 740, height: 360 },
+    { width: 390, height: 844 },
+    { width: 320, height: 568 },
+    { width: 568, height: 320 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.clock.runFor(100);
+    await checkCustomLayout(viewport.width, viewport.height);
+    assert.equal(
+      await page.evaluate(() => localStorage.getItem("kinetic.controls.v1")),
+      storedText,
+      "Orientation leaves normalized saved anchors untouched",
+    );
+  }
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.clock.runFor(100);
+  sameLayout(
+    await layoutRects(),
+    savedLayout,
+    "Returning to landscape restores custom anchors",
+  );
+  await openEditor();
+  await clickLayoutUi("#layout-reset");
+  await clickLayoutUi("#layout-save");
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem("kinetic.controls.v1")),
+    null,
+  );
+  sameLayout(
+    await layoutRects(),
+    defaultLayout,
+    "Saving Reset clears custom data and restores CSS defaults",
+  );
+  for (const invalid of ["{", JSON.stringify({ ...stored, version: 0 })]) {
+    await page.evaluate(
+      (value) => localStorage.setItem("kinetic.controls.v1", value),
+      invalid,
+    );
+    await page.reload({ waitUntil: "networkidle" });
+    await page.clock.runFor(500);
+    sameLayout(
+      await layoutRects(),
+      defaultLayout,
+      "Invalid/outdated production storage uses defaults safely",
+    );
+  }
+  await page.evaluate(() => localStorage.removeItem("kinetic.controls.v1"));
+  await checkLayoutEditorEdges(page, (milliseconds) =>
+    page.clock.runFor(milliseconds),
+  );
+  await page.clock.resume();
+
   for (const asset of requests) {
     const url = new URL(asset);
     assert.equal(url.origin, origin, `No external asset request: ${asset}`);
@@ -826,7 +1208,7 @@ try {
     "Production page has no runtime or asset errors",
   );
   console.log(
-    `PASS: production bundle renders at ${base}; Pages assets, native Jump/multitouch, grounded-only automatic proximity punches, Block priority, slide HOLD/PRESS, Jump/Dash exclusion and responsive action/Reset Camera layouts work`,
+    `PASS: production bundle renders at ${base}; Pages assets, native Jump/multitouch, grounded-only automatic proximity punches, Block priority, slide HOLD/PRESS, Jump/Dash exclusion responsive action/Reset Camera layouts and saved control editing work`,
   );
   console.log("No physical Android device was tested.");
 } finally {
