@@ -34,7 +34,7 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.5.1</b></span>
+          <span class="version">PROTOTYPE <b>0.6</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
@@ -151,6 +151,19 @@
           <span>BLOCK</span>
         </button>
         <button
+          id="jump-button"
+          class="jump-button"
+          aria-label="Jump"
+          aria-disabled="false"
+          title="Jump (Space)"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 17V4m-5 5 5-5 5 5M5 20h14" />
+          </svg>
+          <span>JUMP</span>
+          <span id="jump-status" class="jump-status">READY</span>
+        </button>
+        <button
           id="sprint-button"
           class="sprint-button"
           aria-label="Hold to sprint"
@@ -197,10 +210,10 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.5.1</div>
+        <div class="eyebrow">KINETIC / VERSION 0.6</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
-          Approach the training dummy.<br />Practise movement, timing, and guard.
+          Approach the training dummy.<br />Practise movement, jumps, and guard.
         </p>
         <dl>
           <div>
@@ -234,12 +247,19 @@
             </dd>
           </div>
           <div>
+            <dt>Jump</dt>
+            <dd>
+              Tap or slide onto JUMP
+              <span>or Space</span>
+            </dd>
+          </div>
+          <div>
             <dt>Reset view</dt>
             <dd>Tap RESET VIEW <span>or R</span></dd>
           </div>
         </dl>
         <p class="help-note">
-          Step away from the dummy to stop automatic punches.
+          Use the joystick for light air control. Land before dashing or punching.
         </p>
         <form method="dialog">
           <button class="primary-button">

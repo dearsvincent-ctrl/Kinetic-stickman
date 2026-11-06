@@ -77,9 +77,20 @@ export class ProximityCombatController {
     }
   }
 
-  update(dt, { position, blocking = false, facing, context = {} } = {}) {
+  update(
+    dt,
+    { position, blocking = false, facing, grounded = true, context = {} } = {},
+  ) {
     if (!Number.isFinite(dt) || dt <= 0) return;
-    this._refreshTarget(position);
+    if (grounded) {
+      this._refreshTarget(position);
+    } else {
+      // Takeoff, flight and landing all suspend grounded combat selection.
+      // Discard hysteresis so neither an attack nor target-facing can resume
+      // from stale proximity while movement owns the character.
+      this.reset();
+      this.combat.cancelAttack("movement");
+    }
     this.combat.setBlocking(blocking);
     if (this.target) {
       const dx = this.target.position.x - position.x;

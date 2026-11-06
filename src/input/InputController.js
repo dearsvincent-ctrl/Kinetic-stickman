@@ -18,6 +18,7 @@ const GAME_KEYS = new Set([
   "KeyF",
   "KeyE",
   "KeyQ",
+  "Space",
 ]);
 const DEAD_ZONE = 0.1;
 
@@ -36,6 +37,7 @@ export class InputController {
     attackButton,
     blockButton,
     dashButton,
+    jumpButton,
     onReset,
     actionRoot = document.documentElement,
     actionBindings = [],
@@ -47,6 +49,7 @@ export class InputController {
     this.attackButton = attackButton;
     this.blockButton = blockButton;
     this.dashButton = dashButton;
+    this.jumpButton = jumpButton;
     this.onReset = onReset ?? (() => {});
 
     this.move = { x: 0, y: 0 };
@@ -54,6 +57,9 @@ export class InputController {
     this.blocking = false;
     this.attackRequested = false;
     this.dashRequested = false;
+    this.jumpRequested = false;
+    // At most one pending entry per movement action, in original input order.
+    this.movementRequests = [];
     this.touchMove = { x: 0, y: 0 };
     this.lookDelta = { x: 0, y: 0 };
     this.keys = new Set();
@@ -170,6 +176,12 @@ export class InputController {
         behavior: ActionBehavior.HOLD,
         onHoldChange: () => this.updateState(),
       },
+      {
+        id: "jump",
+        element: jumpButton,
+        behavior: ActionBehavior.PRESS,
+        onActivate: () => this.requestJump(),
+      },
       ...actionBindings,
     ];
     for (const binding of bindings)
@@ -177,6 +189,8 @@ export class InputController {
 
     listen(window, "keydown", (event) => {
       if (!GAME_KEYS.has(event.code) || this.isTextOrDialogTarget(event.target))
+        return;
+      if (event.code === "Space" && this.isButtonOrLinkTarget(event.target))
         return;
       event.preventDefault();
       if (event.code === "KeyR") {
@@ -193,13 +207,23 @@ export class InputController {
         this.keys.add("KeyE");
         return;
       }
+      if (event.code === "Space") {
+        // Focused action buttons consume Space in the router's capture phase.
+        if (!event.repeat && !this.keys.has("Space")) this.requestJump();
+        this.keys.add("Space");
+        return;
+      }
       this.keys.add(event.code);
       this.updateState();
     });
     listen(window, "keyup", (event) => {
       // Always release held keys, including when focus moved into another UI.
       if (!GAME_KEYS.has(event.code)) return;
-      if (!this.isTextOrDialogTarget(event.target)) event.preventDefault();
+      if (
+        !this.isTextOrDialogTarget(event.target) &&
+        !(event.code === "Space" && this.isButtonOrLinkTarget(event.target))
+      )
+        event.preventDefault();
       this.keys.delete(event.code);
       this.updateState();
     });
@@ -228,6 +252,13 @@ export class InputController {
     );
   }
 
+  isButtonOrLinkTarget(target) {
+    return (
+      target instanceof Element &&
+      Boolean(target.closest('button, a, [role="button"]'))
+    );
+  }
+
   consumeEvent(event) {
     if (event.cancelable) event.preventDefault();
     event.stopPropagation();
@@ -246,13 +277,40 @@ export class InputController {
 
   requestDash() {
     // The movement state owns cooldown eligibility; HUD updates may lag a frame.
+    if (this.dashRequested) return;
     this.dashRequested = true;
+    this.movementRequests.push("dash");
   }
 
   consumeDashRequest() {
     const requested = this.dashRequested;
     this.dashRequested = false;
+    const index = this.movementRequests.indexOf("dash");
+    if (index !== -1) this.movementRequests.splice(index, 1);
     return requested;
+  }
+
+  requestJump() {
+    // Grounding and jump eligibility belong to the movement controller.
+    if (this.jumpRequested) return;
+    this.jumpRequested = true;
+    this.movementRequests.push("jump");
+  }
+
+  consumeJumpRequest() {
+    const requested = this.jumpRequested;
+    this.jumpRequested = false;
+    const index = this.movementRequests.indexOf("jump");
+    if (index !== -1) this.movementRequests.splice(index, 1);
+    return requested;
+  }
+
+  consumeMovementRequest() {
+    if (!this.movementRequests.length) return null;
+    const action = this.movementRequests.shift();
+    if (action === "dash") this.dashRequested = false;
+    else if (action === "jump") this.jumpRequested = false;
+    return action;
   }
 
   capture(element, pointerId) {
@@ -349,6 +407,8 @@ export class InputController {
     this.cameraPointer = null;
     this.attackRequested = false;
     this.dashRequested = false;
+    this.jumpRequested = false;
+    this.movementRequests.length = 0;
     this.actions.reset();
     this.touchMove.x = 0;
     this.touchMove.y = 0;
@@ -373,6 +433,9 @@ export class InputController {
   }
   get dashPointer() {
     return this.actions.getPointer("dash");
+  }
+  get jumpPointer() {
+    return this.actions.getPointer("jump");
   }
 
   destroy() {

@@ -200,6 +200,12 @@ export class CombatController {
     }
   }
 
+  // Movement states may end a grounded strike without releasing held defence.
+  // Repeated cancellation keeps the same recovery instead of restarting it.
+  cancelAttack(reason = "movement") {
+    this._cancelAttack(reason);
+  }
+
   _cancelAttack(reason) {
     if (!this.attack.active || this.attack.cancelled) return;
     this.attack.cancelled = true;

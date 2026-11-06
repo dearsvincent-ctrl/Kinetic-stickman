@@ -476,3 +476,45 @@ test("punches and Block preserve a continuously steering dash", () => {
   assert.ok(combatRoot.position.x > 0.5);
   assert.ok(combatRoot.position.z < -0.5);
 });
+
+test("movement cancellation preserves current reach and completes smooth recovery", () => {
+  const combat = new CombatController();
+  combat.requestAttack();
+  combat.update(0.13);
+  const reach = combat.attack.extension;
+  combat.cancelAttack();
+  close(combat.attack.extension, reach);
+  assert.equal(combat.attack.phase, "recovery");
+  assert.equal(combat.attack.cancelled, true);
+  assert.equal(combat.attack.exitReason, "movement");
+  combat.update(0.08);
+  close(combat.attack.extension, reach / 2);
+  combat.cancelAttack();
+  combat.update(0.08);
+  assert.equal(combat.attack.active, false);
+  assert.equal(combat.attack.sequence, 1);
+  close(combat.attack.extension, 0);
+  // Cleanup itself does not save another strike for when recovery ends.
+  combat.update(1);
+  assert.equal(combat.attack.sequence, 1);
+});
+
+test("public attack cancellation keeps held Block and supports explicit reasons", () => {
+  const combat = new CombatController();
+  combat.setBlocking(true);
+  combat.cancelAttack("jump");
+  assert.equal(combat.blocking, true);
+  assert.equal(combat.ready, false);
+  assert.equal(combat.attack.active, false);
+  combat.setBlocking(false);
+  combat.requestAttack();
+  combat.update(0.12);
+  combat.cancelAttack("jump");
+  assert.equal(combat.attack.exitReason, "jump");
+  combat.setBlocking(true);
+  combat.cancelAttack();
+  combat.update(0.16);
+  assert.equal(combat.blocking, true);
+  assert.equal(combat.attack.active, false);
+  assert.equal(combat.attack.exitReason, "jump");
+});

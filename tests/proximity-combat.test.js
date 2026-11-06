@@ -452,3 +452,109 @@ test("distance and facing settings are tunable and validated", () => {
       RangeError,
     );
 });
+
+test("takeoff clears selection and cancels a grounded punch without snapping reach", () => {
+  const { combat, proximity } = fixture();
+  const position = origin();
+  proximity.update(0.13, { position, facing: 0 });
+  const reach = combat.attack.extension;
+  assert.equal(proximity.aligned, true);
+  proximity.update(0.04, { position, facing: 0, grounded: false });
+  assert.equal(proximity.target, null);
+  assert.equal(proximity.distance, Infinity);
+  assert.equal(proximity.aligned, false);
+  assert.equal(combat.attack.phase, "recovery");
+  assert.equal(combat.attack.cancelled, true);
+  assert.equal(combat.attack.exitReason, "movement");
+  assert.ok(combat.attack.extension > 0 && combat.attack.extension < reach);
+  close(combat.attack.extension, reach * 0.84375);
+  proximity.update(0.04, { position, grounded: false });
+  close(combat.attack.extension, reach / 2);
+  proximity.update(0.08, { position, grounded: false });
+  assert.equal(combat.attack.active, false);
+  assert.equal(combat.attack.sequence, 1);
+});
+
+test("takeoff, airborne and landing gating never acquire or repeat automatic punches", () => {
+  const { combat, proximity } = fixture();
+  const position = origin();
+  for (const phase of ["takeoff", "airborne", "landing"]) {
+    advance(proximity, 1, { position, grounded: false, context: { phase } });
+    assert.equal(proximity.target, null);
+    assert.equal(proximity.aligned, false);
+    assert.equal(combat.attack.active, false);
+    assert.equal(combat.attack.sequence, 0);
+  }
+  // Attack eligibility returns only when the complete movement state is grounded.
+  proximity.update(1 / 60, { position, grounded: true });
+  assert.equal(combat.attack.sequence, 1);
+  assert.equal(combat.attack.cancelled, false);
+  assert.equal(combat.attack.context.source, "proximity");
+});
+
+test("grounding gate retains held Block without enabling automatic defence", () => {
+  const { combat, proximity } = fixture();
+  const position = origin();
+  advance(proximity, 0.5, { position, grounded: false, blocking: true });
+  assert.equal(combat.blocking, true);
+  assert.equal(combat.postureActive, true);
+  assert.equal(combat.attack.sequence, 0);
+  assert.equal(proximity.target, null);
+  advance(proximity, 0.5, { position, grounded: false, blocking: false });
+  assert.equal(combat.blocking, false);
+  assert.equal(combat.postureActive, false);
+  assert.equal(combat.attack.sequence, 0);
+  proximity.update(1 / 60, { position, grounded: true, blocking: true });
+  assert.notEqual(proximity.target, null);
+  assert.equal(combat.blocking, true);
+  assert.equal(combat.attack.sequence, 0);
+  proximity.update(1 / 60, { position, grounded: true, blocking: false });
+  assert.equal(combat.attack.sequence, 1);
+});
+
+test("early landing still waits for cancelled-punch recovery before requesting again", () => {
+  const { combat, proximity } = fixture();
+  const position = origin();
+  proximity.update(0.13, { position });
+  proximity.update(0.04, { position, grounded: false });
+  proximity.update(0.04, { position, grounded: true });
+  assert.equal(combat.attack.sequence, 1);
+  assert.equal(combat.attack.phase, "recovery");
+  proximity.update(0.08, { position, grounded: true });
+  assert.equal(combat.attack.active, false);
+  assert.equal(combat.attack.sequence, 1);
+  proximity.update(1 / 60, { position, grounded: true });
+  assert.equal(combat.attack.sequence, 2);
+  assert.equal(combat.attack.phase, "windup");
+});
+
+test("landing cannot reuse an airborne target from only the old exit band", () => {
+  const { target, combat, proximity } = fixture();
+  const position = origin();
+  proximity.update(0.13, { position });
+  proximity.update(0.2, { position, grounded: false });
+  target.position.z = -1.1;
+  advance(proximity, 1, { position, grounded: true });
+  assert.equal(proximity.target, null);
+  assert.equal(combat.attack.sequence, 1);
+  target.position.z = -0.9;
+  proximity.update(1 / 60, { position, grounded: true });
+  assert.strictEqual(proximity.target, target);
+  assert.equal(combat.attack.sequence, 2);
+});
+
+test("grounding gate remains stable at 30Hz, 60Hz and 120Hz", () => {
+  for (const rate of [30, 60, 120]) {
+    const { combat, proximity } = fixture();
+    const position = origin();
+    proximity.update(0.13, { position });
+    advance(proximity, 0.8, { position, grounded: false }, rate);
+    assert.equal(proximity.target, null);
+    assert.equal(combat.attack.active, false);
+    assert.equal(combat.attack.sequence, 1);
+    assert.equal(combat.attack.exitReason, "movement");
+    proximity.update(1 / rate, { position, grounded: true });
+    assert.equal(combat.attack.sequence, 2);
+    assert.equal(combat.attack.phase, "windup");
+  }
+});

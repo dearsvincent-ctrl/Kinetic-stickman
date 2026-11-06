@@ -64,6 +64,7 @@ export class Game {
       sprintButton: document.querySelector("#sprint-button"),
       blockButton: document.querySelector("#block-button"),
       dashButton: document.querySelector("#dash-button"),
+      jumpButton: document.querySelector("#jump-button"),
       cameraSurface: document.querySelector("#camera-surface"),
       resetButton: document.querySelector("#reset-camera"),
       onReset: () => this.followCamera.reset(this.controller.heading),
@@ -137,13 +138,21 @@ export class Game {
     if (!paused) {
       this.accumulator = Math.min(this.accumulator + dt, STEP * 5);
       while (this.accumulator >= STEP) {
-        if (this.input.consumeDashRequest()) this.controller.requestDash();
+        for (
+          let action = this.input.consumeMovementRequest();
+          action;
+          action = this.input.consumeMovementRequest()
+        ) {
+          if (action === "jump") this.controller.requestJump();
+          else if (action === "dash") this.controller.requestDash();
+        }
         this.controller.update(
           STEP,
           this.input,
           this.followCamera.yaw,
-          this.proximity.target?.position,
+          this.controller.jump.ready ? this.proximity.target?.position : null,
         );
+        const groundedCombat = this.controller.jump.phase === "grounded";
         const velocity = this.controller.velocity;
         const length = velocity.length();
         const context = this.combatContext;
@@ -155,13 +164,14 @@ export class Game {
         this.combat.setBlocking(this.input.blocking);
         if (this.input.consumeAttackRequest()) {
           // Kept for future dedicated techniques; basic mobile punches are automatic.
-          this.combat.requestAttack(context);
+          if (groundedCombat) this.combat.requestAttack(context);
         }
         this.proximity.update(STEP, {
           position: this.character.root.position,
           blocking: this.input.blocking,
           facing: this.controller.heading,
           context,
+          grounded: groundedCombat,
         });
         this.animator.update(STEP, {
           speed: this.controller.speed,
@@ -172,6 +182,7 @@ export class Game {
           blocking: this.input.blocking,
           combat: this.combat,
           dash: this.controller.dash,
+          jump: this.controller.jump,
         });
         this.accumulator -= STEP;
       }
@@ -191,6 +202,7 @@ export class Game {
       this.combat,
       this.controller.dash,
       this.proximity,
+      this.controller.jump,
     );
   }
 
@@ -201,6 +213,18 @@ export class Game {
       velocity: this.controller.velocity.toArray(),
       speed: this.controller.speed,
       movementState: this.controller.movementState,
+      jump: {
+        phase: this.controller.jump.phase,
+        grounded: this.controller.jump.grounded,
+        airborne: this.controller.jump.airborne,
+        height: this.controller.jump.height,
+        verticalVelocity: this.controller.jump.verticalVelocity,
+        elapsed: this.controller.jump.elapsed,
+        phaseProgress: this.controller.jump.phaseProgress,
+        sequence: this.controller.jump.sequence,
+        ready: this.controller.jump.ready,
+        config: { ...this.controller.jump.config },
+      },
       dash: {
         active: this.controller.dash.active,
         ready: this.controller.dash.ready,
@@ -218,6 +242,7 @@ export class Game {
         blocking: this.input.blocking,
         attackPointer: this.input.attackPointer,
         blockPointer: this.input.blockPointer,
+        jumpPointer: this.input.jumpPointer,
         joystickPointer: this.input.joystickPointer,
         cameraPointer: this.input.cameraPointer,
         sprintPointer: this.input.sprintPointer,
@@ -266,6 +291,7 @@ export class Game {
         stride: this.animator.locomotion.stride,
         dashWeight: this.animator.dashWeight,
         attackWeight: this.animator.attackWeight,
+        jumpWeight: this.animator.jumpWeight,
       },
       halfSize: this.arena.halfSize,
       radius: this.controller.radius,

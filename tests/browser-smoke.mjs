@@ -48,8 +48,28 @@ const observeDash = (sequence) =>
     }
     throw new Error("DASH did not start and finish within 240 rendered frames");
   }, sequence);
+const observeJump = (sequence) =>
+  page.evaluate(async (previousSequence) => {
+    const samples = [];
+    for (let frame = 0; frame < 240; frame++) {
+      const state = window.__KINETIC__.snapshot();
+      samples.push(state);
+      if (
+        state.jump.sequence > previousSequence &&
+        state.jump.phase === "grounded"
+      )
+        return samples;
+      await new Promise(requestAnimationFrame);
+    }
+    throw new Error("Jump did not start and land within 240 rendered frames");
+  }, sequence);
 const checkActionLayout = async (width, height) => {
-  const selectors = ["#sprint-button", "#dash-button", "#block-button"];
+  const selectors = [
+    "#sprint-button",
+    "#dash-button",
+    "#block-button",
+    "#jump-button",
+  ];
   for (const selector of selectors) {
     const box = await page.locator(selector).boundingBox();
     assert.ok(
@@ -101,6 +121,7 @@ const checkResetLayout = async (width, height) => {
     "#sprint-button",
     "#dash-button",
     "#block-button",
+    "#jump-button",
   ]) {
     const other = await page.locator(selector).boundingBox();
     assert.ok(
@@ -204,8 +225,8 @@ try {
   );
   assert.equal(
     await page.getByRole("button", { name: /^jump$/i }).count(),
-    0,
-    "Jump remains reserved for a future version",
+    1,
+    "Version 0.6 exposes one Jump action",
   );
   const beforeGuard = await snapshot();
   assert.equal(beforeGuard.input.blocking, false);
@@ -274,6 +295,26 @@ try {
     "PASS: sprint respects the arena boundary and slides along it while avoiding the dummy",
   );
 
+  const wallBeforeJump = await snapshot();
+  const wallJumpPromise = observeJump(wallBeforeJump.jump.sequence);
+  await page.keyboard.down("w");
+  await page.keyboard.press("Space");
+  const wallJumpSamples = (await wallJumpPromise).filter(
+    (sample) => sample.jump.sequence > wallBeforeJump.jump.sequence,
+  );
+  await page.keyboard.up("w");
+  assert.ok(wallJumpSamples.some((sample) => sample.jump.height > 0.3));
+  for (const sample of wallJumpSamples) {
+    closeTo(sample.position[2], wallBeforeJump.position[2], 0.002);
+    assert.ok(
+      Math.abs(sample.position[0]) <= sample.halfSize - sample.radius + 0.001,
+    );
+    assert.ok(sample.position[1] >= 0 && sample.camera.position[1] >= 0.3);
+  }
+  console.log(
+    "PASS: jumping while pushing an arena wall remains inside the boundary and above the floor",
+  );
+
   // Native events and fixed virtual frames keep brief punches and dashes
   // deterministic even with software-rendered Chromium on a busy CI machine.
   await page.clock.install();
@@ -340,6 +381,7 @@ try {
   const sprint = await center("#sprint-button");
   const dash = await center("#dash-button");
   const block = await center("#block-button");
+  const jump = await center("#jump-button");
   const reset = await center("#reset-camera");
   const camera = { x: 550, y: 165 };
   const gap = { x: 420, y: 220 };
@@ -795,6 +837,7 @@ try {
     "sprintPointer",
     "attackPointer",
     "blockPointer",
+    "jumpPointer",
   ])
     assert.equal(crossingState.input[owner], null);
   assert.equal(crossingState.input.sprinting, false);
@@ -1137,6 +1180,401 @@ try {
   }
   console.log(
     "PASS: automatic body facing is gradual, gates punches until aligned and never rotates the camera",
+  );
+  // Read-only snapshots measure real controller movement; all jump requests
+  // below enter through native action pointers or the unchanged keyboard path.
+  const collectJump = async (sequence, onSample = async () => {}) => {
+    const samples = [];
+    for (let index = 0; index < 150; index++) {
+      const sample = await step(17);
+      samples.push(sample);
+      await onSample(sample);
+      if (sample.jump.sequence > sequence && sample.jump.phase === "grounded")
+        return samples;
+    }
+    throw new Error("Jump did not complete within fixed browser frames");
+  };
+  await freshScene();
+  const idleJumpStart = await snapshot();
+  const heldJumpFinger = touch(101, jump);
+  await native("touchStart", [heldJumpFinger]);
+  let airRequestsSent = false;
+  let landingRequestsSent = false;
+  await page.keyboard.press("e");
+  await page.keyboard.press("Space");
+  const idleJumpSamples = await collectJump(
+    idleJumpStart.jump.sequence,
+    async (sample) => {
+      if (!airRequestsSent && sample.jump.height > 0.15) {
+        airRequestsSent = true;
+        await page.keyboard.press("Space");
+        await page.keyboard.press("e");
+        await page.keyboard.press("f");
+      }
+      if (!landingRequestsSent && sample.jump.phase === "landing") {
+        landingRequestsSent = true;
+        await page.keyboard.press("Space");
+        await page.keyboard.press("e");
+      }
+    },
+  );
+  assert.ok(idleJumpSamples.some((sample) => sample.jump.phase === "takeoff"));
+  assert.ok(idleJumpSamples.some((sample) => sample.jump.phase === "landing"));
+  assert.ok(
+    airRequestsSent && landingRequestsSent,
+    "Repeated requests exercise airborne and landing phases",
+  );
+  closeTo(
+    Math.max(...idleJumpSamples.map((sample) => sample.jump.height)),
+    idleJumpStart.jump.config.height,
+    0.035,
+  );
+  assert.ok(idleJumpSamples.some((sample) => sample.jump.verticalVelocity > 1));
+  assert.ok(
+    idleJumpSamples.some((sample) => sample.jump.verticalVelocity < -1),
+  );
+  assert.ok(
+    idleJumpSamples.some(
+      (sample) =>
+        sample.animation.jumpWeight > 0 && sample.animation.jumpWeight < 1,
+    ),
+    "Jump animation blends through intermediate poses",
+  );
+  for (let index = 0; index < idleJumpSamples.length; index++) {
+    const sample = idleJumpSamples[index];
+    assert.equal(
+      sample.jump.sequence,
+      idleJumpStart.jump.sequence + 1,
+      "Repeated entries cannot double jump",
+    );
+    assert.equal(
+      sample.dash.sequence,
+      idleJumpStart.dash.sequence,
+      "Dash is rejected throughout takeoff, flight and landing",
+    );
+    closeTo(sample.dash.cooldownRemaining, 0, 0.000001);
+    closeTo(sample.position[0], idleJumpStart.position[0], 0.000001);
+    closeTo(sample.position[2], idleJumpStart.position[2], 0.000001);
+    closeTo(sample.position[1], sample.jump.height, 0.000001);
+    closeTo(sample.camera.yaw, idleJumpStart.camera.yaw, 0.000001);
+    closeTo(sample.camera.pitch, idleJumpStart.camera.pitch, 0.000001);
+    closeTo(sample.camera.distance, idleJumpStart.camera.distance, 0.000001);
+    assert.ok(sample.position[1] >= 0 && sample.camera.position[1] >= 0.3);
+    assert.equal(
+      sample.combat.attack.sequence,
+      idleJumpStart.combat.attack.sequence,
+      "No manual punch starts while jumping",
+    );
+    if (index > 0)
+      assert.ok(
+        Math.abs(sample.position[1] - idleJumpSamples[index - 1].position[1]) <
+          0.21,
+        "Vertical movement remains continuous between frames",
+      );
+  }
+  assert.ok(
+    idleJumpSamples.some(
+      (sample) =>
+        sample.camera.position[1] > idleJumpStart.camera.position[1] + 0.3,
+    ),
+    "The existing follow camera naturally follows root height",
+  );
+  const heldAfterLanding = await step(800);
+  assert.equal(
+    heldAfterLanding.jump.sequence,
+    idleJumpStart.jump.sequence + 1,
+    "Holding Jump through landing never repeats PRESS",
+  );
+  assert.equal(
+    heldAfterLanding.dash.sequence,
+    idleJumpStart.dash.sequence,
+    "Rejected Dash input is never queued after landing",
+  );
+  assert.equal(
+    heldAfterLanding.combat.attack.sequence,
+    idleJumpStart.combat.attack.sequence,
+    "Rejected airborne attack input is never queued",
+  );
+  await native("touchEnd", [heldJumpFinger]);
+  await step();
+  console.log(
+    "PASS: continuous configured-height ballistic jump, animation blending, camera invariants, no double jump, no held repeat and rejected airborne actions",
+  );
+
+  for (const sprinting of [false, true]) {
+    await freshScene();
+    await page.keyboard.down("d");
+    if (sprinting) await page.keyboard.down("Shift");
+    const moving = await step(650);
+    await page.keyboard.press("Space");
+    const launched = await step(120);
+    assert.ok(launched.jump.airborne);
+    assert.ok(
+      launched.velocity[0] >= moving.velocity[0] * 0.94,
+      "Walking/sprinting momentum carries through takeoff",
+    );
+    assert.ok(launched.position[0] - moving.position[0] > moving.speed * 0.08);
+    await page.keyboard.up("d");
+    if (sprinting) await page.keyboard.up("Shift");
+    const coasting = await step(100);
+    assert.ok(
+      coasting.velocity[0] >= launched.velocity[0] * 0.94,
+      "Releasing the stick in flight preserves momentum with light air drag",
+    );
+    await step(1000);
+    assert.equal((await snapshot()).jump.phase, "grounded");
+  }
+  await freshScene();
+  await page.keyboard.down("d");
+  await page.keyboard.down("Shift");
+  await step(650);
+  await page.keyboard.press("Space");
+  const beforeAirTurn = await step(120);
+  await page.keyboard.up("d");
+  await page.keyboard.down("a");
+  const firstAirTurn = await step(17);
+  assert.ok(
+    firstAirTurn.velocity[0] > 0,
+    "Opposing air input cannot reverse momentum instantly",
+  );
+  const steeredAir = await step(250);
+  assert.ok(
+    steeredAir.jump.airborne && steeredAir.velocity[0] < 0,
+    "Sustained air input redirects the jump responsively",
+  );
+  assert.ok(firstAirTurn.velocity[0] < beforeAirTurn.velocity[0]);
+  await page.keyboard.up("a");
+  await page.keyboard.up("Shift");
+  await step(1000);
+  console.log(
+    "PASS: walk/sprint jump momentum, light airborne drag and gradual joystick-direction reversal",
+  );
+
+  await freshScene();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("e");
+  const jumpWon = await step();
+  assert.equal(jumpWon.jump.sequence, 1);
+  assert.equal(
+    jumpWon.dash.sequence,
+    0,
+    "The first pending mobility request wins",
+  );
+  await step(1100);
+  assert.equal((await snapshot()).dash.sequence, 0);
+  await freshScene();
+  await page.keyboard.press("e");
+  await page.keyboard.press("Space");
+  const dashWon = await step();
+  assert.equal(dashWon.dash.active, true);
+  assert.equal(
+    dashWon.jump.sequence,
+    0,
+    "An accepted Dash rejects a later pending Jump",
+  );
+  await step(1000);
+  assert.equal(
+    (await snapshot()).jump.sequence,
+    0,
+    "Rejected Jump never starts after Dash",
+  );
+
+  await freshScene();
+  const lookStart = { x: 550, y: 165 };
+  let jumpFingers = [
+    touch(111, joy),
+    touch(112, lookStart),
+    touch(113, sprint),
+  ];
+  await native("touchStart", jumpFingers);
+  jumpFingers = [
+    touch(111, { x: joy.x + 32, y: joy.y }),
+    touch(112, { x: lookStart.x + 65, y: lookStart.y + 20 }),
+    jumpFingers[2],
+  ];
+  await native("touchMove", jumpFingers, jumpFingers.slice(0, 2));
+  const jumpOwners = await step(350);
+  jumpFingers[2] = touch(113, jump);
+  await native("touchMove", jumpFingers, [jumpFingers[2]]);
+  const slidJump = await step();
+  assert.equal(
+    slidJump.input.sprinting,
+    false,
+    "Sprint releases before sliding onto Jump",
+  );
+  assert.equal(
+    slidJump.jump.sequence,
+    1,
+    "Sliding onto Jump triggers PRESS without lifting",
+  );
+  for (const owner of ["joystickPointer", "cameraPointer"])
+    assert.equal(slidJump.input[owner], jumpOwners.input[owner]);
+  assert.notEqual(slidJump.input.jumpPointer, null);
+  await step(120);
+  jumpFingers[1] = touch(112, {
+    x: lookStart.x + 90,
+    y: lookStart.y + 10,
+  });
+  await native("touchMove", jumpFingers, [jumpFingers[1]]);
+  const airborneLook = await step(17);
+  assert.ok(airborneLook.jump.airborne);
+  assert.notEqual(airborneLook.camera.targetYaw, slidJump.camera.targetYaw);
+  assert.equal(
+    airborneLook.input.joystickPointer,
+    jumpOwners.input.joystickPointer,
+    "An airborne camera drag preserves the joystick owner",
+  );
+  jumpFingers[2] = touch(113, block);
+  await native("touchMove", jumpFingers, [jumpFingers[2]]);
+  const airBlock = await step();
+  assert.equal(
+    airBlock.input.blocking,
+    true,
+    "Sliding Jump to Block immediately holds guard in flight",
+  );
+  assert.ok(airBlock.jump.airborne);
+  const beforeRejectedDash = airBlock.dash;
+  jumpFingers[2] = touch(113, dash);
+  await native("touchMove", jumpFingers, [jumpFingers[2]]);
+  const rejectedDash = await step();
+  assert.equal(
+    rejectedDash.input.blocking,
+    false,
+    "Leaving Block releases guard in flight",
+  );
+  assert.equal(rejectedDash.dash.sequence, beforeRejectedDash.sequence);
+  closeTo(
+    rejectedDash.dash.cooldownRemaining,
+    beforeRejectedDash.cooldownRemaining,
+    0.000001,
+  );
+  await step(1000);
+  assert.equal(
+    (await snapshot()).dash.sequence,
+    beforeRejectedDash.sequence,
+    "A rejected slide onto Dash never queues a landing dash",
+  );
+  jumpFingers[2] = touch(113, sprint);
+  await native("touchMove", jumpFingers, [jumpFingers[2]]);
+  assert.equal((await step()).input.sprinting, true);
+  jumpFingers[2] = touch(113, dash);
+  await native("touchMove", jumpFingers, [jumpFingers[2]]);
+  const groundDash = await step();
+  assert.equal(
+    groundDash.dash.sequence,
+    beforeRejectedDash.sequence + 1,
+    "Dash re-entry is accepted after landing",
+  );
+  for (const owner of ["joystickPointer", "cameraPointer"])
+    assert.equal(groundDash.input[owner], jumpOwners.input[owner]);
+  await native("touchCancel", [], []);
+  const cancelledJumpControls = await step(700);
+  for (const owner of [
+    "joystickPointer",
+    "cameraPointer",
+    "sprintPointer",
+    "jumpPointer",
+    "blockPointer",
+  ])
+    assert.equal(cancelledJumpControls.input[owner], null);
+  assert.equal(cancelledJumpControls.input.sprinting, false);
+  assert.equal(cancelledJumpControls.input.blocking, false);
+  await freshScene();
+  const cancelJumpFinger = touch(114, jump);
+  const cancelBlockFinger = touch(115, block);
+  await native("touchStart", [cancelJumpFinger, cancelBlockFinger]);
+  await step(180);
+  await native("touchCancel", [], []);
+  const cancelInAir = await step();
+  assert.equal(cancelInAir.input.jumpPointer, null);
+  assert.equal(
+    cancelInAir.input.blocking,
+    false,
+    "Touch cancellation releases an airborne guard",
+  );
+  const landedAfterCancel = await step(1100);
+  assert.equal(landedAfterCancel.jump.phase, "grounded");
+  assert.equal(landedAfterCancel.jump.sequence, 1);
+  console.log(
+    "PASS: Jump/Dash request order, native Sprint→Jump→Block→Dash slide, independent movement/look, re-entry and touch cancellation",
+  );
+
+  await freshScene();
+  await walkTo({ x: dummyX, z: 0 });
+  await page.keyboard.down("w");
+  await advanceUntil(
+    (sample) =>
+      sample.proximity.distance !== null && sample.proximity.distance < 0.7,
+  );
+  await page.keyboard.up("w");
+  await step(400);
+  const groundPunch = await advanceUntil(
+    (sample) => sample.combat.attack.active,
+    500,
+    17,
+  );
+  const combatJumpFinger = touch(121, jump);
+  await native("touchStart", [combatJumpFinger]);
+  const combatJumpStart = await step();
+  const combatJumpSequence = combatJumpStart.combat.attack.sequence;
+  assert.equal(
+    combatJumpSequence,
+    groundPunch.combat.attack.sequence,
+    "Jump cancels the current ground punch without starting another",
+  );
+  assert.equal(combatJumpStart.combat.attack.cancelled, true);
+  const airGuardFinger = touch(122, block);
+  let guardStarted = false;
+  const combatJumpSamples = await collectJump(
+    groundPunch.jump.sequence,
+    async (sample) => {
+      if (!guardStarted && sample.jump.height > 0.2) {
+        guardStarted = true;
+        await native(
+          "touchStart",
+          [combatJumpFinger, airGuardFinger],
+          [airGuardFinger],
+        );
+      }
+    },
+  );
+  for (const sample of [combatJumpStart, ...combatJumpSamples]) {
+    assert.equal(
+      sample.combat.attack.sequence,
+      combatJumpSequence,
+      "No ground punch starts during takeoff, flight or landing, or held Block",
+    );
+    if (sample.combat.attack.active)
+      assert.ok(
+        sample.combat.attack.cancelled &&
+          sample.combat.attack.phase === "recovery",
+        "An interrupted punch only recovers while airborne",
+      );
+    assert.ok(
+      Math.hypot(
+        sample.position[0] - sample.dummy.position[0],
+        sample.position[2] - sample.dummy.position[2],
+      ) >=
+        sample.radius + sample.dummy.radius - 0.002,
+      "Jumping cannot pass through the dummy cylinder",
+    );
+  }
+  const groundedBlock = combatJumpSamples.at(-1);
+  assert.equal(groundedBlock.input.blocking, true);
+  assert.ok(
+    groundedBlock.animation.combatWeight > 0.95,
+    "Held guard remains raised in the air and on landing",
+  );
+  await native("touchEnd", [combatJumpFinger, airGuardFinger]);
+  const autoAfterLanding = await step();
+  assert.equal(autoAfterLanding.jump.phase, "grounded");
+  assert.equal(
+    autoAfterLanding.combat.attack.sequence,
+    combatJumpSequence + 1,
+    "Grounded automatic combat resumes after landing and Block release",
+  );
+  console.log(
+    "PASS: jumping interrupts a ground punch, suppresses all ground attacks through landing, preserves air Block and dummy containment, then resumes automatic combat",
   );
   await page.clock.resume();
 

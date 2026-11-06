@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 import { dampAngle, dampFactor } from "../core/math.js";
 import { DashState } from "./DashState.js";
+import { JumpState } from "./JumpState.js";
 
 export const TARGET_FACING_CONFIG = Object.freeze({
   turnRate: 6,
@@ -19,6 +20,7 @@ export class CharacterController {
       sprintSpeed = 5.2,
       radius = 0.36,
       dashConfig,
+      jumpConfig,
       facingTurnRate = TARGET_FACING_CONFIG.turnRate,
       facingResponse = TARGET_FACING_CONFIG.response,
     } = {},
@@ -40,20 +42,46 @@ export class CharacterController {
     this.next = new Vector3();
     this.dashDirection = new Vector3();
     this.dash = new DashState(dashConfig);
+    this.jump = new JumpState(jumpConfig);
     this.movementState = "locomotion";
     this.dashRequested = false;
+    this.jumpRequested = false;
   }
 
   requestDash() {
-    if (this.dashRequested || !this.dash.ready) return false;
+    if (
+      this.dashRequested ||
+      !this.dash.ready ||
+      !this.jump.ready ||
+      this.jumpRequested
+    )
+      return false;
     this.dashRequested = true;
+    return true;
+  }
+
+  requestJump() {
+    if (
+      this.jumpRequested ||
+      !this.jump.ready ||
+      this.dash.active ||
+      this.dashRequested
+    )
+      return false;
+    this.jumpRequested = true;
     return true;
   }
 
   update(dt, input, cameraYaw, facingTarget = null) {
     if (!Number.isFinite(dt) || dt <= 0) return;
+    if (this.jumpRequested) {
+      this.jumpRequested = false;
+      if (!this.dash.active) this.jump.start();
+    }
     this.facingTarget =
-      Number.isFinite(facingTarget?.x) && Number.isFinite(facingTarget?.z)
+      this.jump.ready &&
+      Number.isFinite(facingTarget?.x) &&
+      Number.isFinite(facingTarget?.z)
         ? facingTarget
         : null;
     const x = input.move.x;
@@ -69,6 +97,11 @@ export class CharacterController {
     );
     const maximum = speed * Math.min(1, Math.hypot(x, y));
     if (this.desired.length() > maximum) this.desired.setLength(maximum);
+    if (!this.jump.ready) {
+      this.updateJump(dt, maximum);
+      this.dash.tickCooldown(dt);
+      return;
+    }
     this.dashDirection.copy(this.desired);
     if (this.dashRequested) {
       this.dashRequested = false;
@@ -117,6 +150,39 @@ export class CharacterController {
     this.dash.tickCooldown(dt);
   }
 
+  updateJump(dt, maximum) {
+    let remaining = dt;
+    while (remaining > 1e-10) {
+      const step = Math.min(
+        remaining,
+        Math.max(1e-8, this.jump.timeToBoundary),
+      );
+      if (this.jump.airborne || this.jump.phase === "takeoff")
+        this.updateAir(step, maximum);
+      else this.updateLocomotion(step, maximum);
+      this.jump.advance(step);
+      this.root.position.y = this.jump.height;
+      remaining -= step;
+    }
+    this.movementState = this.jump.ready ? "locomotion" : "jump";
+  }
+
+  updateAir(dt, maximum) {
+    const response =
+      maximum > 0.01 ? this.jump.config.airControl : this.jump.config.airDrag;
+    const blend = dampFactor(response, dt);
+    // Integrate the exponential horizontal response analytically. A centred
+    // stick retains takeoff momentum instead of applying ground braking.
+    const contribution = response > 0 ? blend / response : dt;
+    this.displacement
+      .copy(this.velocity)
+      .sub(this.desired)
+      .multiplyScalar(contribution)
+      .addScaledVector(this.desired, dt);
+    this.velocity.lerp(this.desired, blend);
+    this.move(dt);
+  }
+
   updateLocomotion(dt, maximum) {
     this.velocity.lerp(this.desired, dampFactor(maximum > 0.01 ? 11 : 15, dt));
     if (this.velocity.lengthSq() < 0.0001 && maximum < 0.01)
@@ -128,6 +194,8 @@ export class CharacterController {
   move(dt) {
     this.previous.copy(this.root.position);
     this.world.move(this.previous, this.displacement, this.radius, this.next);
+    // The flat world adapter resolves XZ collisions; JumpState owns elevation.
+    this.next.y = this.previous.y;
     this.root.position.copy(this.next);
     const contactResolved =
       this.world.resolveVelocity?.(this.velocity) === true;
@@ -181,7 +249,8 @@ export class CharacterController {
     this.velocity.set(0, 0, 0);
     this.speed = 0;
     this.dashRequested = false;
+    this.jumpRequested = false;
     if (this.dash.active) this.dash.finish("cancelled");
-    this.movementState = "locomotion";
+    this.movementState = this.jump.ready ? "locomotion" : "jump";
   }
 }

@@ -4,6 +4,7 @@ import { CombatStanceAnimator } from "./CombatStanceAnimator.js";
 import { LegIK } from "./LegIK.js";
 import { DashAnimator } from "./DashAnimator.js";
 import { AttackAnimator } from "./AttackAnimator.js";
+import { JumpAnimator } from "./JumpAnimator.js";
 
 const TAU = Math.PI * 2;
 const fract = (value) => value - Math.floor(value);
@@ -36,6 +37,8 @@ export class CharacterAnimator {
     this.combat = new CombatStanceAnimator();
     this.dashAnimation = new DashAnimator(character);
     this.attackAnimation = new AttackAnimator();
+    this.jumpAnimation = new JumpAnimator(character);
+    this.jumpWeight = 0;
     this.attackWeight = 0;
     this.dashWeight = 0;
     this.ik = new LegIK(character);
@@ -57,7 +60,7 @@ export class CharacterAnimator {
     this.initialized = false;
   }
 
-  update(dt, { speed = 0, blocking = false, combat, dash } = {}) {
+  update(dt, { speed = 0, blocking = false, combat, dash, jump } = {}) {
     if (dt <= 0) return;
     const root = this.character.root;
     const j = this.character.joints;
@@ -80,6 +83,9 @@ export class CharacterAnimator {
     this.previousPosition.copy(root.position);
     this.rootYaw.copy(root.quaternion);
     const dashOwnsFeet = Boolean(dash?.active) || this.dashAnimation.ownsFeet;
+    const jumpOwnsFeet =
+      Boolean(jump && jump.phase !== "grounded") || this.jumpAnimation.ownsFeet;
+    if (jumpOwnsFeet) this.velocity.y = 0;
 
     // Mid-contact start avoids an overlong first planted step. Guard changes
     // during travel never reset phase or switch an existing contact early.
@@ -98,7 +104,7 @@ export class CharacterAnimator {
         foot.yaw.copy(this.rootYaw);
         foot.planted = true;
       }
-      if (dashOwnsFeet) continue;
+      if (dashOwnsFeet || jumpOwnsFeet) continue;
       if (!moving) {
         foot.target.lerp(this.rest, 1 - Math.exp(-12 * dt));
         foot.yaw.slerp(this.rootYaw, 1 - Math.exp(-12 * dt));
@@ -112,7 +118,16 @@ export class CharacterAnimator {
     this.wasMoving = moving;
     this.dashAnimation.update(dt, dash, this.footList, this.combatWeight);
     this.dashWeight = this.dashAnimation.weight;
-    if (dashOwnsFeet) {
+    this.jumpAnimation.update(
+      dt,
+      jump,
+      this.footList,
+      this.velocity,
+      this.combatWeight,
+      blocking,
+    );
+    this.jumpWeight = this.jumpAnimation.weight;
+    if (dashOwnsFeet || jumpOwnsFeet) {
       // Resume the ordinary planner from the physical landing, without a
       // stale pre-dash world anchor or a phase-wrap contact reset.
       for (const foot of this.footList) {
@@ -133,13 +148,20 @@ export class CharacterAnimator {
     this.combat.apply(this.pose, gait.movementBlend);
     this.dashAnimation.apply(this.pose, this.combatWeight);
     this.attackAnimation.apply(this.pose);
+    this.jumpAnimation.apply(this.pose);
     const pose = this.pose;
     j.hips.position.set(pose.hipX, pose.hipY, 0);
     j.hips.rotation.set(0, pose.hipYaw, pose.hipRoll);
     j.spine.rotation.set(
       pose.spinePitch,
       pose.spineYaw,
-      this.dashAnimation.spineRoll,
+      this.jumpWeight > 0
+        ? MathUtils.lerp(
+            this.dashAnimation.spineRoll,
+            this.jumpAnimation.spineRoll,
+            this.jumpWeight,
+          )
+        : this.dashAnimation.spineRoll,
     );
     j.head.rotation.set(pose.headPitch, -pose.spineYaw * 0.65, 0);
     for (let index = 0; index < 2; index++) {

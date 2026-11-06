@@ -131,8 +131,8 @@ try {
   );
   assert.equal(
     await page.getByRole("button", { name: /^jump$/i }).count(),
-    0,
-    "No premature Jump control",
+    1,
+    "Version 0.6 exposes one Jump control",
   );
   const center = async (selector) => {
     const box = await page.locator(selector).boundingBox();
@@ -164,7 +164,12 @@ try {
       Math.abs(reset.x + reset.width - hint.x - hint.width) < 2,
       "Reset Camera aligns with the hint",
     );
-    const actionSelectors = ["#sprint-button", "#dash-button", "#block-button"];
+    const actionSelectors = [
+      "#sprint-button",
+      "#dash-button",
+      "#block-button",
+      "#jump-button",
+    ];
     for (const selector of actionSelectors) {
       const box = await page.locator(selector).boundingBox();
       assert.ok(
@@ -268,6 +273,7 @@ try {
   const sprint = await center("#sprint-button");
   const dash = await center("#dash-button");
   const block = await center("#block-button");
+  const jump = await center("#jump-button");
   const gap = { x: 420, y: 220 };
 
   let fingers = [
@@ -538,6 +544,63 @@ try {
     "IDLE",
     "Standing proximity punches do not cause movement",
   );
+  const jumpStages = ["TAKE-OFF", "ASCENT", "DESCENT", "LANDING"];
+  const proximityJumpFinger = touch(41, jump);
+  const attacksBeforeJump = await page.evaluate(
+    () => window.__combatLabels.filter((value) => value === "ATTACKING").length,
+  );
+  const proximityJumpHudPromise = page.evaluate(async () => {
+    const samples = [];
+    let sawJump = false;
+    for (let frame = 0; frame < 120; frame++) {
+      const sample = {
+        movement: document.querySelector("#movement-state").textContent,
+        stance: document.querySelector("#stance-label").textContent,
+        status: document.querySelector("#jump-status").textContent,
+      };
+      samples.push(sample);
+      sawJump ||= ["TAKE-OFF", "ASCENT", "DESCENT", "LANDING"].includes(
+        sample.movement,
+      );
+      if (
+        sawJump &&
+        sample.status === "READY" &&
+        !["TAKE-OFF", "ASCENT", "DESCENT", "LANDING"].includes(sample.movement)
+      )
+        return samples;
+      await new Promise(requestAnimationFrame);
+    }
+    throw new Error("Production proximity jump did not land");
+  });
+  await native("touchStart", [proximityJumpFinger]);
+  await page.clock.runFor(1100);
+  const proximityJumpHud = await proximityJumpHudPromise;
+  assert.ok(
+    proximityJumpHud.some((sample) =>
+      ["ASCENT", "DESCENT"].includes(sample.movement),
+    ),
+    "Production automatic-combat scene performs a real jump",
+  );
+  assert.ok(
+    proximityJumpHud.some((sample) => sample.movement === "LANDING"),
+    "Landing is represented before ground combat resumes",
+  );
+  for (const sample of proximityJumpHud)
+    if (jumpStages.includes(sample.movement))
+      assert.notEqual(
+        sample.stance,
+        "ATTACKING",
+        "Grounded punches remain suppressed throughout jump HUD phases",
+      );
+  assert.ok(
+    (await page.evaluate(
+      () =>
+        window.__combatLabels.filter((value) => value === "ATTACKING").length,
+    )) > attacksBeforeJump,
+    "Automatic combat resumes only after landing",
+  );
+  await native("touchEnd", [proximityJumpFinger]);
+
   const proximityBlockFinger = touch(40, block);
   await native("touchStart", [proximityBlockFinger]);
   await page.clock.runFor(100);
@@ -587,6 +650,150 @@ try {
     afterLeavingLabels,
     "Leaving proximity never queues another production punch",
   );
+  await page.reload({ waitUntil: "networkidle" });
+  await page.clock.runFor(500);
+  await page.evaluate(() => {
+    const movement = document.querySelector("#movement-state");
+    let active = false;
+    window.__jumpEntries = 0;
+    new MutationObserver(() => {
+      const next = ["TAKE-OFF", "ASCENT", "DESCENT", "LANDING"].includes(
+        movement.textContent,
+      );
+      if (next && !active) window.__jumpEntries++;
+      active = next;
+    }).observe(movement, { childList: true, subtree: true });
+  });
+  const idleJumpFinger = touch(51, jump);
+  await native("touchStart", [idleJumpFinger]);
+  await page.clock.runFor(120);
+  assert.equal(await disabled("#jump-button"), "true");
+  assert.ok(
+    ["TAKE-OFF", "ASCENT"].includes(
+      await page.locator("#movement-state").textContent(),
+    ),
+    "Native Jump starts the production takeoff/flight state",
+  );
+  await page.keyboard.press("Space");
+  await page.keyboard.press("e");
+  await page.keyboard.press("f");
+  await page.clock.runFor(1200);
+  assert.equal(await page.locator("#jump-status").textContent(), "READY");
+  assert.equal(await disabled("#jump-button"), "false");
+  assert.equal(
+    await page.evaluate(() => window.__jumpEntries),
+    1,
+    "Holding Jump or entering another jump in flight never repeats after landing",
+  );
+  assert.equal(
+    await page.locator("#dash-cooldown").textContent(),
+    "READY",
+    "Rejected airborne Dash never starts a cooldown or a landing dash",
+  );
+  assert.equal(
+    await page.locator("#stance-label").textContent(),
+    "FREE MOVEMENT",
+    "Rejected airborne manual punch never queues after landing",
+  );
+  await native("touchEnd", [idleJumpFinger]);
+  await page.clock.runFor(100);
+  assert.equal(
+    await page.evaluate(() => window.__jumpEntries),
+    1,
+    "Pointer release cannot duplicate Jump PRESS",
+  );
+
+  // One action thumb joins independent joystick and camera fingers, and never
+  // lifts while sliding from Sprint through Jump, Block and Dash.
+  await page.reload({ waitUntil: "networkidle" });
+  await page.clock.runFor(500);
+  let jumpFingers = [
+    touch(61, joystick),
+    touch(62, { x: 550, y: 165 }),
+    touch(63, sprint),
+  ];
+  await native("touchStart", jumpFingers);
+  jumpFingers = [
+    touch(61, { x: joystick.x + 32, y: joystick.y }),
+    touch(62, { x: 615, y: 185 }),
+    jumpFingers[2],
+  ];
+  await native("touchMove", jumpFingers, jumpFingers.slice(0, 2));
+  await page.clock.runFor(350);
+  const slideJumpAction = async (point, milliseconds = 100) => {
+    jumpFingers[2] = touch(63, point);
+    await native("touchMove", jumpFingers, [jumpFingers[2]]);
+    await page.clock.runFor(milliseconds);
+  };
+  await slideJumpAction(jump);
+  assert.equal(
+    await pressed("#sprint-button"),
+    "false",
+    "Sprint releases while sliding onto Jump",
+  );
+  assert.equal(
+    await disabled("#jump-button"),
+    "true",
+    "Sliding onto Jump activates PRESS",
+  );
+  for (const selector of ["#joystick", "#camera-surface"])
+    assert.equal(
+      await page
+        .locator(selector)
+        .evaluate((node) => node.classList.contains("is-active")),
+      true,
+      "Jump retains independent joystick and look fingers",
+    );
+  await slideJumpAction(block);
+  assert.equal(
+    await pressed("#block-button"),
+    "true",
+    "Sliding onto Block holds guard in flight",
+  );
+  assert.equal(await page.locator("#stance-label").textContent(), "BLOCKING");
+  await slideJumpAction(dash);
+  assert.equal(
+    await pressed("#block-button"),
+    "false",
+    "Leaving Block releases guard in flight",
+  );
+  assert.equal(
+    await page.locator("#dash-cooldown").textContent(),
+    "LAND FIRST",
+    "Airborne Dash entry is rejected without consuming cooldown",
+  );
+  await page.clock.runFor(1100);
+  assert.equal(
+    await page.locator("#dash-cooldown").textContent(),
+    "READY",
+    "A held rejected Dash never starts automatically after landing",
+  );
+  assert.notEqual(await page.locator("#movement-state").textContent(), "DASH");
+  await slideJumpAction(sprint);
+  assert.equal(await pressed("#sprint-button"), "true");
+  await slideJumpAction(dash);
+  assert.equal(
+    await disabled("#dash-button"),
+    "true",
+    "Dash re-entry after landing starts its normal cooldown",
+  );
+  assert.notEqual(
+    await page.locator("#dash-cooldown").textContent(),
+    "LAND FIRST",
+  );
+  await native("touchCancel", [], []);
+  await page.clock.runFor(800);
+  assert.equal(await pressed("#sprint-button"), "false");
+  assert.equal(await pressed("#block-button"), "false");
+  for (const selector of ["#joystick", "#camera-surface"])
+    assert.equal(
+      await page
+        .locator(selector)
+        .evaluate((node) => node.classList.contains("is-active")),
+      false,
+      "Cancellation releases movement/look while Jump state recovers",
+    );
+  assert.equal(await page.locator("#jump-status").textContent(), "READY");
   await page.clock.resume();
   await page.locator("#reset-camera").tap();
   await mkdir("test-results", { recursive: true });
@@ -619,7 +826,7 @@ try {
     "Production page has no runtime or asset errors",
   );
   console.log(
-    `PASS: production bundle renders at ${base}; Pages assets, native multitouch, automatic proximity punches, Block priority, slide HOLD/PRESS, DASH cooldown and responsive action/Reset Camera layouts work`,
+    `PASS: production bundle renders at ${base}; Pages assets, native Jump/multitouch, grounded-only automatic proximity punches, Block priority, slide HOLD/PRESS, Jump/Dash exclusion and responsive action/Reset Camera layouts work`,
   );
   console.log("No physical Android device was tested.");
 } finally {

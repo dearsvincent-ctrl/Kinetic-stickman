@@ -8,6 +8,8 @@ export class Hud {
     this.stanceLabel = document.querySelector("#stance-label");
     this.dashButton = document.querySelector("#dash-button");
     this.dashCooldown = document.querySelector("#dash-cooldown");
+    this.jumpButton = document.querySelector("#jump-button");
+    this.jumpStatus = document.querySelector("#jump-status");
     this.helpDialog = document.querySelector("#help-dialog");
     this.fullscreenButton = document.querySelector("#fullscreen-button");
     this.frameCount = 0;
@@ -54,6 +56,7 @@ export class Hud {
     combat = null,
     dash = null,
     proximity = null,
+    jump = null,
   ) {
     this.frameCount++;
     this.sampleTime += dt;
@@ -67,13 +70,22 @@ export class Hud {
     }
     if (this.hudTime < 0.08) return;
     this.hudTime = 0;
-    const state = dash?.active
-      ? "DASH"
-      : speed < 0.08
-        ? "IDLE"
-        : sprinting && speed > 2.7
-          ? "SPRINT"
-          : "WALK";
+    const state =
+      jump && !jump.ready
+        ? jump.phase === "takeoff"
+          ? "TAKE-OFF"
+          : jump.phase === "landing"
+            ? "LANDING"
+            : jump.verticalVelocity >= 0
+              ? "ASCENT"
+              : "DESCENT"
+        : dash?.active
+          ? "DASH"
+          : speed < 0.08
+            ? "IDLE"
+            : sprinting && speed > 2.7
+              ? "SPRINT"
+              : "WALK";
     this.movementState.textContent = state;
     this.stanceLabel.textContent = combat?.blocking
       ? "BLOCKING"
@@ -91,11 +103,34 @@ export class Hud {
     this.movementDot.style.background =
       state === "IDLE" ? "#9faa98" : "#ff885e";
     if (dash) {
-      this.dashButton.setAttribute("aria-disabled", String(!dash.ready));
+      this.dashButton.setAttribute(
+        "aria-disabled",
+        String(!dash.ready || Boolean(jump && !jump.ready)),
+      );
       this.dashButton.classList.toggle("is-active", dash.active);
       this.dashCooldown.textContent = dash.ready
-        ? "READY"
+        ? jump && !jump.ready
+          ? "LAND FIRST"
+          : "READY"
         : `${Math.max(0, dash.cooldownRemaining).toFixed(1)}s`;
+    }
+    if (jump) {
+      this.jumpButton.setAttribute(
+        "aria-disabled",
+        String(!jump.ready || Boolean(dash?.active)),
+      );
+      this.jumpButton.classList.toggle("is-active", !jump.ready);
+      this.jumpStatus.textContent = jump.ready
+        ? dash?.active
+          ? "DASHING"
+          : "READY"
+        : jump.phase === "takeoff"
+          ? "PUSH"
+          : jump.phase === "landing"
+            ? "LAND"
+            : jump.verticalVelocity >= 0
+              ? "UP"
+              : "DOWN";
     }
   }
 }
