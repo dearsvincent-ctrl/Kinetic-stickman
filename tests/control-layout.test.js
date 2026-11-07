@@ -18,7 +18,8 @@ const bounds = { left: 0, top: 0, right: 844, bottom: 390 };
 const defaultRects = {
   move: { left: 44, top: 224, width: 112, height: 112 },
   sprint: { left: 708, top: 240, width: 96, height: 96 },
-  dash: { left: 630, top: 176, width: 64, height: 64 },
+  punch: { left: 708, top: 184, width: 64, height: 64 },
+  kick: { left: 708, top: 256, width: 64, height: 64 },
   block: { left: 630, top: 256, width: 64, height: 64 },
   jump: { left: 552, top: 256, width: 64, height: 64 },
 };
@@ -84,9 +85,10 @@ test("retired Sprint migrates without moving or resetting any remaining saved co
   );
   assert.deepEqual(Object.keys(migrated.positions), [
     "move",
-    "dash",
     "block",
     "jump",
+    "punch",
+    "kick",
   ]);
 });
 
@@ -304,7 +306,7 @@ test("saved anchors adapt to small portrait and landscape sizes without overlaps
       move: { width: 112, height: 112 },
       sprint: { width: 96, height: 96 },
       ...Object.fromEntries(
-        ["dash", "block", "jump"].map((id) => [
+        ["punch", "kick", "block", "jump"].map((id) => [
           id,
           { width: portrait ? 90 : 64, height: portrait ? 48 : 64 },
         ]),

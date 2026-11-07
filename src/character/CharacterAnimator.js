@@ -64,6 +64,8 @@ export class CharacterAnimator {
     this.dashWeight = 0;
     this.ik = new LegIK(character);
     this.combatWeight = 0;
+    this.manualRunBlend = 0;
+    this.locomotionCombatWeight = 0;
     this.feet = {
       left: createFoot("left", 0, -1),
       right: createFoot("right", 0.5, 1),
@@ -119,6 +121,17 @@ export class CharacterAnimator {
       dt,
       Boolean(blocking || combat?.postureActive),
     );
+    // Manual upper-body strikes retain the athletic lower-body gait at speed.
+    // Deliberate Block still owns the controlled defensive footwork.
+    this.manualRunBlend = MathUtils.damp(
+      this.manualRunBlend,
+      combat?.attack.context?.source === "manual" && !blocking
+        ? MathUtils.smoothstep(speed, 1.5, 3.5)
+        : 0,
+      16,
+      dt,
+    );
+    this.locomotionCombatWeight = this.combatWeight * (1 - this.manualRunBlend);
     this.attackWeight = this.attackAnimation.update(
       dt,
       combat,
@@ -136,7 +149,7 @@ export class CharacterAnimator {
     const dashBound = dash?.active && !dash.cruising;
     gait.update(dt, {
       speed: dashBound ? Math.min(visualSpeed, 2.6) : visualSpeed,
-      combatWeight: this.combatWeight,
+      combatWeight: this.locomotionCombatWeight,
       cadenceLimit: dashBound ? this.style.locomotion.dashCadence : Infinity,
     });
     const moving = speed >= 0.015;
@@ -233,7 +246,7 @@ export class CharacterAnimator {
     this.airDashWeight = this.aerialDashAnimation.weight;
     this.aerialAttackAnimation.update(dt, combat, jump, this.footList);
     this.aerialAttackWeight = this.aerialAttackAnimation.weight;
-    if (dashOwnsFeet || jumpOwnsFeet) {
+    if (dashOwnsFeet || jumpOwnsFeet || this.aerialAttackWeight > 0) {
       // Resume the ordinary planner from the physical landing, without a
       // stale pre-dash world anchor or a phase-wrap contact reset.
       for (const foot of this.footList) {
@@ -256,14 +269,25 @@ export class CharacterAnimator {
     gait.sampleUpperBody(this.pose, this.gaitOffset, this.motion.drive);
     this.motion.apply(
       this.pose,
-      (1 - this.combatWeight) * (1 - this.dashWeight) * (1 - this.jumpWeight),
+      (1 - this.locomotionCombatWeight) *
+        (1 - this.dashWeight) *
+        (1 - this.jumpWeight),
     );
-    this.combat.apply(this.pose, gait.movementBlend, gait.sprintBlend);
+    this.combat.apply(
+      this.pose,
+      gait.movementBlend,
+      gait.sprintBlend,
+      this.locomotionCombatWeight,
+    );
     this.dashAnimation.apply(this.pose, this.combatWeight);
-    this.attackAnimation.apply(this.pose);
+    const aerialPunch =
+      combat?.currentTechnique?.animation === "punch" &&
+      combat?.attack.context?.environment === "air";
+    if (!aerialPunch) this.attackAnimation.apply(this.pose);
     this.jumpAnimation.apply(this.pose);
     this.aerialDashAnimation.apply(this.pose);
     this.aerialAttackAnimation.apply(this.pose);
+    if (aerialPunch) this.attackAnimation.apply(this.pose, true);
     const pose = this.pose;
     j.hips.position.set(pose.hipX, pose.hipY, pose.hipZ ?? 0);
     j.hips.rotation.set(0, pose.hipYaw, pose.hipRoll);
@@ -332,8 +356,9 @@ export class CharacterAnimator {
   }
 
   restPosition(foot, out) {
-    const width = MathUtils.lerp(0.15, 0.18, this.combatWeight);
-    const stagger = (foot.side === "left" ? -0.13 : 0.13) * this.combatWeight;
+    const width = MathUtils.lerp(0.15, 0.18, this.locomotionCombatWeight);
+    const stagger =
+      (foot.side === "left" ? -0.13 : 0.13) * this.locomotionCombatWeight;
     return out
       .set(foot.sign * width, this.character.dimensions.ankleHeight, stagger)
       .applyQuaternion(this.rootYaw)
@@ -394,7 +419,7 @@ export class CharacterAnimator {
           MathUtils.lerp(
             this.style.locomotion.walkLift,
             gait.lift,
-            this.combatWeight,
+            this.locomotionCombatWeight,
           );
       const runWeight = gait.freeRunBlend;
       if (runWeight > 0.001) {
@@ -424,7 +449,7 @@ export class CharacterAnimator {
       phase,
       foot.duty,
       gait.freeRunBlend,
-      this.combatWeight,
+      this.locomotionCombatWeight,
     );
     foot.lastPhase = phase;
   }

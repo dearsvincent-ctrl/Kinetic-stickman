@@ -147,6 +147,15 @@ export class CombatController {
     return this._technique;
   }
 
+  get timeToBoundary() {
+    if (!this.attack.active) return Infinity;
+    const duration =
+      this.attack.phase === "recovery"
+        ? this._recoveryDuration
+        : this._technique[this.attack.phase];
+    return Math.max(0, duration - this._phaseElapsed);
+  }
+
   get postureActive() {
     return (
       this.blocking || this.attack.active || this._postureRemaining > EPSILON

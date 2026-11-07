@@ -12,7 +12,7 @@ import {
  * their joystick, camera and action ownership while parameters change live.
  */
 export class PhysicsSandboxPanel {
-  constructor({ onChange }) {
+  constructor({ onChange, onDash = () => {} }) {
     this.enabled = new URLSearchParams(location.search).get("sandbox") === "1";
     this.values = NORMAL_PHYSICS;
     this.onChange = onChange;
@@ -34,6 +34,11 @@ export class PhysicsSandboxPanel {
     document
       .querySelector("#physics-close")
       .addEventListener("click", () => this.setOpen(false));
+    const dashTest = document.createElement("button");
+    dashTest.id = "physics-test-dash";
+    dashTest.textContent = "Test preserved dash";
+    dashTest.addEventListener("click", onDash);
+    document.querySelector("#physics-presets").after(dashTest);
     const fields = document.querySelector("#physics-fields");
     for (const parameter of SANDBOX_PARAMETERS) {
       const row = document.createElement("label");

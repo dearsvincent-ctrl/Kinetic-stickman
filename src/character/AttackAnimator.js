@@ -100,7 +100,7 @@ export class AttackAnimator {
     return this.weight;
   }
 
-  apply(pose) {
+  apply(pose, upperBodyOnly = false) {
     const w = this.weight;
     if (w <= 0) return;
     const s = this.style,
@@ -136,18 +136,20 @@ export class AttackAnimator {
     );
     // Shift the visual pelvis over the existing support legs. Their world
     // contacts stay planted and IK absorbs the load; the actor root stays put.
-    pose.hipX -= sign * drive * (cross ? 0.035 : 0.025) * w;
-    pose.hipY -= (drive + coil * 0.4) * s.compression * w;
-    pose.hipZ =
-      (pose.hipZ ?? 0) +
-      (coil * 0.025 -
-        drive * (cross ? s.crossWeightTransfer : s.weightTransfer)) *
+    if (!upperBodyOnly) {
+      pose.hipX -= sign * drive * (cross ? 0.035 : 0.025) * w;
+      pose.hipY -= (drive + coil * 0.4) * s.compression * w;
+      pose.hipZ =
+        (pose.hipZ ?? 0) +
+        (coil * 0.025 -
+          drive * (cross ? s.crossWeightTransfer : s.weightTransfer)) *
+          w;
+      pose.hipYaw +=
+        (drive * (cross ? s.crossHipTwist : s.hipTwist) -
+          coil * s.anticipationTwist) *
+        sign *
         w;
-    pose.hipYaw +=
-      (drive * (cross ? s.crossHipTwist : s.hipTwist) -
-        coil * s.anticipationTwist) *
-      sign *
-      w;
+    }
     pose.spineYaw +=
       (drive * (cross ? s.crossShoulderDrive : s.shoulderDrive) -
         coil * s.anticipationTwist -

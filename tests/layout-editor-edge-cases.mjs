@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 // Shared native-browser regressions for the editor's viewport/utility edges.
 // They use the visible controls and browser storage, never game-state writes.
 export async function checkLayoutEditorEdges(page, advance) {
-  const ids = ["move", "dash", "block", "jump"];
+  const ids = ["move", "block", "jump", "punch", "kick"];
   const rects = () =>
     page.evaluate(() =>
       Object.fromEntries(
@@ -100,16 +100,17 @@ export async function checkLayoutEditorEdges(page, advance) {
 
   await page.setViewportSize({ width: 844, height: 390 });
   await advance(100);
+  const vacatedJump = (await rects()).jump;
   await open();
   await drag("jump", { x: 478, y: 219 });
   await click("#layout-save");
   const saved = await page.evaluate(() =>
     localStorage.getItem("kinetic.controls.v1"),
   );
-  const emptyHome = await page.locator(".right-controls").boundingBox();
+
   const cameraPoint = {
-    x: emptyHome.x + emptyHome.width / 2,
-    y: emptyHome.y + emptyHome.height / 2,
+    x: vacatedJump.x + vacatedJump.width / 2,
+    y: vacatedJump.y + vacatedJump.height / 2,
   };
   assert.equal(
     await page.evaluate(
@@ -184,9 +185,9 @@ export async function checkLayoutEditorEdges(page, advance) {
   await advance(500);
   await open();
   const projected = await rects();
-  await drag("dash", {
+  await drag("punch", {
     x: 99,
-    y: projected.dash.y + projected.dash.height / 2,
+    y: projected.punch.y + projected.punch.height / 2,
   });
   const preview = await rects();
   await click("#layout-save");

@@ -34,7 +34,7 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.7.4</b></span>
+          <span class="version">PROTOTYPE <b>0.7.5</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
@@ -151,17 +151,28 @@
       </div>
       <div class="right-controls">
         <button
-          id="dash-button"
-          class="dash-button"
-          aria-label="Dash"
-          aria-disabled="false"
-          title="Ground / aerial dash (E)"
+          id="punch-button"
+          class="strike-button punch-button"
+          aria-label="Punch: tap once or hold to repeat"
+          aria-pressed="false"
+          title="Punch: tap / hold (F)"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 12h16m-6-6 6 6-6 6M3 6h5M2 18h6" />
-          </svg>
-          <span>DASH</span>
-          <span id="dash-cooldown" class="dash-cooldown">READY</span>
+            <path
+              d="M5 18V9l3-2 3 1 2-2 3 1 2 4-3 7zM8 8v5m4-5v5m4-5v5M5 15h11"
+            /></svg
+          ><span>PUNCH</span>
+        </button>
+        <button
+          id="kick-button"
+          class="strike-button kick-button"
+          aria-label="Kick: tap once or hold to repeat"
+          aria-pressed="false"
+          title="Kick: tap / hold (G)"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m7 4 4 5 7-4 3 2-8 8-3-2-4 8-4-1 5-11" /></svg
+          ><span>KICK</span>
         </button>
         <button
           id="block-button"
@@ -197,6 +208,13 @@
         ><span class="speed-unit">M/S</span>
         <div class="speed-track"><div id="speed-fill"></div></div>
       </div>
+      <output
+        id="contact-status"
+        class="contact-status"
+        data-count="0"
+        aria-live="off"
+        >PRACTISE YOUR STRIKES</output
+      >
       <footer class="bottombar">
         <span><span class="footer-cross">+</span> A STUDY IN MOTION</span
         ><span
@@ -314,11 +332,11 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.7.4</div>
+        <div class="eyebrow">KINETIC / VERSION 0.7.5</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
-          Approach the training dummy.<br />Practise punches, flying kicks, and
-          guard.
+          Choose when to strike.<br />Tap for one strike. Hold to repeat after
+          recovery.
         </p>
         <dl>
           <div>
@@ -339,9 +357,10 @@
             </dd>
           </div>
           <div>
-            <dt>Auto attack</dt>
+            <dt>Punch / Kick</dt>
             <dd>
-              Approach the dummy to punch on the ground or kick in the air
+              Tap, hold or slide onto PUNCH / KICK. F / G on keyboard. Strikes
+              can miss; the dummy flashes only on active contact.
             </dd>
           </div>
           <div>
@@ -349,14 +368,6 @@
             <dd>
               Hold or slide onto BLOCK to guard and pause attacks
               <span>or hold Q</span>
-            </dd>
-          </div>
-          <div>
-            <dt>Dash</dt>
-            <dd>
-              Tap or slide onto DASH, steer with the joystick. Once per jump in
-              the air.
-              <span>or E + movement keys</span>
             </dd>
           </div>
           <div>
@@ -376,8 +387,8 @@
           </div>
         </dl>
         <p class="help-note">
-          Use the joystick for air control. Dash once per jump; strikes trigger
-          automatically within reach.
+          Use the joystick for air control. Punch and Kick work on the ground
+          and in the air. Block takes priority.
         </p>
         <form method="dialog">
           <button class="primary-button">

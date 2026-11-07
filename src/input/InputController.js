@@ -16,6 +16,7 @@ const GAME_KEYS = new Set([
   ...SPRINT_KEYS,
   "KeyR",
   "KeyF",
+  "KeyG",
   "KeyE",
   "KeyQ",
   "Space",
@@ -34,6 +35,12 @@ export class InputController {
     cameraSurface,
     resetButton,
     attackButton,
+    punchButton,
+    kickButton,
+    enableDash = true,
+    onAttackPress = () => {},
+    onAttackHold = () => {},
+    onCombatReset = () => {},
     blockButton,
     dashButton,
     jumpButton,
@@ -46,6 +53,13 @@ export class InputController {
     this.joystickKnob = joystickKnob;
     this.cameraSurface = cameraSurface;
     this.attackButton = attackButton;
+    this.punchButton = punchButton;
+    this.kickButton = kickButton;
+    this.enableDash = enableDash;
+    this.onAttackPress = onAttackPress;
+    this.onAttackHold = onAttackHold;
+    this.onCombatReset = onCombatReset;
+    this.punchHeld = this.kickHeld = false;
     this.blockButton = blockButton;
     this.dashButton = dashButton;
     this.jumpButton = jumpButton;
@@ -167,6 +181,20 @@ export class InputController {
     });
     const bindings = [
       {
+        id: "punch",
+        element: punchButton,
+        behavior: ActionBehavior.TAP_HOLD,
+        onActivate: () => this.requestAttack("punch"),
+        onHoldChange: () => this.updateState(),
+      },
+      {
+        id: "kick",
+        element: kickButton,
+        behavior: ActionBehavior.TAP_HOLD,
+        onActivate: () => this.requestAttack("kick"),
+        onHoldChange: () => this.updateState(),
+      },
+      {
         id: "dash",
         element: dashButton,
         behavior: ActionBehavior.PRESS,
@@ -211,9 +239,11 @@ export class InputController {
         if (!event.repeat) this.onReset();
         return;
       }
-      if (event.code === "KeyF") {
-        if (!event.repeat && !this.keys.has("KeyF")) this.requestAttack();
-        this.keys.add("KeyF");
+      if (event.code === "KeyF" || event.code === "KeyG") {
+        if (!event.repeat && !this.keys.has(event.code))
+          this.requestAttack(event.code === "KeyF" ? "punch" : "kick");
+        this.keys.add(event.code);
+        this.updateState();
         return;
       }
       if (event.code === "KeyE") {
@@ -286,10 +316,11 @@ export class InputController {
     event.stopPropagation();
   }
 
-  requestAttack() {
+  requestAttack(action = "punch") {
     // Combat owns recovery and block eligibility; input records each entry only.
     if (!this.enabled) return;
     this.attackRequested = true;
+    this.onAttackPress(action);
   }
 
   consumeAttackRequest() {
@@ -300,7 +331,7 @@ export class InputController {
 
   requestDash() {
     // The movement state owns cooldown eligibility; HUD updates may lag a frame.
-    if (!this.enabled || this.dashRequested) return;
+    if (!this.enabled || !this.enableDash || this.dashRequested) return;
     this.dashRequested = true;
     this.movementRequests.push("dash");
   }
@@ -394,6 +425,17 @@ export class InputController {
         : Math.min(1, Math.hypot(this.move.x, this.move.y));
     this.sprinting = this.movementMagnitude >= 0.9;
     this.blocking = this.actions.isHeld("block") || this.keys.has("KeyQ");
+    for (const action of ["punch", "kick"]) {
+      const held =
+        this.actions.isHeld(action) ||
+        this.keys.has(action === "punch" ? "KeyF" : "KeyG");
+      if (held !== this[`${action}Held`]) {
+        this[`${action}Held`] = held;
+        this.onAttackHold(action, held);
+      }
+      this[`${action}Button`]?.classList.toggle("is-active", held);
+      this[`${action}Button`]?.setAttribute("aria-pressed", String(held));
+    }
     this.blockButton?.classList.toggle("is-active", this.blocking);
     this.blockButton?.setAttribute("aria-pressed", String(this.blocking));
   }
@@ -445,8 +487,15 @@ export class InputController {
     this.cameraSurface.classList.remove("is-active");
     for (const [element, id] of pointers) this.releaseCapture(element, id);
     this.updateState();
+    this.onCombatReset();
   }
 
+  get punchPointer() {
+    return this.actions.getPointer("punch");
+  }
+  get kickPointer() {
+    return this.actions.getPointer("kick");
+  }
   get attackPointer() {
     return this.actions.getPointer("attack");
   }

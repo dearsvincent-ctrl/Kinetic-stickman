@@ -11,13 +11,15 @@ import {
 
 const SELECTORS = {
   move: "#joystick",
-  dash: "#dash-button",
+  punch: "#punch-button",
+  kick: "#kick-button",
   block: "#block-button",
   jump: "#jump-button",
 };
 const LABELS = {
   move: "Move",
-  dash: "Dash",
+  punch: "Punch",
+  kick: "Kick",
   block: "Block",
   jump: "Jump",
 };

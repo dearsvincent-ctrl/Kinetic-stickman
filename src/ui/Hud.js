@@ -6,8 +6,7 @@ export class Hud {
     this.movementState = document.querySelector("#movement-state");
     this.movementDot = document.querySelector("#movement-dot");
     this.stanceLabel = document.querySelector("#stance-label");
-    this.dashButton = document.querySelector("#dash-button");
-    this.dashCooldown = document.querySelector("#dash-cooldown");
+    this.contactStatus = document.querySelector("#contact-status");
     this.jumpButton = document.querySelector("#jump-button");
     this.jumpStatus = document.querySelector("#jump-status");
     this.helpDialog = document.querySelector("#help-dialog");
@@ -55,9 +54,10 @@ export class Hud {
     sprinting,
     combat = null,
     dash = null,
-    proximity = null,
     jump = null,
     movement = null,
+    hits = null,
+    contactFeedback = 0,
   ) {
     this.frameCount++;
     this.sampleTime += dt;
@@ -99,50 +99,31 @@ export class Hud {
       : combat?.attack.active
         ? combat.attack.phase === "recovery"
           ? "RECOVERING"
-          : combat.currentTechnique?.animation === "flying-kick"
-            ? "FLYING KICK"
-            : "ATTACKING"
+          : (combat.currentTechnique?.label?.toUpperCase() ?? "ATTACKING")
         : combat?.postureActive
           ? "COMBAT POSTURE"
-          : proximity?.target
-            ? "TARGET IN RANGE"
-            : "FREE MOVEMENT";
+          : "FREE MOVEMENT";
     this.speedValue.textContent = speed.toFixed(1);
     this.stanceLabel.dataset.technique = combat?.attack.active
       ? combat.attack.techniqueId
       : "none";
     this.stanceLabel.dataset.phase = combat?.attack.phase ?? "idle";
+    this.stanceLabel.dataset.sequence = String(combat?.attack.sequence ?? 0);
+    this.stanceLabel.dataset.action =
+      combat?.currentTechnique?.action ?? "none";
+    this.stanceLabel.dataset.cancelled = String(
+      combat?.attack.cancelled ?? false,
+    );
     this.speedFill.style.width = `${Math.min(100, (speed / maxSpeed) * 100)}%`;
     this.movementDot.style.background =
       state === "IDLE" ? "#9faa98" : "#ff885e";
-    if (dash) {
-      this.dashButton.setAttribute(
-        "aria-disabled",
-        String(
-          !(movement ? movement.canDash : dash.ready && (!jump || jump.ready)),
-        ),
-      );
-      this.dashButton.classList.toggle("is-active", dash.active);
-      this.dashCooldown.textContent =
-        movement && jump?.airborne
-          ? dash.active
-            ? "AIR DASH"
-            : movement.airDashesRemaining === 0
-              ? "USED"
-              : movement.airDash.ready
-                ? "AIR READY"
-                : `${movement.airDash.cooldownRemaining.toFixed(1)}s`
-          : dash.active && dash.mode === "air"
-            ? "AIR DASH"
-            : (
-                  movement
-                    ? movement.groundDash.ready && !dash.active
-                    : dash.ready
-                )
-              ? jump && !jump.ready
-                ? "LAND FIRST"
-                : "READY"
-              : `${Math.max(0, movement ? movement.groundDash.cooldownRemaining : dash.cooldownRemaining).toFixed(1)}s`;
+    if (hits) {
+      this.contactStatus.dataset.count = String(hits.count);
+      this.contactStatus.dataset.technique =
+        hits.lastContact?.techniqueId ?? "none";
+      this.contactStatus.classList.toggle("is-contact", contactFeedback > 0);
+      this.contactStatus.textContent =
+        contactFeedback > 0 ? "CONTACT" : "PRACTISE YOUR STRIKES";
     }
     if (jump) {
       this.jumpButton.setAttribute(

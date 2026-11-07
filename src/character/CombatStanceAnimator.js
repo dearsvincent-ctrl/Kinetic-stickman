@@ -21,8 +21,8 @@ export class CombatStanceAnimator {
     return this.weight;
   }
 
-  apply(pose, movementBlend, sprintBlend = 0) {
-    const weight = this.weight;
+  apply(pose, movementBlend, sprintBlend = 0, bodyWeight = this.weight) {
+    const weight = bodyWeight;
     const quiet = 1 - movementBlend;
     const breath = Math.sin(this.time * 2.3);
     const shift = Math.sin(this.time * 1.35);
@@ -59,11 +59,11 @@ export class CombatStanceAnimator {
       arm.x = MathUtils.lerp(
         arm.x,
         (left ? 1.1 : 1.04) + breath * 0.008,
-        weight,
+        this.weight,
       );
-      arm.y = MathUtils.lerp(arm.y, left ? -0.06 : 0.06, weight);
-      arm.z = MathUtils.lerp(arm.z, left ? 0.18 : -0.18, weight);
-      arm.elbow = MathUtils.lerp(arm.elbow, left ? 1.76 : 1.84, weight);
+      arm.y = MathUtils.lerp(arm.y, left ? -0.06 : 0.06, this.weight);
+      arm.z = MathUtils.lerp(arm.z, left ? 0.18 : -0.18, this.weight);
+      arm.elbow = MathUtils.lerp(arm.elbow, left ? 1.76 : 1.84, this.weight);
     }
   }
 }

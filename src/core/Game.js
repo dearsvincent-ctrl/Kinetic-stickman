@@ -9,7 +9,12 @@ import { FollowCamera } from "../camera/FollowCamera.js";
 import { InputController } from "../input/InputController.js";
 import { Hud } from "../ui/Hud.js";
 import { CombatController } from "../combat/CombatController.js";
-import { ProximityCombatController } from "../combat/ProximityCombatController.js";
+import { AttackScheduler } from "../combat/AttackScheduler.js";
+import {
+  createManualTechniques,
+  selectManualTechnique,
+} from "../combat/ManualTechniques.js";
+import { StrikeHitDetector } from "../combat/StrikeHitDetector.js";
 import {
   createCombatContext,
   updateCombatContext,
@@ -49,10 +54,19 @@ export class Game {
     this.controller = new CharacterController(
       this.character.root,
       new ArenaBounds(this.arena.halfSize, [this.dummy.target]),
+      { faceInputWhenBlocked: true },
     );
-    this.combat = new CombatController();
-    this.proximity = new ProximityCombatController(this.combat, {
+    this.combat = new CombatController({
+      techniques: createManualTechniques(),
+      selectTechnique: selectManualTechnique,
+    });
+    this.attackScheduler = new AttackScheduler(this.combat);
+    this.contactFeedbackRemaining = 0;
+    this.hitDetector = new StrikeHitDetector({
       targets: [this.dummy.target],
+      onContact: () => {
+        this.contactFeedbackRemaining = 0.18;
+      },
     });
     // Reuse live movement context; accepted attacks take their own snapshot.
     this.combatContext = createCombatContext();
@@ -72,7 +86,13 @@ export class Game {
         this.controller.config.analogue,
       ),
       blockButton: document.querySelector("#block-button"),
-      dashButton: document.querySelector("#dash-button"),
+      punchButton: document.querySelector("#punch-button"),
+      kickButton: document.querySelector("#kick-button"),
+      enableDash: new URLSearchParams(location.search).get("sandbox") === "1",
+      onAttackPress: (action) => this.attackScheduler.press(action),
+      onAttackHold: (action, held) =>
+        this.attackScheduler.setHeld(action, held),
+      onCombatReset: () => this.attackScheduler.reset(),
       jumpButton: document.querySelector("#jump-button"),
       cameraSurface: document.querySelector("#camera-surface"),
       resetButton: document.querySelector("#reset-camera"),
@@ -94,16 +114,12 @@ export class Game {
         this.clearMotion();
       },
     });
-    this.proximityOptions = {
-      position: this.character.root.position,
-      blocking: false,
-      facing: 0,
-      context: this.combatContext,
-      grounded: true,
-    };
     this.simulationPrevious = new THREE.Vector3();
+    this.combatStartRoot = new THREE.Vector3();
+    this.combatEndRoot = new THREE.Vector3();
     this.simulationSteps = 1;
     this.physicsSandbox = new PhysicsSandboxPanel({
+      onDash: () => this.input.requestDash(),
       onChange: (values) => {
         this.controller.applyMovementConfig(sandboxMovementConfig(values));
         // Keep the normal camera angle and user orbit. Bound follow lag only in
@@ -156,7 +172,7 @@ export class Game {
     this.input.reset();
     this.controller.stop();
     this.combat.reset();
-    this.proximity.reset();
+    this.attackScheduler.reset();
     this.accumulator = 0;
     this.lastTime = null;
   }
@@ -211,7 +227,7 @@ export class Game {
         this.input.consumeLookDelta(),
       );
     }
-    this.dummy.setTargeted(Boolean(this.proximity.target));
+    this.dummy.setTargeted(this.contactFeedbackRemaining > 0);
     if (!this.contextLost) this.renderer.render(this.scene, this.camera);
     this.hud.update(
       Math.max(0.001, elapsed),
@@ -220,33 +236,61 @@ export class Game {
       this.controller.speed >= this.animator.style.locomotion.sprintStart,
       this.combat,
       this.controller.dash,
-      this.proximity,
       this.controller.jump,
       this.controller,
+      this.hitDetector,
+      this.contactFeedbackRemaining,
     );
   }
 
   simulateMovement(dt) {
+    // Physics advances exactly once at its own step size, independent of attack
+    // speed. Combat samples that resolved path at its own phase boundaries.
     this.simulationPrevious.copy(this.character.root.position);
-    const phase = this.controller.jump.phase;
-    this.controller.update(
-      dt,
-      this.input,
-      this.followCamera.yaw,
-      this.controller.jump.ready ? this.proximity.target?.position : null,
-    );
-    const jump = this.controller.jump;
+    const heading = this.controller.heading;
+    this.controller.update(dt, this.input, this.followCamera.yaw);
     const context = updateCombatContext(this.combatContext, this.controller);
-    this.combat.setBlocking(this.input.blocking);
-    if (this.input.consumeAttackRequest() && jump.ready)
-      this.combat.requestAttack(context);
-    const options = this.proximityOptions;
-    options.blocking = this.input.blocking;
-    options.facing = this.controller.heading;
-    options.grounded = jump.ready;
-    if (this.physicsSandbox.enabled && phase === jump.phase)
-      this.proximity.updateSwept(dt, options, this.simulationPrevious);
-    else this.proximity.update(dt, options);
+    let elapsed = 0;
+    const turn = Math.atan2(
+      Math.sin(this.controller.heading - heading),
+      Math.cos(this.controller.heading - heading),
+    );
+    while (elapsed < dt - 1e-9) {
+      this.attackScheduler.prepare(context, this.input.blocking);
+      const step = Math.min(
+        dt - elapsed,
+        Math.max(1e-8, this.combat.timeToBoundary),
+      );
+      const t0 = elapsed / dt,
+        t1 = (elapsed + step) / dt;
+      this.combatStartRoot.lerpVectors(
+        this.simulationPrevious,
+        this.character.root.position,
+        t0,
+      );
+      this.combatEndRoot.lerpVectors(
+        this.simulationPrevious,
+        this.character.root.position,
+        t1,
+      );
+      const start = this.combat.attack.elapsed;
+      this.contactFeedbackRemaining = Math.max(
+        0,
+        this.contactFeedbackRemaining - step,
+      );
+      this.hitDetector.sweep(
+        this.combat.currentTechnique,
+        this.combat.attack,
+        start,
+        start + step,
+        this.combatStartRoot,
+        this.combatEndRoot,
+        heading + turn * t0,
+        heading + turn * t1,
+      );
+      this.combat.update(step);
+      elapsed += step;
+    }
   }
 
   snapshot() {
@@ -255,7 +299,7 @@ export class Game {
         enabled: this.physicsSandbox.enabled,
         values: this.physicsSandbox.values,
         substeps: this.simulationSteps,
-        sweptOpportunities: this.proximity.sweptOpportunities,
+        contacts: this.hitDetector.count,
       },
       position: this.character.root.position.toArray(),
       heading: this.controller.heading,
@@ -296,7 +340,10 @@ export class Game {
         movementMagnitude: this.input.movementMagnitude,
         sprinting: this.input.sprinting,
         blocking: this.input.blocking,
-        attackPointer: this.input.attackPointer,
+        punchHeld: this.input.punchHeld,
+        kickHeld: this.input.kickHeld,
+        punchPointer: this.input.punchPointer,
+        kickPointer: this.input.kickPointer,
         blockPointer: this.input.blockPointer,
         jumpPointer: this.input.jumpPointer,
         joystickPointer: this.input.joystickPointer,
@@ -326,22 +373,9 @@ export class Game {
           environment: this.combat.attack.context?.environment ?? "ground",
         },
       },
-      proximity: {
-        targetId: this.proximity.target?.id ?? null,
-        distance: Number.isFinite(this.proximity.distance)
-          ? this.proximity.distance
-          : null,
-        entryDistance: this.proximity.config.entryDistance,
-        exitDistance: this.proximity.config.exitDistance,
-        aligned: this.proximity.aligned,
-        horizontalDistance: Number.isFinite(this.proximity.horizontalDistance)
-          ? this.proximity.horizontalDistance
-          : null,
-        verticalSeparation: Number.isFinite(this.proximity.verticalSeparation)
-          ? this.proximity.verticalSeparation
-          : null,
-        aerialEntryDistance: this.proximity.config.aerialEntryDistance,
-        aerialExitDistance: this.proximity.config.aerialExitDistance,
+      contacts: {
+        count: this.hitDetector.count,
+        last: this.hitDetector.lastContact,
       },
       dummy: {
         id: this.dummy.target.id,

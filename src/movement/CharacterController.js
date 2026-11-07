@@ -28,6 +28,8 @@ export class CharacterController {
     this.walkSpeed = this.runSpeed; // Legacy public name for the normal-run anchor.
     this.sprintSpeed = this.config.locomotion.sprintSpeed;
     this.radius = radius;
+    this.faceInputWhenBlocked = options.faceInputWhenBlocked ?? false;
+    this.blockedInputHeading = null;
     this.velocity = new Vector3();
     this.speed = 0;
     this.heading = 0;
@@ -293,6 +295,18 @@ export class CharacterController {
     }
     const distance = this.next.distanceTo(this.previous);
     this.speed = distance / dt;
+    const blocked =
+      contactResolved ||
+      Math.abs(actualX - this.displacement.x) > 0.000001 ||
+      Math.abs(actualZ - this.displacement.z) > 0.000001;
+    if (this.faceInputWhenBlocked && this.jump.ready && !this.dash.active) {
+      if (this.desired.lengthSq() > 0.001)
+        this.blockedInputHeading = blocked
+          ? Math.atan2(-this.desired.x, -this.desired.z)
+          : null;
+      // Retain the last joystick facing through collision-induced residual
+      // sliding after release. This is input intent, never opponent auto-aim.
+    } else this.blockedInputHeading = null;
     if (this.facingTarget) {
       // Facing is independent of travel: never steer or pull the root toward
       // a nearby target. Resolve yaw from the collision-corrected position.
@@ -313,10 +327,10 @@ export class CharacterController {
         );
         this.root.rotation.y = this.heading;
       }
-    } else if (this.speed > 0.03) {
+    } else if (this.speed > 0.03 || this.blockedInputHeading !== null) {
       this.heading = dampAngle(
         this.heading,
-        Math.atan2(-actualX, -actualZ),
+        this.blockedInputHeading ?? Math.atan2(-actualX, -actualZ),
         13,
         dt,
       );
@@ -326,6 +340,7 @@ export class CharacterController {
   }
 
   stop() {
+    this.blockedInputHeading = null;
     this.velocity.set(0, 0, 0);
     this.speed = 0;
     this.dashRequested = false;

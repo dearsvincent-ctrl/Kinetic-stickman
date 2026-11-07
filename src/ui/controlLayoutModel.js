@@ -1,4 +1,14 @@
-export const CONTROL_IDS = Object.freeze(["move", "dash", "block", "jump"]);
+export const CONTROL_IDS = Object.freeze([
+  "move",
+  "block",
+  "jump",
+  "punch",
+  "kick",
+]);
+export const NEW_CONTROL_DEFAULTS = Object.freeze({
+  punch: Object.freeze({ x: 0.89, y: 0.54 }),
+  kick: Object.freeze({ x: 0.89, y: 0.75 }),
+});
 export const STORAGE_KEY = "kinetic.controls.v1";
 export const LAYOUT_MARGIN = 8;
 export const LAYOUT_GAP = 8;
@@ -55,16 +65,18 @@ function validPositions(positions) {
 
 /** Treat browser storage as untrusted data and return only the known schema. */
 export function validateLayout(value) {
-  if (!record(value) || value.version !== 1 || !validPositions(value.positions))
+  if (!record(value) || value.version !== 1 || !record(value.positions))
     return null;
+  const positions = { ...NEW_CONTROL_DEFAULTS, ...value.positions };
+  if (!validPositions(positions)) return null;
   return {
     version: 1,
     positions: Object.fromEntries(
       CONTROL_IDS.map((id) => [
         id,
         {
-          x: value.positions[id].x,
-          y: value.positions[id].y,
+          x: positions[id].x,
+          y: positions[id].y,
         },
       ]),
     ),
@@ -79,8 +91,14 @@ export function loadLayout(storage) {
     const source = JSON.parse(raw);
     const layout = validateLayout(source);
     // The normalized schema and storage key stay compatible. Remove only the
-    // retired Sprint entry; a failed migration write must not discard a layout.
-    if (layout && Object.hasOwn(source.positions, "sprint")) {
+    // retired Sprint/Dash entries and initialize the two new actions; a failed migration write must not discard a layout.
+    if (
+      layout &&
+      (Object.hasOwn(source.positions, "sprint") ||
+        Object.hasOwn(source.positions, "dash") ||
+        !Object.hasOwn(source.positions, "punch") ||
+        !Object.hasOwn(source.positions, "kick"))
+    ) {
       try {
         target.setItem(STORAGE_KEY, JSON.stringify(layout));
       } catch {

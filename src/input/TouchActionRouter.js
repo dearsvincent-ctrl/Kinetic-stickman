@@ -1,5 +1,6 @@
 export const ActionBehavior = Object.freeze({
   HOLD: "HOLD",
+  TAP_HOLD: "TAP_HOLD",
   PRESS: "PRESS",
   TOGGLE: "TOGGLE",
 });
@@ -8,6 +9,10 @@ export const ActionBehavior = Object.freeze({
  * Only contacts that START on a registered button belong to this router.
  * Crossing a gap keeps ownership; joystick/camera gestures are never adopted.
  */
+const holds = (action) =>
+  action?.behavior === ActionBehavior.HOLD ||
+  action?.behavior === ActionBehavior.TAP_HOLD;
+
 export class TouchActionRouter {
   constructor({
     root = document.documentElement,
@@ -107,9 +112,11 @@ export class TouchActionRouter {
         // All pointer activations already happened on entry. A detail=0 click
         // is keyboard/assistive activation without a physical pointer gesture.
         if (event.detail !== 0 || this.keyboard.size) return;
-        if (action.behavior === ActionBehavior.HOLD) {
+        if (holds(action)) {
           const token = Symbol("accessible-hold");
           this.hold(action, token, true, event);
+          if (action.behavior === ActionBehavior.TAP_HOLD)
+            action.onActivate(event);
           this.hold(action, token, false, event);
         } else action.onActivate(event);
       },
@@ -127,9 +134,8 @@ export class TouchActionRouter {
         if (event.repeat || this.keyboard.has(event.code)) return;
         const source = { action, token: Symbol(event.code) };
         this.keyboard.set(event.code, source);
-        if (action.behavior === ActionBehavior.HOLD)
-          this.hold(action, source.token, true, event);
-        else action.onActivate(event);
+        if (holds(action)) this.hold(action, source.token, true, event);
+        if (action.behavior !== ActionBehavior.HOLD) action.onActivate(event);
       },
       capture,
     );
@@ -183,7 +189,7 @@ export class TouchActionRouter {
   }) {
     if (!id || !element || !Object.values(ActionBehavior).includes(behavior))
       throw new TypeError(
-        "An action needs an id, element, and HOLD/PRESS/TOGGLE behavior.",
+        "An action needs an id, element, and HOLD/PRESS/TOGGLE/TAP_HOLD behavior.",
       );
     this.unregister(id);
     for (const action of this.actions.values())
@@ -246,12 +252,11 @@ export class TouchActionRouter {
     if (pointer.action === action) return;
     const previous = pointer.action;
     pointer.action = null;
-    if (previous?.behavior === ActionBehavior.HOLD)
-      this.hold(previous, pointer.id, false, event);
+    if (holds(previous)) this.hold(previous, pointer.id, false, event);
     pointer.action = action;
-    if (action?.behavior === ActionBehavior.HOLD)
-      this.hold(action, pointer.id, true, event);
-    else if (action) action.onActivate(event);
+    if (holds(action)) this.hold(action, pointer.id, true, event);
+    if (action && action.behavior !== ActionBehavior.HOLD)
+      action.onActivate(event);
     this.onChange();
   }
 
@@ -291,7 +296,7 @@ export class TouchActionRouter {
     const source = this.keyboard.get(code);
     if (!source) return;
     this.keyboard.delete(code);
-    if (source.action.behavior === ActionBehavior.HOLD)
+    if (holds(source.action))
       this.hold(source.action, source.token, false, event);
     this.onChange();
   }

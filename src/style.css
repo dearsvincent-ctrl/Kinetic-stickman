@@ -1426,3 +1426,88 @@ h1 {
     padding: 6px 12px;
   }
 }
+
+/* Manual strikes occupy the former empty Sprint column. Existing Move/Block/
+   Jump defaults remain; all five controls can be repositioned independently. */
+.strike-button {
+  position: absolute;
+  right: 0;
+  bottom: 140px;
+  width: 76px;
+  height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid #dbb89a80;
+  border-radius: 50%;
+  background: #33463ae6;
+  color: #eee3d0;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+.strike-button svg {
+  width: 24px;
+  height: 24px;
+}
+.kick-button {
+  bottom: 44px;
+}
+.strike-button.is-active {
+  color: #ffc09d;
+  border-color: var(--orange);
+  background: #624534e6;
+}
+.contact-status {
+  position: absolute;
+  bottom: 19px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  color: #a4b6aa;
+  font-size: 7px;
+  letter-spacing: 1.2px;
+}
+.contact-status.is-contact {
+  color: #cce9b5;
+}
+@media (max-height: 600px) {
+  .strike-button {
+    width: 64px;
+    height: 64px;
+    bottom: 114px;
+    font-size: 7px;
+  }
+  .kick-button {
+    bottom: 34px;
+  }
+  .strike-button svg {
+    width: 23px;
+    height: 23px;
+  }
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  .strike-button {
+    right: 0;
+    width: 90px;
+    height: 48px;
+    bottom: calc(100% + 74px + var(--reset-stack-space));
+    flex-direction: row;
+    border-radius: 6px;
+    font-size: 7px;
+  }
+  .kick-button {
+    bottom: calc(100% + 14px + var(--reset-stack-space));
+  }
+  .block-button {
+    right: 102px;
+  }
+  .jump-button {
+    right: 0;
+  }
+  .contact-status {
+    bottom: 12px;
+  }
+}

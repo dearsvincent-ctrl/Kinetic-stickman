@@ -35,7 +35,11 @@ export class AerialAttackAnimator {
     const animation =
       combat?.currentTechnique?.animation ??
       (attack?.techniqueId === "flying-kick" ? "flying-kick" : "punch");
-    const active = Boolean(attack?.active && animation === "flying-kick");
+    const groundedKick = animation === "ground-kick";
+    const active = Boolean(
+      attack?.active && (animation === "flying-kick" || groundedKick),
+    );
+    const eligiblePose = groundedKick ? !jump || jump.ready : jump?.airborne;
     const root = this.character.root;
     const s = this.style;
     this.blocking = Boolean(combat?.blocking);
@@ -44,7 +48,8 @@ export class AerialAttackAnimator {
         this.sequence = attack.sequence;
         this.side = combat.currentTechnique?.side === "left" ? 0 : 1;
         const point = attack.context.targetPoint;
-        this.target.set(point.x, point.y, point.z);
+        this.manual = !point;
+        if (point) this.target.set(point.x, point.y, point.z);
         this.phase = "windup";
         this.cancelled = false;
         this.aimAngle = 0;
@@ -62,7 +67,7 @@ export class AerialAttackAnimator {
           ? this.recoveryWeight *
             (1 - smooth(clamp01(attack.phaseProgress / s.recoveryFraction)))
           : smooth(clamp01(attack.elapsed / s.entryTime));
-      this.weight = jump?.airborne
+      this.weight = eligiblePose
         ? envelope
         : MathUtils.damp(this.weight, 0, s.releaseResponse, dt);
       this.extension =
@@ -88,7 +93,18 @@ export class AerialAttackAnimator {
       this.coil = 0;
     }
     if (this.weight < 0.001) this.weight = 0;
-    if (!jump?.airborne || !this.weight) return;
+    if (!eligiblePose || !this.weight) return;
+    if (this.manual) {
+      const technique = combat.currentTechnique;
+      this.target
+        .set(
+          0,
+          technique.originHeight,
+          -(technique.reach - technique.hitRadius),
+        )
+        .applyQuaternion(root.quaternion)
+        .add(root.position);
+    }
 
     this.inverse.copy(root.quaternion).invert();
     this.local
@@ -102,13 +118,15 @@ export class AerialAttackAnimator {
       Math.PI / 4,
     );
     this.aimAngle = MathUtils.damp(this.aimAngle, angle, 18, dt);
-    const distance = MathUtils.clamp(
-      Math.hypot(this.local.x, this.local.z) - 0.16,
-      0.5,
-      s.reach,
-    );
+    const distance = this.manual
+      ? combat.currentTechnique.reach - combat.currentTechnique.hitRadius
+      : MathUtils.clamp(
+          Math.hypot(this.local.x, this.local.z) - 0.16,
+          0.5,
+          s.reach,
+        );
     const landing =
-      jump.verticalVelocity < 0
+      !groundedKick && jump.verticalVelocity < 0
         ? smooth(
             clamp01((jump.timeToBoundary ?? Infinity) / s.landingBlendTime),
           )
@@ -120,10 +138,15 @@ export class AerialAttackAnimator {
         this.goal.set(foot.sign * 0.15, s.chamberHeight, -s.chamberForward);
         this.extended.set(
           foot.sign * 0.12 + Math.sin(this.aimAngle) * distance,
-          MathUtils.clamp(this.target.y - root.position.y, 0.25, 1.1),
+          this.manual
+            ? combat.currentTechnique.originHeight
+            : MathUtils.clamp(this.target.y - root.position.y, 0.25, 1.1),
           -Math.cos(this.aimAngle) * distance,
         );
         this.goal.lerp(this.extended, this.extension);
+      } else if (groundedKick) {
+        // Keep the moving support leg's existing gait/ground contact.
+        continue;
       } else {
         this.goal.set(
           foot.sign * 0.17,

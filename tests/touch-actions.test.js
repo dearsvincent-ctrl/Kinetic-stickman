@@ -776,3 +776,56 @@ test("resumed routing requires fresh entries and uses relocated button hit posit
   dispatch(f.document, "click", { detail: 0 }, f.fight);
   assert.equal(f.fightCount, 1, "fresh assistive activation resumes normally");
 });
+
+test("TAP_HOLD enters once, tracks independent fingers, releases on slides and cancels cleanly", (t) => {
+  const f = setup(t);
+  let entries = 0;
+  const held = [];
+  f.router.register({
+    id: "punch",
+    element: f.dash,
+    behavior: ActionBehavior.TAP_HOLD,
+    onActivate: () => entries++,
+    onHoldChange: (v) => held.push(v),
+  });
+  f.pointer("pointerdown", 101, 635);
+  assert.equal(entries, 1);
+  assert.equal(f.router.isHeld("punch"), true);
+  for (let n = 0; n < 5; n++) f.pointer("pointermove", 101, 636 + n);
+  assert.equal(entries, 1);
+  f.pointer("pointerdown", 102, 635);
+  assert.equal(entries, 2);
+  f.pointer("pointerup", 101, 635);
+  assert.equal(f.router.isHeld("punch"), true);
+  f.pointer("pointermove", 102, 535);
+  assert.equal(f.router.isHeld("punch"), false);
+  assert.equal(f.router.isHeld("sprint"), true);
+  f.pointer("pointermove", 102, 635);
+  assert.equal(entries, 3);
+  assert.equal(f.router.isHeld("sprint"), false);
+  f.pointer("pointercancel", 102, 635);
+  assert.equal(f.router.isHeld("punch"), false);
+  assert.deepEqual(held, [true, false, true, false]);
+});
+
+test("TAP_HOLD keyboard and accessible clicks activate once without native-repeat duplication", (t) => {
+  const f = setup(t);
+  let entries = 0;
+  f.router.register({
+    id: "punch",
+    element: f.dash,
+    behavior: ActionBehavior.TAP_HOLD,
+    onActivate: () => entries++,
+  });
+  f.key("keydown", " ", f.dash);
+  f.key("keydown", " ", f.dash, { repeat: true });
+  assert.equal(entries, 1);
+  assert.ok(f.router.isHeld("punch"));
+  f.key("keyup", " ", f.dash);
+  assert.equal(f.router.isHeld("punch"), false);
+  dispatch(f.document, "click", { detail: 1 }, f.dash);
+  assert.equal(entries, 1);
+  dispatch(f.document, "click", { detail: 0 }, f.dash);
+  assert.equal(entries, 2);
+  assert.equal(f.router.isHeld("punch"), false);
+});
