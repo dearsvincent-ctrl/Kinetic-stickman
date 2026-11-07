@@ -1,4 +1,5 @@
 import { MathUtils, Quaternion, Vector3 } from "three";
+import { ANIME_STYLE } from "./AnimationStyle.js";
 
 const clamp01 = (value) => MathUtils.clamp(value, 0, 1);
 const smooth = (value) => value * value * (3 - 2 * value);
@@ -9,11 +10,12 @@ const UP = new Vector3(0, 1, 0);
  * never moves the character root, applies impulses, or chooses dash direction.
  */
 export class DashAnimator {
-  constructor(character) {
+  constructor(character, style = ANIME_STYLE.groundDash) {
     this.character = character;
+    this.style = style;
     this.weight = 0;
     this.spineRoll = 0;
-    this.recoveryDuration = 0.16;
+    this.recoveryDuration = style.recoveryTime;
     this.sequence = -1;
     this.active = false;
     this.progress = 0;
@@ -87,7 +89,7 @@ export class DashAnimator {
     if (active) {
       this.progress = clamp01(dash.progress);
       this.direction.copy(dash.direction);
-      this.weight = smooth(clamp01(dash.elapsed / 0.032));
+      this.weight = smooth(clamp01(dash.elapsed / this.style.entryTime));
       this.right.set(-this.direction.z, 0, this.direction.x);
       this.yaw.setFromAxisAngle(
         UP,
@@ -112,7 +114,8 @@ export class DashAnimator {
           .copy(root.position)
           .addScaledVector(this.direction, along)
           .addScaledVector(this.right, foot.sign * 0.16);
-        this.goal.y = ankleY + flight * (rear ? 0.14 : 0.18);
+        this.goal.y =
+          ankleY + flight * (rear ? this.style.rearLift : this.style.frontLift);
         foot.target.lerpVectors(this.starts[i], this.goal, toeOff);
         foot.planted = rear && p <= 0.16;
 
@@ -191,26 +194,31 @@ export class DashAnimator {
     this.inverseRoot.copy(this.character.root.quaternion).invert();
     this.localDirection.copy(this.direction).applyQuaternion(this.inverseRoot);
     const p = this.progress;
+    const s = this.style;
     const push = 1 - smooth(clamp01(p / 0.32));
     const drive = smooth(clamp01(p / 0.16));
-    const lean = 0.24 + drive * 0.1 - smooth(clamp01((p - 0.72) / 0.28)) * 0.1;
-    pose.hipY -= push * 0.075 * this.weight;
-    pose.hipYaw += (this.rear === 0 ? -1 : 1) * 0.035 * drive * this.weight;
+    const lean =
+      s.lean +
+      drive * s.driveLean -
+      smooth(clamp01((p - 0.72) / 0.28)) * s.driveLean;
+    pose.hipY -= push * s.compression * this.weight;
+    pose.hipYaw += (this.rear === 0 ? -1 : 1) * s.twist * drive * this.weight;
+    pose.spineYaw -= (this.rear === 0 ? -1 : 1) * s.twist * drive * this.weight;
     pose.spinePitch = MathUtils.lerp(
       pose.spinePitch,
       this.localDirection.z * lean,
       this.weight,
     );
-    this.spineRoll = -this.localDirection.x * lean * 0.75 * this.weight;
-    pose.headPitch += -this.localDirection.z * 0.065 * this.weight;
+    this.spineRoll = -this.localDirection.x * lean * 0.75;
+    pose.headPitch += -this.localDirection.z * 0.085 * this.weight;
     for (let i = 0; i < 2; i++) {
       const arm = pose.arms[i];
       const rearArm = i === this.rear;
       const guardX = arm.x + (rearArm ? 0.07 : -0.05) * drive;
-      const freeX = rearArm ? 0.85 : -0.48;
+      const freeX = rearArm ? 1.0 : -0.6;
       const targetX = MathUtils.lerp(freeX, guardX, combatWeight);
       const targetElbow = MathUtils.lerp(
-        rearArm ? 1.05 : 0.48,
+        rearArm ? 1.15 : 0.65,
         arm.elbow,
         combatWeight,
       );

@@ -129,8 +129,9 @@ test("a nearby registered target automatically repeats complete, smooth punches 
         attack.phase === "idle"
       )
         assert.ok(
-          hand.distanceTo(previousHand) < (0.18 * dt) / DT,
-          "repeated punches and recovery do not snap between poses",
+          hand.distanceTo(previousHand) <
+            (attack.phase === "extension" ? 15 * dt : (0.18 * dt) / DT),
+          "explosive extension stays bounded and recovery never snaps between poses",
         );
       previousHand = hand;
     }

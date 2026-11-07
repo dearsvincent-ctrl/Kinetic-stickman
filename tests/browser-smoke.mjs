@@ -5,6 +5,7 @@ import { checkLayoutEditorEdges } from "./layout-editor-edge-cases.mjs";
 import { checkAerialDashes } from "./aerial-dash-browser.mjs";
 import { checkDashJumpTransitions } from "./dash-jump-browser.mjs";
 import { checkFluidCombat } from "./fluid-combat-browser.mjs";
+import { checkExplosiveAnimation } from "./explosive-animation-browser.mjs";
 
 // Run against `npm run dev`. CDP dispatches native multi-touch input rather
 // than directly mutating the controller. This is emulation, not device testing.
@@ -2056,6 +2057,7 @@ try {
   await checkAerialDashes(page);
   await checkDashJumpTransitions(page, native);
   await checkFluidCombat(page, native);
+  await checkExplosiveAnimation(page, native);
   await page.clock.resume();
   assert.deepEqual(errors, [], "No browser runtime errors");
   console.log(

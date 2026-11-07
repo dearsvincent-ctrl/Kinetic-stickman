@@ -1,4 +1,5 @@
 import { MathUtils, Quaternion, Vector3 } from "three";
+import { ANIME_STYLE } from "./AnimationStyle.js";
 
 const clamp01 = (value) => MathUtils.clamp(value, 0, 1);
 const smooth = (value) => value * value * (3 - 2 * value);
@@ -8,12 +9,15 @@ const smooth = (value) => value * value * (3 - 2 * value);
  * Scratch vectors and contact snapshots are reused for every jump.
  */
 export class JumpAnimator {
-  constructor(character) {
+  constructor(character, style = ANIME_STYLE.jump) {
     this.character = character;
+    this.style = style;
     this.active = false;
     this.phase = "grounded";
     this.sequence = -1;
     this.weight = 0;
+    this.upperIntent = 0;
+    this.upperWeight = 0;
     this.guardWeight = 0;
     this.spineRoll = 0;
     this.support = 0;
@@ -27,6 +31,8 @@ export class JumpAnimator {
     this.takeoffOrigin = new Vector3();
     this.travel = new Vector3();
     this.flightHipStart = 0.955;
+    this.flightArmStart = 0;
+    this.flightElbowStart = 0;
     this.goal = new Vector3();
     this.rest = new Vector3();
     this.inverseRoot = new Quaternion();
@@ -35,6 +41,7 @@ export class JumpAnimator {
     this.pitch = 0;
     this.freeArmX = 0;
     this.freeElbow = 0;
+    this.twist = 0;
   }
 
   get ownsFeet() {
@@ -74,6 +81,7 @@ export class JumpAnimator {
     if (!active && !this.active) {
       this.weight = 0;
       this.spineRoll = 0;
+      this.updateUpper(dt, 0);
       return;
     }
 
@@ -84,6 +92,7 @@ export class JumpAnimator {
     const travelPitch =
       MathUtils.clamp(this.localVelocity.z / 5.2, -1, 1) * 0.08;
     this.compression = 0;
+    this.twist = 0;
 
     if (phase === "takeoff") {
       const p = clamp01(jump.phaseProgress);
@@ -91,10 +100,15 @@ export class JumpAnimator {
       this.weight = smooth(p);
       this.tuck = 0;
       this.compression = Math.sin(Math.PI * p);
-      this.hipY = 0.955 - 0.11 * this.compression;
-      this.pitch = travelPitch - 0.035 * this.compression;
-      this.freeArmX = MathUtils.lerp(-0.22, 0.53, smooth(p));
-      this.freeElbow = 0.65;
+      this.hipY = 0.955 - this.style.takeoffDepth * this.compression;
+      this.pitch = travelPitch - this.style.takeoffLean * this.compression;
+      this.freeArmX = MathUtils.damp(
+        this.freeArmX,
+        MathUtils.lerp(-0.22, 0.66, smooth(p)),
+        this.style.takeoffPoseResponse,
+        dt,
+      );
+      this.freeElbow = 0.9;
       this.travel.subVectors(root.position, this.takeoffOrigin);
       this.travel.y = 0;
       for (let i = 0; i < 2; i++) {
@@ -134,6 +148,8 @@ export class JumpAnimator {
     } else if (phase === "airborne") {
       if (previousPhase !== "airborne") {
         this.flightHipStart = this.character.joints.hips.position.y;
+        this.flightArmStart = this.freeArmX;
+        this.flightElbowStart = this.freeElbow;
         for (let i = 0; i < 2; i++) {
           this.flightStarts[i]
             .copy(feet[i].target)
@@ -150,21 +166,31 @@ export class JumpAnimator {
       this.weight = 1;
       // Unfold early enough that touchdown does not snap tucked feet down.
       this.tuck =
-        Math.sin(Math.PI * p) * (1 - smooth(clamp01((p - 0.55) / 0.35)));
+        Math.sin(Math.PI * p) * (1 - smooth(clamp01((p - 0.52) / 0.32)));
       this.hipY = MathUtils.lerp(
         this.flightHipStart,
-        0.955 - this.tuck * 0.018,
+        0.955 - this.tuck * 0.035,
         smooth(clamp01(jump.elapsed / 0.12)),
       );
-      this.pitch = travelPitch - 0.025;
-      this.freeArmX = 0.35 + this.tuck * 0.3;
-      this.freeElbow = 0.65 + this.tuck * 0.32;
+      this.pitch = travelPitch - this.style.flightLean;
+      this.twist = (this.lead === 0 ? 1 : -1) * this.tuck * 0.08;
+      const armRelease = smooth(clamp01(jump.elapsed / 0.12));
+      this.freeArmX = MathUtils.lerp(
+        this.flightArmStart,
+        0.45 + this.tuck * 0.4,
+        armRelease,
+      );
+      this.freeElbow = MathUtils.lerp(
+        this.flightElbowStart,
+        0.85 + this.tuck * 0.35,
+        armRelease,
+      );
       const release = smooth(clamp01(jump.elapsed / 0.16));
       for (let i = 0; i < 2; i++) {
         const foot = feet[i];
         this.goal.set(
           foot.sign * 0.16,
-          ankleY + this.tuck * 0.22,
+          ankleY + this.tuck * this.style.flightTuck,
           (i === this.lead ? -0.045 : 0.065) * this.tuck,
         );
         this.goal
@@ -188,14 +214,15 @@ export class JumpAnimator {
         }
       }
       this.progress = p;
+      const peak = this.style.landingPeak;
       this.compression =
-        p < 0.35 ? smooth(p / 0.35) : 1 - smooth((p - 0.35) / 0.65);
+        p < peak ? smooth(p / peak) : 1 - smooth((p - peak) / (1 - peak));
       this.tuck = 0;
       this.weight = 1 - smooth(clamp01((p - 0.45) / 0.55));
-      this.hipY = 0.955 - this.compression * 0.12;
-      this.pitch = travelPitch - this.compression * 0.04;
-      this.freeArmX = 0.28 + this.compression * 0.18;
-      this.freeElbow = 0.65;
+      this.hipY = 0.955 - this.compression * this.style.landingDepth;
+      this.pitch = travelPitch - this.compression * this.style.landingLean;
+      this.freeArmX = 0.3 + this.compression * 0.35;
+      this.freeElbow = 0.85;
       for (let i = 0; i < 2; i++) {
         const foot = feet[i];
         this.restFoot(foot, combatWeight, this.goal);
@@ -204,7 +231,8 @@ export class JumpAnimator {
         const t =
           i === this.lead ? smooth(clamp01((p - 0.28) / 0.72)) : smooth(p);
         foot.target.lerpVectors(this.starts[i], this.goal, t);
-        foot.target.y = ankleY + Math.sin(Math.PI * t) * 0.045;
+        foot.target.y =
+          ankleY + Math.sin(Math.PI * t) * this.style.recoveryLift;
         foot.yaw.copy(this.startYaws[i]).slerp(root.quaternion, t);
         foot.planted = (i === this.lead && p < 0.28) || p >= 1;
         this.limitReach(foot);
@@ -213,6 +241,23 @@ export class JumpAnimator {
     }
     this.phase = phase;
     this.active = active;
+    this.updateUpper(dt, phase === "landing" || !active ? this.weight : 1);
+  }
+
+  updateUpper(dt, target) {
+    this.upperIntent = MathUtils.damp(
+      this.upperIntent,
+      target,
+      this.style.upperBodyResponse,
+      dt,
+    );
+    this.upperWeight = MathUtils.damp(
+      this.upperWeight,
+      this.upperIntent,
+      this.style.upperBodyResponse,
+      dt,
+    );
+    if (this.upperWeight < 0.0001 && target === 0) this.upperWeight = 0;
   }
 
   restFoot(foot, combatWeight, out) {
@@ -240,28 +285,36 @@ export class JumpAnimator {
 
   apply(pose) {
     const weight = this.weight;
-    if (weight <= 0) return;
-    pose.hipY = MathUtils.lerp(pose.hipY, this.hipY, weight);
-    pose.hipX *= 1 - weight;
-    pose.hipYaw = MathUtils.lerp(pose.hipYaw, this.guardWeight * 0.06, weight);
-    pose.hipRoll *= 1 - weight;
-    pose.spinePitch = MathUtils.lerp(pose.spinePitch, this.pitch, weight);
-    pose.spineYaw *= 1 - weight;
-    pose.headPitch = MathUtils.lerp(pose.headPitch, -0.025, weight);
+    if (weight > 0) {
+      pose.hipY = MathUtils.lerp(pose.hipY, this.hipY, weight);
+      pose.hipX *= 1 - weight;
+      pose.hipZ = (pose.hipZ ?? 0) * (1 - weight);
+      pose.hipYaw = MathUtils.lerp(
+        pose.hipYaw,
+        this.guardWeight * 0.06 + this.twist * 0.5,
+        weight,
+      );
+      pose.hipRoll *= 1 - weight;
+    }
+    const upper = this.upperWeight;
+    if (upper <= 0) return;
+    pose.spinePitch = MathUtils.lerp(pose.spinePitch, this.pitch, upper);
+    pose.spineYaw = MathUtils.lerp(pose.spineYaw, -this.twist, upper);
+    pose.headPitch = MathUtils.lerp(pose.headPitch, -0.025, upper);
     for (let i = 0; i < 2; i++) {
       const arm = pose.arms[i];
       const sign = i === 0 ? -1 : 1;
       arm.x = MathUtils.lerp(
         arm.x,
         MathUtils.lerp(this.freeArmX, i === 0 ? 1.1 : 1.04, this.guardWeight),
-        weight,
+        upper,
       );
-      arm.y = MathUtils.lerp(arm.y, -sign * 0.06 * this.guardWeight, weight);
-      arm.z = MathUtils.lerp(arm.z, -sign * 0.18, weight);
+      arm.y = MathUtils.lerp(arm.y, -sign * 0.06 * this.guardWeight, upper);
+      arm.z = MathUtils.lerp(arm.z, -sign * 0.18, upper);
       arm.elbow = MathUtils.lerp(
         arm.elbow,
         MathUtils.lerp(this.freeElbow, i === 0 ? 1.76 : 1.84, this.guardWeight),
-        weight,
+        upper,
       );
     }
   }

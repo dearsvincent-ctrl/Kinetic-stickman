@@ -1,6 +1,6 @@
-# Kinetic — Movement Lab v0.7
+# Kinetic — Movement Lab v0.7.1
 
-A mobile-first, third-person 3D stickman prototype built with JavaScript, Three.js, and Vite. Version 0.7 adds automatic three-dimensional proximity combat: a right straight, a left cross, and a basic flying front kick. Jump, fall, air dash and steer while attacks animate independently of movement. The existing camera, progressive joystick, Sprint, steerable ground/air Dash, Jump, held Block, and locally saved control layouts remain intact. There is no Attack button or manual combat-mode switch.
+A mobile-first, third-person 3D stickman prototype built with JavaScript, Three.js, and Vite. Version 0.7.1 refreshes the existing animations with an anime-inspired athletic style: a stronger sprint silhouette, full-body straight and cross punches, a committed flying kick, aggressive dash poses and more expressive jump loading and landing compression. The same three techniques and automatic three-dimensional proximity combat from Version 0.7 remain in place. Jump, fall, air dash and steer while attacks animate independently of movement. The existing camera, progressive joystick, Sprint, steerable ground/air Dash, Jump, held Block, and locally saved control layouts remain intact. There is no Attack button or manual combat-mode switch.
 
 The existing camera angle and controls, progressive joystick, acceleration/deceleration, 2.6 m/s movement speed, 5.2 m/s sprint speed, arena, boundaries, and rendering settings are preserved. The locomotion layers coordinate arms and legs, bend the knees, move the hips and torso, and blend between idle and faster gaits using actual travel speed. Planted feet and two-bone leg IK reduce sliding on the flat floor.
 
@@ -14,7 +14,7 @@ Tap or slide onto **JUMP** for a 0.8-metre jump with a short takeoff, ballistic 
 
 Tap **DASH** for a short movement burst, normally 2.5 metres over 0.25 seconds. On the ground, it starts in the camera-relative joystick direction, or the character's facing direction when the joystick is centred. Steer during the dash to curve its path; releasing the joystick keeps the current trajectory. Ground push-off and recovery, or aerial balance and limb posing, blend over the existing animation, including while guarding. The dummy has a solid 0.32-metre collision radius: walking, sprinting, and dashing collide and slide around it continuously instead of passing through it.
 
-Version 0.7 adds three basic techniques and their eligibility/animation architecture. There are no enemy AI, health, damage, elaborate combos, bicycle kicks, special abilities, invincibility frames, stamina costs, progression, multiplayer, ragdolls, or rigid-body simulation. The dummy is a passive stationary prop; punches and Block do not implement hits or damage. More advanced techniques and learned-technique systems remain future work.
+Version 0.7.1 changes visual presentation only. Movement values, technique eligibility, attack timing and automatic recovery rules remain unchanged from Version 0.7. There are no enemy AI, health, damage, elaborate combos, bicycle kicks, special abilities, invincibility frames, stamina costs, progression, multiplayer, ragdolls, or rigid-body simulation. The dummy is a passive stationary prop; punches and Block do not implement hits or damage. More advanced techniques and learned-technique systems remain future work.
 
 ## Play on Android with GitHub Pages
 
@@ -149,6 +149,8 @@ For other static HTTPS hosts, use the ordinary `npm run build` command without t
 | `src/world/createArena.js`              | Lightweight arena visuals, lighting, and authoritative arena dimensions             |
 | `src/camera/FollowCamera.js`            | Smoothed follow target, orbit angles, pitch limits, floor clearance                 |
 | `src/character/Stickman.js`             | Named hierarchical body parts and joint pivots                                      |
+| `src/character/AnimationStyle.js` | Validated immutable visual personality and per-layer timing; no gameplay settings |
+| `src/character/MotionPresentation.js` | Resolved-velocity launch, braking and balance cues; no root movement |
 | `src/character/CharacterAnimator.js`    | Composes animation layers and applies the final joint pose                          |
 | `src/character/LocomotionAnimator.js`   | Speed-driven gait timing and foot contacts                                          |
 | `src/character/CombatStanceAnimator.js` | Smooth defensive guard and balanced stance poses                                    |
@@ -164,6 +166,14 @@ For other static HTTPS hosts, use the ordinary `npm run build` command without t
 | `tests/`                                | Movement/camera checks and browser smoke coverage                                   |
 
 All world distances are metres. The coordinate system is Y-up, and the character's local forward direction is −Z. Input uses normalized screen-right `x` and screen-forward `y`; the controller converts these into horizontal world movement.
+
+### Animation presentation
+
+`AnimationStyle.js` contains the default anime-inspired personality. Timing fractions accelerate the visible strike extension and recoil inside the existing technique phases; they never shorten mechanical recovery, change attack cadence or bypass Block. Run and sprint blend from actual resolved speed with different lean, hip/shoulder counter-rotation, arm drive, foot clearance and contact duty. `MotionPresentation` derives start/brake accents from actual velocity rather than changing player acceleration. World-space foot contacts and leg IK remain authoritative for planted feet.
+
+Visual styles resolve and validate once per character. A future character can use `new CharacterAnimator(character, { style: { locomotion: { sprintLean: 0.3 }, punch: { shoulderDrive: 0.4 } } })` to override individual presentation values. Every layer shares immutable numeric settings; scratch vectors/quaternions are reused during updates. This is a code extension point, without character stats or a settings menu.
+
+Ground punches layer torso/arm/hip movement over the ongoing lower-body gait. Jump upper-body blending is separate from foot loading so a recovering punch can yield smoothly at takeoff. Aerial dash entry is damped, the flying kick coils the torso and chambers the knee before extending, and landing progressively takes back foot ownership. These layers cannot freeze flight or change ability availability, velocity or root position. Spin/bicycle kicks and aerial combinations are not implemented.
 
 ### Integration boundaries
 
@@ -284,7 +294,7 @@ The scene uses shared low-poly geometry and materials, instanced arena details, 
 
 ## Validation
 
-Version 0.7 passed all 278 unit and integration tests, the production build, and both Chromium browser smoke suites. Checks include three-dimensional body reach and facing, ground-strike selection, full flying-kick phases, Block cancellation, airborne/landing transitions, identical combat/no-combat movement trajectories, native full-chain attacks and post-dash kicks, ground-dash interruptions at 30/60/120 Hz, native Dash → Jump → Air Dash sliding with independent joystick/camera and relocated buttons, aerial Dash during ascent/apex/descent, landing resets, Block, ground recovery, independent mouse/touch dragging, persistence, Cancel/Reset, resizing, relocated slide controls, editor input isolation, storage failure recovery, and short-screen reachability. Production assets were verified under `/Kinetic-stickman/`.
+Version 0.7.1 passed all 286 unit and integration tests, the production build, and both Chromium browser smoke suites. Checks include immutable visual-style validation, distinct speed-matched gaits and start/brake cues, full-body weight transfer with planted contacts, sharp visual strike curves inside unchanged recovery timing, identical physics/targeting/attack timelines across different styles at 30/60/120 Hz, bounded jump/dash handoffs and moving landings, native touch gait/sprint/braking screenshots, three-dimensional body reach and facing, ground-strike selection, full flying-kick phases, Block cancellation, airborne/landing transitions, identical combat/no-combat movement trajectories, native full-chain attacks and post-dash kicks, ground-dash interruptions at 30/60/120 Hz, native Dash → Jump → Air Dash sliding with independent joystick/camera and relocated buttons, aerial Dash during ascent/apex/descent, landing resets, Block, ground recovery, independent mouse/touch dragging, persistence, Cancel/Reset, resizing, relocated slide controls, editor input isolation, storage failure recovery, and short-screen reachability. Production assets were verified under `/Kinetic-stickman/`.
 
 Run the checks below and inspect the GitHub Actions run for the current commit. Unit tests cover movement, camera limits, input ownership, Pages base paths, proximity thresholds and facing, repeat-punch recovery, Block priority, automatic posture transitions, dummy collision, animation blending, and character-root ownership. Layout checks cover normalized positioning, validation, responsive constraints, and saved-data handling. Jump checks cover height, gravity, phases, horizontal momentum and steering, ground-skill ordering, repeated-input rejection, pause continuity, collision, and ground/air technique eligibility. Dash checks cover ground and aerial distance at 30/60/120 Hz, ascent/apex/descent activation, momentum and steering, cooldown, per-jump limits and landing resets, wall/dummy containment, late-dash landing, configuration overrides, state transitions, and animation blending. Action-router checks cover HOLD/PRESS/TOGGLE entry and re-entry, multiple fingers, cancellation, keyboard activation, and binding replacement. Browser checks cover control editing, Save/Cancel/reset, storage failure, refresh and rotation, gameplay-input isolation, rendering, Jump taps and slides, moving jumps, approaching and leaving the dummy, automatic ground and aerial techniques, held Block, native emulated multi-touch input and cancellation, action slides, recovery and dash cooldown, camera reset/pitch limits, instructions, and responsive layout. Screenshots are saved under `test-results/` by the browser scripts. UI fonts are bundled locally; the game makes no external asset requests.
 
@@ -309,7 +319,7 @@ CHROMIUM_PATH=/path/to/chromium npm run test:browser
 
 In development, opening `http://localhost:5173/?debug` exposes a read-only `window.__KINETIC__.snapshot()` function for inspecting position, inputs, movement state, dash timing, jump phases and elevation, combat phases and proximity targeting, camera limits, and render statistics. This hook is excluded from production builds.
 
-Version 0.7 has not been verified on a physical Android device by the implementer. Desktop Chromium and touch emulation can check rendering, pointer behavior, and responsive layouts, but cannot establish real mobile GPU performance, thermals, browser chrome behavior, or device-specific touch handling.
+Version 0.7.1 has not been verified on a physical Android device by the implementer. Desktop Chromium and touch emulation can check rendering, pointer behavior, and responsive layouts, but cannot establish real mobile GPU performance, thermals, browser chrome behavior, or device-specific touch handling.
 
 Before shipping to phones, verify on physical Android devices:
 

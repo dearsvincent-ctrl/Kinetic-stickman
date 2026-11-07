@@ -7,8 +7,9 @@ import { AttackAnimator } from "./AttackAnimator.js";
 import { JumpAnimator } from "./JumpAnimator.js";
 import { AerialDashAnimator } from "./AerialDashAnimator.js";
 import { AerialAttackAnimator } from "./AerialAttackAnimator.js";
+import { resolveAnimationStyle } from "./AnimationStyle.js";
+import { MotionPresentation } from "./MotionPresentation.js";
 
-const TAU = Math.PI * 2;
 const fract = (value) => value - Math.floor(value);
 const smooth = (value) => value * value * (3 - 2 * value);
 
@@ -33,16 +34,24 @@ function createFoot(side, offset, sign) {
  * hierarchy. Animation owns child transforms only; never root movement/yaw.
  */
 export class CharacterAnimator {
-  constructor(character) {
+  constructor(character, { style } = {}) {
     this.character = character;
-    this.locomotion = new LocomotionAnimator();
-    this.combat = new CombatStanceAnimator();
-    this.dashAnimation = new DashAnimator(character);
-    this.attackAnimation = new AttackAnimator();
-    this.jumpAnimation = new JumpAnimator(character);
-    this.aerialDashAnimation = new AerialDashAnimator(character);
+    this.style = resolveAnimationStyle(style);
+    this.locomotion = new LocomotionAnimator(this.style.locomotion);
+    this.motion = new MotionPresentation(this.style.motion);
+    this.combat = new CombatStanceAnimator(this.style.locomotion);
+    this.dashAnimation = new DashAnimator(character, this.style.groundDash);
+    this.attackAnimation = new AttackAnimator(this.style.punch);
+    this.jumpAnimation = new JumpAnimator(character, this.style.jump);
+    this.aerialDashAnimation = new AerialDashAnimator(
+      character,
+      this.style.aerialDash,
+    );
     this.airDashWeight = 0;
-    this.aerialAttackAnimation = new AerialAttackAnimator(character);
+    this.aerialAttackAnimation = new AerialAttackAnimator(
+      character,
+      this.style.aerialAttack,
+    );
     this.aerialAttackWeight = 0;
     this.jumpWeight = 0;
     this.attackWeight = 0;
@@ -88,6 +97,14 @@ export class CharacterAnimator {
       .multiplyScalar(1 / dt);
     this.previousPosition.copy(root.position);
     this.rootYaw.copy(root.quaternion);
+    this.velocity.y = 0;
+    this.motion.update(
+      dt,
+      this.velocity,
+      root.quaternion,
+      (!jump || jump.ready) && !dash?.active,
+      distance > 1.5,
+    );
     const groundDash = dash?.mode === "air" ? null : dash;
     const dashOwnsFeet =
       Boolean(groundDash?.active) || this.dashAnimation.ownsFeet;
@@ -157,37 +174,39 @@ export class CharacterAnimator {
       }
     }
 
-    gait.sampleUpperBody(this.pose);
-    const wave = Math.cos((gait.phase + this.gaitOffset) * TAU);
-    const amplitude =
-      MathUtils.lerp(0.23, 0.43, gait.runBlend) * gait.movementBlend;
-    this.pose.arms[0].x = -wave * amplitude;
-    this.pose.arms[1].x = wave * amplitude;
-    this.combat.apply(this.pose, gait.movementBlend);
+    gait.sampleUpperBody(this.pose, this.gaitOffset);
+    this.motion.apply(
+      this.pose,
+      (1 - this.combatWeight) * (1 - this.dashWeight) * (1 - this.jumpWeight),
+    );
+    this.combat.apply(this.pose, gait.movementBlend, gait.sprintBlend);
     this.dashAnimation.apply(this.pose, this.combatWeight);
     this.attackAnimation.apply(this.pose);
     this.jumpAnimation.apply(this.pose);
     this.aerialDashAnimation.apply(this.pose);
     this.aerialAttackAnimation.apply(this.pose);
     const pose = this.pose;
-    j.hips.position.set(pose.hipX, pose.hipY, 0);
+    j.hips.position.set(pose.hipX, pose.hipY, pose.hipZ ?? 0);
     j.hips.rotation.set(0, pose.hipYaw, pose.hipRoll);
     j.spine.rotation.set(
       pose.spinePitch,
       pose.spineYaw,
-      this.jumpWeight > 0
-        ? MathUtils.lerp(
-            this.dashAnimation.spineRoll,
-            this.jumpAnimation.spineRoll,
-            this.jumpWeight,
-          )
-        : this.dashAnimation.spineRoll,
+      MathUtils.lerp(
+        MathUtils.lerp(
+          pose.spineRoll,
+          this.dashAnimation.spineRoll,
+          this.dashWeight,
+        ),
+        this.jumpAnimation.spineRoll,
+        this.jumpWeight,
+      ),
     );
     j.spine.rotation.z = MathUtils.lerp(
       j.spine.rotation.z,
       this.aerialDashAnimation.spineRoll,
       this.airDashWeight,
     );
+    j.spine.rotation.z += this.aerialAttackAnimation.spineRoll ?? 0;
     j.head.rotation.set(pose.headPitch, -pose.spineYaw * 0.65, 0);
     for (let index = 0; index < 2; index++) {
       const side = index === 0 ? "left" : "right";

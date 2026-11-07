@@ -144,8 +144,8 @@ test("real controller dash pushes, bounds, lands and recovers at 30/60/120Hz", (
       "push-off visibly flexes the legs",
     );
     assert.ok(
-      highestFoot > 0.2 && highestFoot < 0.3,
-      "one restrained low bound",
+      highestFoot > 0.2 && highestFoot < 0.35,
+      "one athletic low bound with controlled knee lift",
     );
     assert.ok(
       airborneTime >= 0.1,

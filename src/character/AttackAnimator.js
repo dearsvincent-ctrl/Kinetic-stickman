@@ -1,14 +1,14 @@
 import { MathUtils } from "three";
+import { ANIME_STYLE } from "./AnimationStyle.js";
 
 const smooth = (value) => value * value * (3 - 2 * value);
 const clamp01 = (value) => MathUtils.clamp(value, 0, 1);
 
-/** Left/right straight punches layered over gait, guard and dash.
- * The combat state owns timing/recovery; this layer only poses the upper body.
- * No root transforms, foot contacts or movement state are changed here.
- */
+/** Body-driven straight/cross presentation, using the live technique phases.
+ * Fast visual extension/recoil never changes action timing or movement. */
 export class AttackAnimator {
-  constructor() {
+  constructor(style = ANIME_STYLE.punch) {
+    this.style = style;
     this.weight = 0;
     this.reach = 0;
     this.chamber = 0;
@@ -18,6 +18,11 @@ export class AttackAnimator {
     this.releaseWeight = 0;
     this.releaseTime = 0;
     this.side = "right";
+    this.phase = "idle";
+    this.cancelled = false;
+    this.recoveryReach = 0;
+    this.recoveryChamber = 0;
+    this.recoil = 0;
   }
 
   update(dt, combat) {
@@ -26,21 +31,54 @@ export class AttackAnimator {
       combat?.currentTechnique?.animation ??
       (attack?.techniqueId === "flying-kick" ? "flying-kick" : "punch");
     const active = Boolean(attack?.active && animation === "punch");
+    const s = this.style;
+    const previousReach = this.reach,
+      previousChamber = this.chamber;
     if (active) {
       this.side = combat.currentTechnique?.side ?? "right";
-      if (attack.sequence !== this.sequence) {
+      const entering = attack.sequence !== this.sequence;
+      if (entering) {
         this.sequence = attack.sequence;
         this.entryWeight = this.weight;
+        this.phase = "windup";
+        this.cancelled = false;
       }
-      // A gentle entry raises the free-running hands before the extension.
-      // Absolute attack time keeps this envelope consistent across frame rates.
-      const entry = smooth(clamp01(attack.elapsed / 0.1));
+      const seek = entering && attack.elapsed > dt * 1.5;
+      const entry = smooth(clamp01(attack.elapsed / s.entryTime));
       this.weight = MathUtils.lerp(this.entryWeight, 1, entry);
-      this.reach = clamp01(attack.extension);
-      this.chamber =
-        attack.phase === "windup"
-          ? Math.sin(Math.PI * clamp01(attack.phaseProgress))
-          : 0;
+      const p = clamp01(attack.phaseProgress);
+      if (attack.phase === "recovery") {
+        if (
+          this.phase !== "recovery" ||
+          (attack.cancelled && !this.cancelled)
+        ) {
+          this.recoveryReach = attack.cancelled ? this.reach : 1;
+          this.recoveryChamber = attack.cancelled ? this.chamber : 0;
+        }
+        const recovery = 1 - smooth(clamp01(p / s.recoveryFraction));
+        this.reach = this.recoveryReach * recovery;
+        this.chamber = this.recoveryChamber * recovery;
+        this.recoil = attack.cancelled ? 0 : Math.sin(Math.PI * p) * (1 - p);
+      } else if (attack.phase === "windup") {
+        this.reach = 0;
+        this.chamber = smooth(p);
+        this.recoil = 0;
+      } else {
+        this.reach =
+          attack.phase === "impact"
+            ? 1
+            : smooth(clamp01(p / s.extensionFraction));
+        this.chamber = 1 - this.reach;
+        this.recoil = 0;
+      }
+      this.reach = seek
+        ? this.reach
+        : MathUtils.damp(previousReach, this.reach, s.poseResponse, dt);
+      this.chamber = seek
+        ? this.chamber
+        : MathUtils.damp(previousChamber, this.chamber, s.poseResponse, dt);
+      this.phase = attack.phase;
+      this.cancelled = Boolean(attack.cancelled);
       this.releaseTime = 0;
     } else {
       if (this.active) {
@@ -49,55 +87,72 @@ export class AttackAnimator {
       }
       this.releaseTime += dt;
       this.weight =
-        this.releaseWeight * (1 - smooth(clamp01(this.releaseTime / 0.12)));
+        this.releaseWeight *
+        (1 - smooth(clamp01(this.releaseTime / s.releaseTime)));
       this.reach = 0;
       this.chamber = 0;
+      this.recoil = 0;
+      this.phase = "idle";
     }
     this.active = active;
     return this.weight;
   }
 
   apply(pose) {
-    const weight = this.weight;
-    if (weight <= 0) return;
-    const reach = this.reach;
-    const chamber = this.chamber;
-    const sign = this.side === "left" ? -1 : 1;
-    const left = pose.arms[this.side === "left" ? 1 : 0];
-    const right = pose.arms[this.side === "left" ? 0 : 1];
-
-    // The opposite hand stays beside the chin through the strike and recovery.
-    left.x = MathUtils.lerp(left.x, 1.1 + reach * 0.05, weight);
-    left.y = MathUtils.lerp(left.y, -0.06 * sign, weight);
-    left.z = MathUtils.lerp(left.z, 0.18 * sign, weight);
-    left.elbow = MathUtils.lerp(left.elbow, 1.76, weight);
-
-    // Positive elbow flexion bends toward the front of this hierarchical rig.
-    // Leave a small bend at full extension instead of locking the joint.
-    right.x = MathUtils.lerp(
-      right.x,
-      MathUtils.lerp(1.04, 1.75, reach) - chamber * 0.045,
-      weight,
+    const w = this.weight;
+    if (w <= 0) return;
+    const s = this.style,
+      drive = this.reach,
+      coil = this.chamber;
+    const cross = this.side === "left",
+      sign = cross ? -1 : 1;
+    const guard = pose.arms[cross ? 1 : 0],
+      strike = pose.arms[cross ? 0 : 1];
+    guard.x = MathUtils.lerp(guard.x, 1.1 + drive * 0.05, w);
+    guard.y = MathUtils.lerp(guard.y, -0.06 * sign, w);
+    guard.z = MathUtils.lerp(guard.z, 0.18 * sign, w);
+    guard.elbow = MathUtils.lerp(guard.elbow, 1.76, w);
+    strike.x = MathUtils.lerp(
+      strike.x,
+      MathUtils.lerp(1.04, cross ? 1.78 : 1.8, drive) - coil * 0.07,
+      w,
     );
-    right.y = MathUtils.lerp(
-      right.y,
-      MathUtils.lerp(0.06, -0.02, reach) * sign,
-      weight,
+    strike.y = MathUtils.lerp(
+      strike.y,
+      MathUtils.lerp(0.06, -0.02, drive) * sign,
+      w,
     );
-    right.z = MathUtils.lerp(
-      right.z,
-      MathUtils.lerp(-0.18, -0.03, reach) * sign,
-      weight,
+    strike.z = MathUtils.lerp(
+      strike.z,
+      MathUtils.lerp(-0.18, -0.03, drive) * sign,
+      w,
     );
-    right.elbow = MathUtils.lerp(
-      right.elbow,
-      MathUtils.lerp(1.84, 0.1, reach) + chamber * 0.035,
-      weight,
+    strike.elbow = MathUtils.lerp(
+      strike.elbow,
+      MathUtils.lerp(1.84, 0.1, drive) + coil * 0.04,
+      w,
     );
-    // Add drive to the existing body pose, retaining dash lean and spine roll.
-    pose.hipYaw += reach * 0.1 * weight * sign;
+    // Shift the visual pelvis over the existing support legs. Their world
+    // contacts stay planted and IK absorbs the load; the actor root stays put.
+    pose.hipX -= sign * drive * (cross ? 0.035 : 0.025) * w;
+    pose.hipY -= (drive + coil * 0.4) * s.compression * w;
+    pose.hipZ =
+      (pose.hipZ ?? 0) +
+      (coil * 0.025 -
+        drive * (cross ? s.crossWeightTransfer : s.weightTransfer)) *
+        w;
+    pose.hipYaw +=
+      (drive * (cross ? s.crossHipTwist : s.hipTwist) -
+        coil * s.anticipationTwist) *
+      sign *
+      w;
     pose.spineYaw +=
-      (reach * (sign < 0 ? 0.38 : 0.3) - chamber * 0.025) * weight * sign;
-    pose.spinePitch -= reach * 0.025 * weight;
+      (drive * (cross ? s.crossShoulderDrive : s.shoulderDrive) -
+        coil * s.anticipationTwist -
+        this.recoil * s.recoil) *
+      sign *
+      w;
+    pose.spinePitch -= (drive * 0.04 + coil * 0.02) * w;
+    pose.spineRoll = (pose.spineRoll ?? 0) + sign * drive * 0.04 * w;
   }
 }
