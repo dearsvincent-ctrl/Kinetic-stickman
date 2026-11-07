@@ -83,7 +83,7 @@ export async function checkAcrobatics(page, native) {
     const camera = (await snap(page))?.camera,
       s = await groundGesture(page, native, x);
     let a = await read(page);
-    assert.equal(a.acroSequence, "1");
+    assert.equal(a.acroSequence, "1", `Ground reversal x=${x}: ${JSON.stringify(a)}; joystick=${JSON.stringify(await page.evaluate(() => ({ width: document.querySelector("#joystick")?.getBoundingClientRect().width, height: document.querySelector("#joystick")?.getBoundingClientRect().height, knob: document.querySelector("#joystick-knob")?.style.transform })))}`);
     assert.equal(a.acroKind, x === 0 ? "descending-sweep" : "whip-kick");
     assert.equal(a.technique, a.acroKind);
     if (x < 0) {
