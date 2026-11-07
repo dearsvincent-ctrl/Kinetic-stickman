@@ -91,9 +91,13 @@ export class JoystickGestures {
           const forward =
             -this.world.x * Math.sin(movement.heading) -
             this.world.z * Math.cos(movement.heading);
+          // Validate an airborne flick against the forward stick direction
+          // captured when priming. The character's facing can rotate during
+          // air steering, so comparing the final input to the *current*
+          // heading rejects legitimate forward-to-back flicks.
           const airborneIntent =
             air &&
-            forward < -0.82 &&
+            dot < -0.82 &&
             movement.jump.height > 0.12 &&
             movement.jump.timeToBoundary >= c.minAirTime;
           const groundIntent =
