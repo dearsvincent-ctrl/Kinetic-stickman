@@ -1,79 +1,64 @@
+import { TARGET_STRIKE_DEFAULTS } from "./Techniques.js";
+
 export const PROXIMITY_CONFIG = Object.freeze({
   entryDistance: 1,
   exitDistance: 1.15,
+  aerialEntryDistance: 1.05,
+  aerialExitDistance: 1.2,
   attackFacingAngle: Math.PI / 4,
 });
 
-const validPosition = (position) =>
-  position &&
-  Number.isFinite(position.x) &&
-  Number.isFinite(position.z) &&
-  (position.y === undefined || Number.isFinite(position.y));
+const validPosition = (p) =>
+  p &&
+  Number.isFinite(p.x) &&
+  Number.isFinite(p.z) &&
+  (p.y === undefined || Number.isFinite(p.y));
+const validTarget = (t) =>
+  t &&
+  t.id !== undefined &&
+  t.id !== null &&
+  t.active !== false &&
+  validPosition(t.position);
 
-const validTarget = (target) =>
-  target &&
-  target.id !== undefined &&
-  target.id !== null &&
-  target.active !== false &&
-  validPosition(target.position);
-
-/** Requests the existing punch when a registered target is near the actor.
- * Distance is measured between floor-plane centers, not collision surfaces.
- * This layer never moves/rotates targets, the actor or the camera.
- */
+/** Selection stays live in every movement phase. Retaining a target never
+ * bypasses a technique's own 3D reach, height, facing or physical eligibility.
+ * This layer never changes movement objects or actor transforms. */
 export class ProximityCombatController {
-  constructor(
-    combat,
-    {
-      targets = [],
-      entryDistance = PROXIMITY_CONFIG.entryDistance,
-      exitDistance = PROXIMITY_CONFIG.exitDistance,
-      attackFacingAngle = PROXIMITY_CONFIG.attackFacingAngle,
-    } = {},
-  ) {
-    if (!Number.isFinite(entryDistance) || entryDistance < 0)
-      throw new RangeError(
-        "entryDistance must be a finite, nonnegative distance",
-      );
-    if (!Number.isFinite(exitDistance) || exitDistance < entryDistance)
-      throw new RangeError(
-        "exitDistance must be finite and at least entryDistance",
-      );
-    if (
-      !Number.isFinite(attackFacingAngle) ||
-      attackFacingAngle < 0 ||
-      attackFacingAngle > Math.PI
-    )
-      throw new RangeError(
-        "attackFacingAngle must be between zero and pi radians",
-      );
+  constructor(combat, options = {}) {
     this.combat = combat;
-    this.config = Object.freeze({
-      entryDistance,
-      exitDistance,
-      attackFacingAngle,
-    });
+    const { targets = [], ...config } = options;
+    this.config = Object.freeze({ ...PROXIMITY_CONFIG, ...config });
+    for (const key of [
+      "entryDistance",
+      "exitDistance",
+      "aerialEntryDistance",
+      "aerialExitDistance",
+      "attackFacingAngle",
+    ])
+      if (!Number.isFinite(this.config[key]) || this.config[key] < 0)
+        throw new RangeError(`Invalid proximity ${key}`);
+    if (
+      this.config.exitDistance < this.config.entryDistance ||
+      this.config.aerialExitDistance < this.config.aerialEntryDistance
+    )
+      throw new RangeError("Exit distance must be at least entry distance");
+    if (this.config.attackFacingAngle > Math.PI)
+      throw new RangeError("Invalid facing angle");
     this.targets = new Map();
-    this.target = null;
-    this.distance = Infinity;
-    this.aligned = false;
+    this.sample = {};
+    this.reset();
     this.setTargets(targets);
   }
 
   setTargets(targets) {
     const entries = targets instanceof Map ? targets.values() : targets;
-    const registry = new Map();
-    for (const target of entries) {
+    this.targets = new Map();
+    for (const target of entries)
       if (target?.id !== undefined && target.id !== null)
-        registry.set(target.id, target);
-    }
-    this.targets = registry;
+        this.targets.set(target.id, target);
     if (this.target) {
       this.target = this.targets.get(this.target.id) ?? null;
-      if (!this.target) {
-        this.distance = Infinity;
-        this.aligned = false;
-      }
+      if (!this.target) this.reset();
     }
   }
 
@@ -82,69 +67,171 @@ export class ProximityCombatController {
     { position, blocking = false, facing, grounded = true, context = {} } = {},
   ) {
     if (!Number.isFinite(dt) || dt <= 0) return;
-    if (grounded) {
-      this._refreshTarget(position);
-    } else {
-      // Takeoff, flight and landing all suspend grounded combat selection.
-      // Discard hysteresis so neither an attack nor target-facing can resume
-      // from stale proximity while movement owns the character.
-      this.reset();
-      this.combat.cancelAttack("movement");
-    }
+    const environment = context.environment ?? (grounded ? "ground" : "air");
+    const phase = context.phase ?? (grounded ? "grounded" : "airborne");
+    const canAttack =
+      context.canAttack ?? ["grounded", "airborne"].includes(phase);
+    const current = this.combat.currentTechnique;
+    const shared =
+      current?.environments.includes("ground") &&
+      current.environments.includes("air");
+    if (
+      this.combat.attack.active &&
+      ((!canAttack && !shared) || !current.environments.includes(environment))
+    )
+      this.combat.cancelAttack(
+        environment === "ground" && current.environments.includes("air")
+          ? "landing"
+          : "movement",
+      );
     this.combat.setBlocking(blocking);
+    this._refreshTarget(position, environment, facing);
     if (this.target) {
-      const dx = this.target.position.x - position.x;
-      const dz = this.target.position.z - position.z;
-      const yawDifference = Math.atan2(-dx, -dz) - facing;
-      this.aligned =
-        !Number.isFinite(facing) ||
-        this.distance === 0 ||
-        Math.abs(
-          Math.atan2(Math.sin(yawDifference), Math.cos(yawDifference)),
-        ) <= this.config.attackFacingAngle;
-      if (this.aligned && this.combat.ready) {
-        const divisor = this.distance || 1;
-        this.combat.requestAttack({
-          ...context,
-          source: "proximity",
-          targetId: this.target.id,
-          opponentDistance: this.distance,
-          targetDirection: { x: dx / divisor, y: 0, z: dz / divisor },
-        });
+      const horizontal = Math.hypot(
+        this.target.position.x - position.x,
+        this.target.position.z - position.z,
+      );
+      const delta =
+        Math.atan2(
+          -(this.target.position.x - position.x),
+          -(this.target.position.z - position.z),
+        ) - facing;
+      const angle =
+        !Number.isFinite(facing) || horizontal < 1e-9
+          ? 0
+          : Math.atan2(Math.sin(delta), Math.cos(delta));
+      this.aligned = Math.abs(angle) <= this.config.attackFacingAngle + 1e-9;
+      if (this.aligned && this.combat.ready && canAttack) {
+        // Entry snapshots are allocated only when combat is ready, never
+        // during the ordinary busy-animation update path.
+        let techniqueContexts = null;
+        for (const technique of this.combat.techniques.values()) {
+          if (!technique.environments.includes(environment)) continue;
+          this._sample(technique, this.target, position, facing);
+          const s = this.sample;
+          if (
+            s.surfaceDistance > technique.reach + 1e-9 ||
+            Math.abs(s.verticalSeparation) > technique.maxVertical ||
+            Math.abs(s.facingAngle) > technique.maxAngle + 1e-9 ||
+            (context.height ?? Math.max(0, position.y ?? 0)) <
+              technique.minHeight ||
+            (environment === "air" &&
+              (context.airTimeRemaining ?? Infinity) <
+                technique.minAirTimeRemaining)
+          )
+            continue;
+          techniqueContexts ??= {};
+          const divisor = s.distance || 1;
+          techniqueContexts[technique.id] = {
+            opponentDistance: s.distance,
+            surfaceDistance: s.surfaceDistance,
+            horizontalDistance: s.horizontalDistance,
+            verticalSeparation: s.verticalSeparation,
+            facingAngle: s.facingAngle,
+            targetRadius: s.radius,
+            targetPoint: {
+              x: this.target.position.x,
+              y: s.targetY,
+              z: this.target.position.z,
+            },
+            targetDirection: {
+              x: s.dx / divisor,
+              y: s.verticalSeparation / divisor,
+              z: s.dz / divisor,
+            },
+          };
+        }
+        if (techniqueContexts)
+          this.combat.requestAttack({
+            ...context,
+            environment,
+            phase,
+            canAttack,
+            height: context.height ?? Math.max(0, position.y ?? 0),
+            source: "proximity",
+            targetId: this.target.id,
+            opponentDistance: this.distance,
+            techniqueContexts,
+          });
       }
     }
-    // Existing recovery remains authoritative; no pending strikes are saved.
     this.combat.update(dt);
   }
 
-  _refreshTarget(position) {
+  _sample(technique, target, position, facing) {
+    const s = this.sample;
+    s.dx = target.position.x - position.x;
+    s.dz = target.position.z - position.z;
+    s.targetY =
+      (target.position.y ?? 0) +
+      (target.strikeHeight ?? TARGET_STRIKE_DEFAULTS.height);
+    s.radius = target.strikeRadius ?? TARGET_STRIKE_DEFAULTS.radius;
+    s.verticalSeparation =
+      s.targetY - ((position.y ?? 0) + technique.originHeight);
+    s.horizontalDistance = Math.hypot(s.dx, s.dz);
+    s.distance = Math.hypot(s.horizontalDistance, s.verticalSeparation);
+    s.surfaceDistance = Math.max(0, s.distance - s.radius);
+    const delta = Math.atan2(-s.dx, -s.dz) - facing;
+    s.facingAngle =
+      !Number.isFinite(facing) || s.horizontalDistance < 1e-9
+        ? 0
+        : Math.atan2(Math.sin(delta), Math.cos(delta));
+  }
+
+  _distance(target, position, environment, facing) {
+    let best = Infinity;
+    for (const technique of this.combat.techniques.values()) {
+      if (!technique.environments.includes(environment)) continue;
+      this._sample(technique, target, position, facing);
+      const s = this.sample;
+      if (
+        !Number.isFinite(s.radius) ||
+        s.radius < 0 ||
+        Math.abs(s.verticalSeparation) > technique.maxVertical
+      )
+        continue;
+      if (s.distance < best) {
+        best = s.distance;
+        this.measuredHorizontal = s.horizontalDistance;
+        this.measuredVertical = s.verticalSeparation;
+      }
+    }
+    return best;
+  }
+
+  _refreshTarget(position, environment, facing) {
     if (!validPosition(position)) {
       this.reset();
       return;
     }
+    const entry =
+      environment === "air"
+        ? this.config.aerialEntryDistance
+        : this.config.entryDistance;
+    const exit =
+      environment === "air"
+        ? this.config.aerialExitDistance
+        : this.config.exitDistance;
     const retained = this.target && this.targets.get(this.target.id);
     if (validTarget(retained)) {
-      const distance = Math.hypot(
-        retained.position.x - position.x,
-        retained.position.z - position.z,
-      );
-      if (distance <= this.config.exitDistance) {
+      const distance = this._distance(retained, position, environment, facing);
+      if (distance <= exit) {
         this.target = retained;
         this.distance = distance;
+        this.horizontalDistance = this.measuredHorizontal;
+        this.verticalSeparation = this.measuredVertical;
         return;
       }
     }
-
     this.reset();
     for (const target of this.targets.values()) {
       if (!validTarget(target)) continue;
-      const distance = Math.hypot(
-        target.position.x - position.x,
-        target.position.z - position.z,
-      );
-      if (distance <= this.config.entryDistance && distance < this.distance) {
+      const distance = this._distance(target, position, environment, facing);
+      if (distance <= entry && distance < this.distance) {
         this.target = target;
         this.distance = distance;
+        this.horizontalDistance = this.measuredHorizontal;
+        this.verticalSeparation = this.measuredVertical;
       }
     }
   }
@@ -152,6 +239,8 @@ export class ProximityCombatController {
   reset() {
     this.target = null;
     this.distance = Infinity;
+    this.horizontalDistance = Infinity;
+    this.verticalSeparation = Infinity;
     this.aligned = false;
   }
 }

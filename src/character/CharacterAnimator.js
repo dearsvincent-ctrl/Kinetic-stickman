@@ -6,6 +6,7 @@ import { DashAnimator } from "./DashAnimator.js";
 import { AttackAnimator } from "./AttackAnimator.js";
 import { JumpAnimator } from "./JumpAnimator.js";
 import { AerialDashAnimator } from "./AerialDashAnimator.js";
+import { AerialAttackAnimator } from "./AerialAttackAnimator.js";
 
 const TAU = Math.PI * 2;
 const fract = (value) => value - Math.floor(value);
@@ -41,6 +42,8 @@ export class CharacterAnimator {
     this.jumpAnimation = new JumpAnimator(character);
     this.aerialDashAnimation = new AerialDashAnimator(character);
     this.airDashWeight = 0;
+    this.aerialAttackAnimation = new AerialAttackAnimator(character);
+    this.aerialAttackWeight = 0;
     this.jumpWeight = 0;
     this.attackWeight = 0;
     this.dashWeight = 0;
@@ -140,6 +143,8 @@ export class CharacterAnimator {
     this.jumpWeight = this.jumpAnimation.weight;
     this.aerialDashAnimation.update(dt, dash, jump, this.footList, blocking);
     this.airDashWeight = this.aerialDashAnimation.weight;
+    this.aerialAttackAnimation.update(dt, combat, jump, this.footList);
+    this.aerialAttackWeight = this.aerialAttackAnimation.weight;
     if (dashOwnsFeet || jumpOwnsFeet) {
       // Resume the ordinary planner from the physical landing, without a
       // stale pre-dash world anchor or a phase-wrap contact reset.
@@ -163,6 +168,7 @@ export class CharacterAnimator {
     this.attackAnimation.apply(this.pose);
     this.jumpAnimation.apply(this.pose);
     this.aerialDashAnimation.apply(this.pose);
+    this.aerialAttackAnimation.apply(this.pose);
     const pose = this.pose;
     j.hips.position.set(pose.hipX, pose.hipY, 0);
     j.hips.rotation.set(0, pose.hipYaw, pose.hipRoll);

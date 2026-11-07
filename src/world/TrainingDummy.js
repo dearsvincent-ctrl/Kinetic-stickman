@@ -6,10 +6,12 @@ export const TRAINING_DUMMY_CONFIG = Object.freeze({
   z: -5,
   radius: 0.32,
   height: 1.8,
+  strikeHeight: 1.4,
+  strikeRadius: 0.24,
 });
 
 /** A stationary target prop. Its circular base is the collision footprint;
- * targeting and a future physics adapter share the same position and radius.
+ * the separate body strike sphere supplies three-dimensional combat reach.
  */
 export class TrainingDummy {
   constructor() {
@@ -21,6 +23,8 @@ export class TrainingDummy {
       id: config.id,
       position: this.root.position,
       radius: config.radius,
+      strikeHeight: config.strikeHeight,
+      strikeRadius: config.strikeRadius,
       active: true,
     };
 

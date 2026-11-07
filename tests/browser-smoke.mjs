@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 import { checkLayoutEditorEdges } from "./layout-editor-edge-cases.mjs";
 import { checkAerialDashes } from "./aerial-dash-browser.mjs";
 import { checkDashJumpTransitions } from "./dash-jump-browser.mjs";
+import { checkFluidCombat } from "./fluid-combat-browser.mjs";
 
 // Run against `npm run dev`. CDP dispatches native multi-touch input rather
 // than directly mutating the controller. This is emulation, not device testing.
@@ -1324,7 +1325,7 @@ try {
   await native("touchEnd", [heldJumpFinger]);
   await step();
   console.log(
-    "PASS: continuous configured-height ballistic jump, animation blending, camera invariants, no double jump, no held repeat and no aerial attacks",
+    "PASS: continuous configured-height ballistic jump, animation blending, camera invariants, no double jump, no held repeat and no out-of-range aerial attacks",
   );
 
   for (const sprinting of [false, true]) {
@@ -2054,6 +2055,7 @@ try {
   await checkLayoutEditorEdges(page, step);
   await checkAerialDashes(page);
   await checkDashJumpTransitions(page, native);
+  await checkFluidCombat(page, native);
   await page.clock.resume();
   assert.deepEqual(errors, [], "No browser runtime errors");
   console.log(

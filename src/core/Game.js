@@ -9,6 +9,10 @@ import { InputController } from "../input/InputController.js";
 import { Hud } from "../ui/Hud.js";
 import { CombatController } from "../combat/CombatController.js";
 import { ProximityCombatController } from "../combat/ProximityCombatController.js";
+import {
+  createCombatContext,
+  updateCombatContext,
+} from "../combat/CombatContext.js";
 import { TrainingDummy } from "../world/TrainingDummy.js";
 import { ControlLayoutEditor } from "../ui/ControlLayoutEditor.js";
 
@@ -45,13 +49,7 @@ export class Game {
       targets: [this.dummy.target],
     });
     // Reuse live movement context; accepted attacks take their own snapshot.
-    this.combatContext = {
-      speed: 0,
-      movementDirection: [0, 0, 0],
-      facing: 0,
-      dashActive: false,
-      opponentDistance: null,
-    };
+    this.combatContext = createCombatContext();
     this.animator = new CharacterAnimator(this.character);
     this.followCamera = new FollowCamera(
       this.camera,
@@ -163,28 +161,22 @@ export class Game {
           this.followCamera.yaw,
           this.controller.jump.ready ? this.proximity.target?.position : null,
         );
-        const groundedCombat =
-          this.controller.jump.phase === "grounded" &&
-          !(this.controller.dash.active && this.controller.dash.mode === "air");
-        const velocity = this.controller.velocity;
-        const length = velocity.length();
-        const context = this.combatContext;
-        context.speed = this.controller.speed;
-        context.movementDirection[0] = length > 0.001 ? velocity.x / length : 0;
-        context.movementDirection[2] = length > 0.001 ? velocity.z / length : 0;
-        context.facing = this.controller.heading;
-        context.dashActive = this.controller.dash.active;
+        const jump = this.controller.jump;
+        const context = updateCombatContext(
+          this.combatContext,
+          this.controller,
+        );
         this.combat.setBlocking(this.input.blocking);
         if (this.input.consumeAttackRequest()) {
           // Kept for future dedicated techniques; basic mobile punches are automatic.
-          if (groundedCombat) this.combat.requestAttack(context);
+          if (jump.ready) this.combat.requestAttack(context);
         }
         this.proximity.update(STEP, {
           position: this.character.root.position,
           blocking: this.input.blocking,
           facing: this.controller.heading,
           context,
-          grounded: groundedCombat,
+          grounded: jump.ready,
         });
         this.animator.update(STEP, {
           speed: this.controller.speed,
@@ -288,6 +280,7 @@ export class Game {
           sequence: this.combat.attack.sequence,
           techniqueId: this.combat.attack.techniqueId,
           cancelled: this.combat.attack.cancelled,
+          environment: this.combat.attack.context?.environment ?? "ground",
         },
       },
       proximity: {
@@ -298,11 +291,21 @@ export class Game {
         entryDistance: this.proximity.config.entryDistance,
         exitDistance: this.proximity.config.exitDistance,
         aligned: this.proximity.aligned,
+        horizontalDistance: Number.isFinite(this.proximity.horizontalDistance)
+          ? this.proximity.horizontalDistance
+          : null,
+        verticalSeparation: Number.isFinite(this.proximity.verticalSeparation)
+          ? this.proximity.verticalSeparation
+          : null,
+        aerialEntryDistance: this.proximity.config.aerialEntryDistance,
+        aerialExitDistance: this.proximity.config.aerialExitDistance,
       },
       dummy: {
         id: this.dummy.target.id,
         position: this.dummy.root.position.toArray(),
         radius: this.dummy.target.radius,
+        strikeHeight: this.dummy.target.strikeHeight,
+        strikeRadius: this.dummy.target.strikeRadius,
       },
       animation: {
         combatWeight: this.animator.combatWeight,
@@ -313,6 +316,8 @@ export class Game {
         attackWeight: this.animator.attackWeight,
         jumpWeight: this.animator.jumpWeight,
         airDashWeight: this.animator.airDashWeight,
+        aerialAttackWeight: this.animator.aerialAttackWeight,
+        kickExtension: this.animator.aerialAttackAnimation.extension,
       },
       halfSize: this.arena.halfSize,
       radius: this.controller.radius,

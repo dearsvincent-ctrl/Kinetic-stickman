@@ -8,6 +8,7 @@ import { resolvePagesBase } from "../build/pagesBase.js";
 import { checkLayoutEditorEdges } from "./layout-editor-edge-cases.mjs";
 import { checkAerialDashes } from "./aerial-dash-browser.mjs";
 import { checkDashJumpTransitions } from "./dash-jump-browser.mjs";
+import { checkFluidCombat } from "./fluid-combat-browser.mjs";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
 // the expected prefix makes root-relative asset mistakes fail with real 404s.
@@ -601,6 +602,7 @@ try {
   await native("touchStart", [proximityJumpFinger]);
   await page.clock.runFor(1100);
   const proximityJumpHud = await proximityJumpHudPromise;
+  assert.ok(proximityJumpHud.some(sample => sample.stance === "FLYING KICK"), "A valid unblocked jump automatically selects the flying kick");
   assert.ok(
     proximityJumpHud.some((sample) =>
       ["ASCENT", "DESCENT"].includes(sample.movement),
@@ -623,7 +625,7 @@ try {
       () =>
         window.__combatLabels.filter((value) => value === "ATTACKING").length,
     )) > attacksBeforeJump,
-    "Automatic combat resumes only after landing",
+    "Automatic ground combat resumes after landing",
   );
   await native("touchEnd", [proximityJumpFinger]);
 
@@ -1190,6 +1192,7 @@ try {
   );
   await checkAerialDashes(page);
   await checkDashJumpTransitions(page, native);
+  await checkFluidCombat(page, native);
   await page.clock.resume();
 
   for (const asset of requests) {
@@ -1211,7 +1214,7 @@ try {
     "Production page has no runtime or asset errors",
   );
   console.log(
-    `PASS: production bundle renders at ${base}; Pages assets, native Jump/aerial Dash/multitouch, grounded-only automatic proximity punches, Block priority, slide HOLD/PRESS, responsive action/Reset Camera layouts and saved control editing work`,
+    `PASS: production bundle renders at ${base}; Pages assets, native Jump/aerial Dash/multitouch, three-dimensional automatic ground/air strikes, Block priority, slide HOLD/PRESS, responsive action/Reset Camera layouts and saved control editing work`,
   );
   console.log("No physical Android device was tested.");
 } finally {

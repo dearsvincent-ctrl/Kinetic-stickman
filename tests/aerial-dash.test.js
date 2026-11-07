@@ -231,7 +231,7 @@ test("an aerial dash into the dummy retains Block, suspends punches and reacquir
     step(true);
     assert.equal(combat.blocking, true);
     assert.equal(combat.attack.sequence, 1);
-    assert.ok(proximity.target === null || actor.jump.ready);
+    assert.ok(proximity.target, "Proximity stays live while manual Block suppresses attacks");
   } while (!actor.jump.ready);
   assert.equal(actor.dash.exitReason, "blocked");
   assert.ok(proximity.target);

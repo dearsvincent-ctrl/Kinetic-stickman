@@ -1,9 +1,10 @@
-export const BASIC_PUNCH = Object.freeze({
-  id: "basic-punch",
-  windup: 0.08,
-  extension: 0.1,
-  recovery: 0.24,
-});
+import {
+  DEFAULT_TECHNIQUES,
+  isTechniqueEligible,
+  selectBasicTechnique,
+  techniqueContext,
+} from "./Techniques.js";
+export { BASIC_PUNCH, CROSS_PUNCH, FLYING_KICK } from "./Techniques.js";
 
 export const COMBAT_CONFIG = Object.freeze({
   postureHold: 0.15,
@@ -43,12 +44,50 @@ const makeRegistry = (definitions) => {
     if (!definition?.id || typeof definition.id !== "string")
       throw new TypeError("A combat technique needs a string id");
     const technique = Object.freeze({
+      animation: "punch",
+      side: "right",
+      reach: 0.76,
+      originHeight: 1.4,
+      maxVertical: 0.35,
+      maxAngle: Math.PI / 4,
+      minHeight: 0,
+      minAirTimeRemaining: 0,
       ...definition,
+      environments: Object.freeze([...(definition.environments ?? ["ground"])]),
       windup: duration(definition.windup, "windup"),
       extension: duration(definition.extension, "extension"),
+      impact: duration(definition.impact ?? 0, "impact"),
       recovery: duration(definition.recovery, "recovery"),
     });
-    if (technique.windup + technique.extension + technique.recovery <= 0)
+    for (const key of [
+      "reach",
+      "originHeight",
+      "maxVertical",
+      "maxAngle",
+      "minHeight",
+      "minAirTimeRemaining",
+    ])
+      if (!Number.isFinite(technique[key]) || technique[key] < 0)
+        throw new RangeError(`Invalid technique ${key}`);
+    if (
+      !technique.environments.length ||
+      technique.environments.some((value) => !["ground", "air"].includes(value))
+    )
+      throw new RangeError("Technique environments must be ground and/or air");
+    if (technique.maxAngle > Math.PI)
+      throw new RangeError("Technique facing angle cannot exceed pi");
+    if (
+      technique.eligible !== undefined &&
+      typeof technique.eligible !== "function"
+    )
+      throw new TypeError("Technique eligibility must be a function");
+    if (
+      technique.windup +
+        technique.extension +
+        technique.impact +
+        technique.recovery <=
+      0
+    )
       throw new RangeError(
         "A combat technique needs a positive total duration",
       );
@@ -59,13 +98,13 @@ const makeRegistry = (definitions) => {
   return registry;
 };
 
-/** Upper-body action timing only: never changes velocity, dash or actor transforms.
+/** Technique timing only: never changes velocity, dash or actor transforms.
  * Presses during recovery are rejected, rather than queued for a later strike.
  * Future technique selection can inspect movement/opponent context at entry.
  */
 export class CombatController {
   constructor({
-    techniques = [BASIC_PUNCH],
+    techniques = DEFAULT_TECHNIQUES,
     selectTechnique,
     postureHold = COMBAT_CONFIG.postureHold,
     cancelRecovery = COMBAT_CONFIG.cancelRecovery,
@@ -77,10 +116,9 @@ export class CombatController {
     this.techniques = makeRegistry(techniques);
     this.selectTechnique =
       selectTechnique ??
-      (() =>
-        this.techniques.has(BASIC_PUNCH.id)
-          ? BASIC_PUNCH.id
-          : this.techniques.keys().next().value);
+      ((context, eligible) =>
+        selectBasicTechnique(context, eligible, this.lastCompletedTechniqueId));
+    this.lastCompletedTechniqueId = null;
     this.blocking = false;
     this.attack = {
       active: false,
@@ -105,6 +143,10 @@ export class CombatController {
     return !this.blocking && !this.attack.active;
   }
 
+  get currentTechnique() {
+    return this._technique;
+  }
+
   get postureActive() {
     return (
       this.blocking || this.attack.active || this._postureRemaining > EPSILON
@@ -125,8 +167,20 @@ export class CombatController {
   requestAttack(context = {}) {
     if (!this.ready) return false;
     const selectionContext = snapshot(context);
-    const selected = this.selectTechnique(selectionContext, this.techniques);
-    const technique = this.techniques.get(
+    const eligible = new Map();
+    for (const technique of this.techniques.values())
+      if (
+        (!selectionContext.techniqueContexts ||
+          Object.hasOwn(selectionContext.techniqueContexts, technique.id)) &&
+        isTechniqueEligible(
+          technique,
+          techniqueContext(selectionContext, technique.id),
+        )
+      )
+        eligible.set(technique.id, technique);
+    if (!eligible.size) return false;
+    const selected = this.selectTechnique(selectionContext, eligible);
+    const technique = eligible.get(
       typeof selected === "string" ? selected : selected?.id,
     );
     if (!technique) return false;
@@ -144,7 +198,9 @@ export class CombatController {
       extension: 0,
       sequence: this.attack.sequence + 1,
       techniqueId: technique.id,
-      context: selectionContext,
+      context: selectionContext.techniqueContexts
+        ? snapshot(techniqueContext(selectionContext, technique.id))
+        : selectionContext,
       cancelled: false,
       exitReason: null,
     });
@@ -173,9 +229,11 @@ export class CombatController {
       this.attack.extension =
         this.attack.phase === "extension"
           ? smoothstep(progress)
-          : this.attack.phase === "recovery"
-            ? this._recoveryExtension * (1 - smoothstep(progress))
-            : 0;
+          : this.attack.phase === "impact"
+            ? 1
+            : this.attack.phase === "recovery"
+              ? this._recoveryExtension * (1 - smoothstep(progress))
+              : 0;
 
       if (phaseDuration - this._phaseElapsed <= EPSILON) this._nextPhase();
     }
@@ -189,14 +247,26 @@ export class CombatController {
     if (this.attack.phase === "windup") {
       this.attack.phase = "extension";
     } else if (this.attack.phase === "extension") {
+      this.attack.phase = this._technique.impact > 0 ? "impact" : "recovery";
+      this.attack.extension = 1;
+    } else if (this.attack.phase === "impact") {
       this.attack.phase = "recovery";
       this.attack.extension = 1;
     } else {
+      if (!this.attack.cancelled)
+        this.lastCompletedTechniqueId = this.attack.techniqueId;
       this.attack.active = false;
       this.attack.phase = "idle";
       this.attack.extension = 0;
       this.attack.exitReason ??= "completed";
       this._postureRemaining = this.config.postureHold;
+    }
+    if (this.attack.active) {
+      const nextDuration =
+        this.attack.phase === "recovery"
+          ? this._recoveryDuration
+          : this._technique[this.attack.phase];
+      if (nextDuration === 0) this._nextPhase();
     }
   }
 
@@ -215,6 +285,7 @@ export class CombatController {
     this._phaseElapsed = 0;
     this.attack.phase = "recovery";
     this.attack.phaseProgress = 0;
+    if (this._recoveryDuration === 0) this._nextPhase();
   }
 
   reset() {

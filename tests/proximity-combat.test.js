@@ -307,10 +307,13 @@ test("collision radii do not extend the center-distance activation threshold", (
   assert.equal(combat.attack.sequence, 0);
 });
 
-test("floor-plane distance ignores decorative height while rejecting invalid coordinates", () => {
+test("three-dimensional distance rejects vertical separation and invalid coordinates", () => {
   const target = dummy("height", 0.6, -0.8);
   target.position.y = 3;
   const { proximity } = fixture({ targets: [target] });
+  proximity.update(1 / 60, { position: { x: 0, y: 0.1, z: 0 } });
+  assert.equal(proximity.target, null);
+  target.position.y = 0.1;
   proximity.update(1 / 60, { position: { x: 0, y: 0.1, z: 0 } });
   assert.strictEqual(proximity.target, target);
   close(proximity.distance, 1);
@@ -453,16 +456,16 @@ test("distance and facing settings are tunable and validated", () => {
     );
 });
 
-test("takeoff clears selection and cancels a grounded punch without snapping reach", () => {
+test("takeoff retains proximity and cancels a grounded punch without snapping reach", () => {
   const { combat, proximity } = fixture();
   const position = origin();
   proximity.update(0.13, { position, facing: 0 });
   const reach = combat.attack.extension;
   assert.equal(proximity.aligned, true);
   proximity.update(0.04, { position, facing: 0, grounded: false });
-  assert.equal(proximity.target, null);
-  assert.equal(proximity.distance, Infinity);
-  assert.equal(proximity.aligned, false);
+  assert.notEqual(proximity.target, null);
+  assert.ok(Number.isFinite(proximity.distance));
+  assert.equal(proximity.aligned, true);
   assert.equal(combat.attack.phase, "recovery");
   assert.equal(combat.attack.cancelled, true);
   assert.equal(combat.attack.exitReason, "movement");
@@ -475,13 +478,13 @@ test("takeoff clears selection and cancels a grounded punch without snapping rea
   assert.equal(combat.attack.sequence, 1);
 });
 
-test("takeoff, airborne and landing gating never acquire or repeat automatic punches", () => {
+test("selection stays live in transition phases without starting ineligible ground punches", () => {
   const { combat, proximity } = fixture();
   const position = origin();
   for (const phase of ["takeoff", "airborne", "landing"]) {
     advance(proximity, 1, { position, grounded: false, context: { phase } });
-    assert.equal(proximity.target, null);
-    assert.equal(proximity.aligned, false);
+    assert.notEqual(proximity.target, null);
+    assert.equal(proximity.aligned, true);
     assert.equal(combat.attack.active, false);
     assert.equal(combat.attack.sequence, 0);
   }
@@ -492,14 +495,14 @@ test("takeoff, airborne and landing gating never acquire or repeat automatic pun
   assert.equal(combat.attack.context.source, "proximity");
 });
 
-test("grounding gate retains held Block without enabling automatic defence", () => {
+test("manual Block and live airborne targeting never enable automatic defence", () => {
   const { combat, proximity } = fixture();
   const position = origin();
   advance(proximity, 0.5, { position, grounded: false, blocking: true });
   assert.equal(combat.blocking, true);
   assert.equal(combat.postureActive, true);
   assert.equal(combat.attack.sequence, 0);
-  assert.equal(proximity.target, null);
+  assert.notEqual(proximity.target, null);
   advance(proximity, 0.5, { position, grounded: false, blocking: false });
   assert.equal(combat.blocking, false);
   assert.equal(combat.postureActive, false);
@@ -528,14 +531,14 @@ test("early landing still waits for cancelled-punch recovery before requesting a
   assert.equal(combat.attack.phase, "windup");
 });
 
-test("landing cannot reuse an airborne target from only the old exit band", () => {
+test("a retained airborne target cannot bypass actual ground technique reach after landing", () => {
   const { target, combat, proximity } = fixture();
   const position = origin();
   proximity.update(0.13, { position });
   proximity.update(0.2, { position, grounded: false });
   target.position.z = -1.1;
   advance(proximity, 1, { position, grounded: true });
-  assert.equal(proximity.target, null);
+  assert.notEqual(proximity.target, null);
   assert.equal(combat.attack.sequence, 1);
   target.position.z = -0.9;
   proximity.update(1 / 60, { position, grounded: true });
@@ -543,13 +546,13 @@ test("landing cannot reuse an airborne target from only the old exit band", () =
   assert.equal(combat.attack.sequence, 2);
 });
 
-test("grounding gate remains stable at 30Hz, 60Hz and 120Hz", () => {
+test("continuous targeting and physical technique eligibility remain stable at 30/60/120Hz", () => {
   for (const rate of [30, 60, 120]) {
     const { combat, proximity } = fixture();
     const position = origin();
     proximity.update(0.13, { position });
     advance(proximity, 0.8, { position, grounded: false }, rate);
-    assert.equal(proximity.target, null);
+    assert.notEqual(proximity.target, null);
     assert.equal(combat.attack.active, false);
     assert.equal(combat.attack.sequence, 1);
     assert.equal(combat.attack.exitReason, "movement");

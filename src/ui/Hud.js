@@ -95,13 +95,19 @@ export class Hud {
       : combat?.attack.active
         ? combat.attack.phase === "recovery"
           ? "RECOVERING"
-          : "ATTACKING"
+          : combat.currentTechnique?.animation === "flying-kick"
+            ? "FLYING KICK"
+            : "ATTACKING"
         : combat?.postureActive
           ? "COMBAT POSTURE"
           : proximity?.target
             ? "TARGET IN RANGE"
             : "FREE MOVEMENT";
     this.speedValue.textContent = speed.toFixed(1);
+    this.stanceLabel.dataset.technique = combat?.attack.active
+      ? combat.attack.techniqueId
+      : "none";
+    this.stanceLabel.dataset.phase = combat?.attack.phase ?? "idle";
     this.speedFill.style.width = `${Math.min(100, (speed / maxSpeed) * 100)}%`;
     this.movementDot.style.background =
       state === "IDLE" ? "#9faa98" : "#ff885e";
