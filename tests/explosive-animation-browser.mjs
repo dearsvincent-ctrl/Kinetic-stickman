@@ -20,7 +20,7 @@ export async function checkExplosiveAnimation(page, native) {
   };
   const touch = (id, p) => ({ id, ...p, radiusX: 7, radiusY: 7, force: 1 });
   const capture = (name) =>
-    page.screenshot({ path: `test-results/v071-${name}.png` });
+    page.screenshot({ path: `test-results/v072-${name}.png` });
   const speed = async () =>
     Number(await page.locator("#speed-value").textContent());
   await page.evaluate(() => localStorage.removeItem("kinetic.controls.v1"));
@@ -31,7 +31,9 @@ export async function checkExplosiveAnimation(page, native) {
     sprint = await center("#sprint-button");
   let fingers = [touch(701, joy)];
   await native("touchStart", fingers);
-  fingers[0] = touch(701, { x: joy.x, y: joy.y - 13 });
+  // All three speeds face left under the same untouched follow-camera angle,
+  // so knee drive, rear extension and true flight are visible in comparison.
+  fingers[0] = touch(701, { x: joy.x - 13, y: joy.y });
   await native("touchMove", fingers, [fingers[0]]);
   await advance(600);
   assert.ok(
@@ -39,7 +41,7 @@ export async function checkExplosiveAnimation(page, native) {
     "Progressive walking remains available",
   );
   await capture("walk");
-  fingers[0] = touch(701, { x: joy.x, y: joy.y - 45 });
+  fingers[0] = touch(701, { x: joy.x - 45, y: joy.y });
   await native("touchMove", fingers, [fingers[0]]);
   await advance(700);
   assert.ok(
@@ -67,12 +69,35 @@ export async function checkExplosiveAnimation(page, native) {
       assert.equal(fast.camera[key], camera[key]);
   }
   await capture("sprint");
-  // The unchanged camera sees the side silhouette when steering left; this
-  // makes forward lean, arm opposition and knee drive easier to inspect.
-  fingers[0] = touch(701, { x: joy.x - 45, y: joy.y });
+  let flightSamples = 0,
+    supportSamples = 0;
+  for (let frame = 0; frame < 6; frame++) {
+    await advance(100);
+    const state = await read();
+    if (state) {
+      // Actual IK-resolved ankle positions; the flat foot sole is 9 cm below
+      // the ankle. Contact flags alone cannot establish visible flight.
+      if (state.animation.feet.every((foot) => foot.position[1] > 0.13))
+        flightSamples++;
+      if (state.animation.feet.some((foot) => foot.planted)) supportSamples++;
+      assert.equal(
+        state.position[1],
+        0,
+        "Sprint flight is visual, never a gameplay jump",
+      );
+      assert.equal(state.jump.phase, "grounded");
+    }
+    await capture(`sprint-cycle-${frame}`);
+  }
+  if (fast)
+    assert.ok(
+      flightSamples > 0 && supportSamples > 0,
+      "Native sprint has visible two-foot flight and planted push-off/landing",
+    );
+  fingers[0] = touch(701, { x: joy.x, y: joy.y - 45 });
   await native("touchMove", fingers, [fingers[0]]);
   await advance(550);
-  await capture("sprint-side");
+  await capture("sprint-forward");
   fingers[0] = touch(701, joy);
   await native("touchMove", fingers, [fingers[0]]);
   await advance(100);
@@ -133,6 +158,6 @@ export async function checkExplosiveAnimation(page, native) {
       "Punches extend sharply with visual body-weight transfer",
     );
   console.log(
-    "PASS: native progressive walk/run/sprint, distinct sprint presentation, braking/cancellation, sharp straight/cross poses; camera and movement speeds preserved",
+    "PASS: same-angle native walk/run/sprint comparison, genuine two-foot sprint flight, knee drive and rear extension, forward/side steering, braking/cancellation and existing straight/cross; camera and movement speeds preserved",
   );
 }

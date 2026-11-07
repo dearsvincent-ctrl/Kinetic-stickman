@@ -27,6 +27,9 @@ function createFoot(side, offset, sign) {
     lastPhase: offset,
     startPhase: 0,
     duty: 0.66,
+    runningSwing: false,
+    deferSwing: false,
+    runningCorrection: new Vector3(),
   };
 }
 
@@ -66,6 +69,10 @@ export class CharacterAnimator {
     this.pose = { arms: [{}, {}] };
     this.previousPosition = character.root.position.clone();
     this.velocity = new Vector3();
+    this.travelDirection = new Vector3(0, 0, -1);
+    this.runningGoal = new Vector3();
+    this.runningLocal = new Vector3();
+    this.legDirection = new Vector3();
     this.rootYaw = new Quaternion();
     this.landing = new Vector3();
     this.rest = new Vector3();
@@ -80,11 +87,23 @@ export class CharacterAnimator {
     const root = this.character.root;
     const j = this.character.joints;
     const gait = this.locomotion;
+    const sprintHandoff = gait.sprintBlend * (1 - this.combatWeight);
     this.combatWeight = this.combat.update(
       dt,
       Boolean(blocking || combat?.postureActive),
     );
-    this.attackWeight = this.attackAnimation.update(dt, combat);
+    this.attackWeight = this.attackAnimation.update(
+      dt,
+      combat,
+      MathUtils.lerp(
+        this.style.punch.entryTime,
+        Math.max(
+          this.style.punch.entryTime,
+          this.style.locomotion.attackHandoffTime,
+        ),
+        sprintHandoff,
+      ),
+    );
     // The dash has its own single bound, not a 12 m/s running cycle.
     gait.update(dt, {
       speed: dash?.active ? Math.min(speed, 2.6) : speed,
@@ -98,6 +117,8 @@ export class CharacterAnimator {
     this.previousPosition.copy(root.position);
     this.rootYaw.copy(root.quaternion);
     this.velocity.y = 0;
+    if (this.velocity.lengthSq() > 0.0001)
+      this.travelDirection.copy(this.velocity).normalize();
     this.motion.update(
       dt,
       this.velocity,
@@ -119,6 +140,7 @@ export class CharacterAnimator {
       for (const foot of this.footList) {
         foot.lastPhase = fract(gait.phase + this.gaitOffset + foot.offset);
         foot.duty = gait.duty;
+        foot.deferSwing = false;
       }
     }
     for (const foot of this.footList) {
@@ -128,9 +150,13 @@ export class CharacterAnimator {
         foot.anchor.copy(this.rest);
         foot.yaw.copy(this.rootYaw);
         foot.planted = true;
+        foot.runningSwing = false;
+        foot.deferSwing = false;
       }
       if (dashOwnsFeet || jumpOwnsFeet) continue;
       if (!moving) {
+        foot.runningSwing = false;
+        foot.deferSwing = false;
         foot.target.lerp(this.rest, 1 - Math.exp(-12 * dt));
         foot.yaw.slerp(this.rootYaw, 1 - Math.exp(-12 * dt));
         foot.anchor.copy(foot.target);
@@ -147,6 +173,14 @@ export class CharacterAnimator {
       this.footList,
       this.combatWeight,
       !jumpOwnsFeet,
+      MathUtils.lerp(
+        this.style.groundDash.entryTime,
+        Math.max(
+          this.style.groundDash.entryTime,
+          this.style.locomotion.dashHandoffTime,
+        ),
+        sprintHandoff,
+      ),
     );
     this.dashWeight = this.dashAnimation.weight;
     this.jumpAnimation.update(
@@ -171,10 +205,18 @@ export class CharacterAnimator {
         foot.swingStart.copy(foot.target);
         foot.swingYaw.copy(foot.yaw);
         foot.startPhase = foot.lastPhase;
+        foot.runningSwing = false;
+        // A skill can return a planted foot just before the gait wraps. Keep
+        // that landing instead of squeezing a complete swing into one frame.
+        foot.deferSwing =
+          foot.planted &&
+          foot.lastPhase >= foot.duty &&
+          (1 - foot.lastPhase) / Math.max(0.05, gait.cadence) <
+            this.style.locomotion.swingHandoffTime;
       }
     }
 
-    gait.sampleUpperBody(this.pose, this.gaitOffset);
+    gait.sampleUpperBody(this.pose, this.gaitOffset, this.motion.drive);
     this.motion.apply(
       this.pose,
       (1 - this.combatWeight) * (1 - this.dashWeight) * (1 - this.jumpWeight),
@@ -230,8 +272,25 @@ export class CharacterAnimator {
       lowerBy = Math.max(lowerBy, this.hipWorld.y - maximumY);
     }
     j.hips.position.y = Math.max(0.68, j.hips.position.y - lowerBy);
-    for (const foot of this.footList)
+    for (const foot of this.footList) {
+      if (
+        foot.target.y > this.character.dimensions.ankleHeight + 0.001 &&
+        gait.runBlend > 0.001
+      ) {
+        // Keep the sprint's heel recovery inside a human knee range even
+        // while a turn, guard blend or skill handoff lowers the pelvis. Floor
+        // contacts stay untouched, including the existing planted-foot anchors.
+        j[`${foot.side}Hip`].getWorldPosition(this.hipWorld);
+        this.legDirection.subVectors(foot.target, this.hipWorld);
+        const reach = this.legDirection.length();
+        const minimum = this.style.locomotion.kneeReach;
+        if (reach > 0.00001 && reach < minimum)
+          foot.target
+            .copy(this.hipWorld)
+            .addScaledVector(this.legDirection, minimum / reach);
+      }
       this.ik.solve(foot.side, foot.target, foot.yaw);
+    }
   }
 
   restPosition(foot, out) {
@@ -247,17 +306,33 @@ export class CharacterAnimator {
     const gait = this.locomotion;
     const phase = fract(gait.phase + this.gaitOffset + foot.offset);
     if (phase < foot.lastPhase) {
+      const deferred = foot.deferSwing;
       foot.planted = true;
+      foot.runningSwing = false;
+      foot.deferSwing = false;
       foot.duty = gait.duty;
       foot.anchor.copy(foot.target);
       foot.anchor.y = this.character.dimensions.ankleHeight;
       foot.yaw.copy(this.rootYaw);
+      if (deferred) {
+        // Resume only the support travel still available behind this landing,
+        // rather than dragging a centred foot through a full-length contact.
+        const forward = this.rest
+          .subVectors(foot.anchor, this.character.root.position)
+          .dot(this.travelDirection);
+        foot.duty *= MathUtils.clamp(
+          (gait.stride * 0.5 + forward) / gait.stride,
+          0.2,
+          1,
+        );
+      }
     }
-    if (foot.planted && phase >= foot.duty) {
+    if (foot.planted && phase >= foot.duty && !foot.deferSwing) {
       foot.planted = false;
       foot.swingStart.copy(foot.target);
       foot.swingYaw.copy(foot.yaw);
       foot.startPhase = phase;
+      foot.runningSwing = false;
     }
     if (foot.planted) {
       foot.target.copy(foot.anchor);
@@ -278,6 +353,16 @@ export class CharacterAnimator {
       foot.target.y =
         this.character.dimensions.ankleHeight +
         Math.sin(Math.PI * t) * gait.lift;
+      const runWeight = gait.freeRunBlend;
+      if (runWeight > 0.001) {
+        this.runningFootGoal(foot, phase, this.runningGoal);
+        if (!foot.runningSwing) {
+          foot.runningCorrection.subVectors(foot.swingStart, this.runningGoal);
+          foot.runningSwing = true;
+        }
+        this.runningGoal.addScaledVector(foot.runningCorrection, 1 - smooth(t));
+        foot.target.lerp(this.runningGoal, runWeight);
+      } else foot.runningSwing = false;
       foot.yaw.copy(foot.swingYaw).slerp(this.rootYaw, smooth(t));
     }
     // Sudden reversals can strand an old contact. Relax that exceptional
@@ -292,5 +377,27 @@ export class CharacterAnimator {
       if (foot.planted) foot.anchor.copy(foot.target);
     }
     foot.lastPhase = phase;
+  }
+
+  runningFootGoal(foot, phase, out) {
+    const gait = this.locomotion;
+    const swing = MathUtils.clamp(
+      (phase - foot.duty) / Math.max(0.02, 1 - foot.duty),
+      0,
+      1,
+    );
+    const travel =
+      (this.velocity.length() * (1 - foot.duty)) / Math.max(0.05, gait.cadence);
+    gait.running.sampleFoot(
+      swing,
+      gait.stride,
+      travel,
+      gait.sprintBlend,
+      this.runningLocal,
+    );
+    this.restPosition(foot, out);
+    out.addScaledVector(this.travelDirection, -this.runningLocal.z);
+    out.y += this.runningLocal.y;
+    return out;
   }
 }

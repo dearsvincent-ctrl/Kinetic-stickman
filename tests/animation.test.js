@@ -234,7 +234,7 @@ test("nearby movement speeds produce continuous poses across gait transitions", 
   }
 });
 
-test("locomotion keeps pelvis bob restrained instead of dropping through a deep squat", () => {
+test("walking and guard stay quiet while athletic running loads and rises without a deep squat", () => {
   for (const blocking of [false, true]) {
     for (const speed of [0.6, 2.6, 5.2]) {
       const actor = rig();
@@ -248,7 +248,9 @@ test("locomotion keeps pelvis bob restrained instead of dropping through a deep 
         highest = Math.max(highest, height);
       }
       assert.ok(
-        highest - lowest < (blocking ? 0.04 : 0.09),
+        highest - lowest <
+          (blocking ? 0.04 : speed > 3.1 ? 0.21 : speed > 1.35 ? 0.13 : 0.09) &&
+          lowest > 0.75,
         `pelvis stays controlled at ${speed} m/s with guard ${blocking}`,
       );
       actor.character.dispose();

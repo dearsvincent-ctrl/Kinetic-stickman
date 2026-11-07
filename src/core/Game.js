@@ -329,6 +329,13 @@ export class Game {
         pelvisY: this.character.joints.hips.position.y,
         pelvisZ: this.character.joints.hips.position.z,
         visualPunchReach: this.animator.attackAnimation.reach,
+        visualFlight: this.animator.locomotion.running.flight,
+        armTrail: this.animator.locomotion.running.trail,
+        feet: this.animator.footList.map((foot) => ({
+          planted: foot.planted,
+          position: this.character.joints[`${foot.side}Ankle`]
+            .getWorldPosition(new THREE.Vector3()).toArray(),
+        })),
       },
       halfSize: this.arena.halfSize,
       radius: this.controller.radius,

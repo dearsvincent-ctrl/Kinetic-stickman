@@ -9,6 +9,7 @@ const clamp01 = (value) => MathUtils.clamp(value, 0, 1);
 export class AttackAnimator {
   constructor(style = ANIME_STYLE.punch) {
     this.style = style;
+    this.entryTime = style.entryTime;
     this.weight = 0;
     this.reach = 0;
     this.chamber = 0;
@@ -25,7 +26,7 @@ export class AttackAnimator {
     this.recoil = 0;
   }
 
-  update(dt, combat) {
+  update(dt, combat, entryTime = this.style.entryTime) {
     const attack = combat?.attack;
     const animation =
       combat?.currentTechnique?.animation ??
@@ -38,13 +39,14 @@ export class AttackAnimator {
       this.side = combat.currentTechnique?.side ?? "right";
       const entering = attack.sequence !== this.sequence;
       if (entering) {
+        this.entryTime = entryTime;
         this.sequence = attack.sequence;
         this.entryWeight = this.weight;
         this.phase = "windup";
         this.cancelled = false;
       }
       const seek = entering && attack.elapsed > dt * 1.5;
-      const entry = smooth(clamp01(attack.elapsed / s.entryTime));
+      const entry = smooth(clamp01(attack.elapsed / this.entryTime));
       this.weight = MathUtils.lerp(this.entryWeight, 1, entry);
       const p = clamp01(attack.phaseProgress);
       if (attack.phase === "recovery") {

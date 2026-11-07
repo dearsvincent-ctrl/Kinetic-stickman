@@ -1,13 +1,17 @@
 import { MathUtils } from "three";
 import { ANIME_STYLE } from "./AnimationStyle.js";
+import { RunningGait } from "./RunningGait.js";
 
 /** Speed-driven contact clock: stride is travel during a foot's planted phase.
  * Walking, running and sprinting blend continuously from resolved speed. */
 export class LocomotionAnimator {
   constructor(style = ANIME_STYLE.locomotion) {
     this.style = style;
+    this.running = new RunningGait(style);
+    this.freeRunBlend = 0;
     this.phase = 0;
     this.time = 0;
+    this.dt = 0;
     this.movementBlend = 0;
     this.runBlend = 0;
     this.sprintBlend = 0;
@@ -19,6 +23,7 @@ export class LocomotionAnimator {
 
   update(dt, { speed = 0, combatWeight = 0 } = {}) {
     const s = this.style;
+    this.dt = dt;
     speed = Math.max(0, speed);
     this.time += dt;
     this.movementBlend = MathUtils.damp(
@@ -39,6 +44,7 @@ export class LocomotionAnimator {
       s.response,
       dt,
     );
+    this.freeRunBlend = this.runBlend * (1 - combatWeight);
     const brisk = MathUtils.smoothstep(speed, 0.2, 2.6);
     const fast = MathUtils.smoothstep(speed, 0.2, 5.2);
     const freeStride = MathUtils.lerp(
@@ -47,7 +53,7 @@ export class LocomotionAnimator {
       this.sprintBlend,
     );
     const freeDuty = MathUtils.lerp(
-      MathUtils.lerp(s.walkDuty, s.runDuty, brisk),
+      MathUtils.lerp(s.walkDuty, s.runDuty, this.runBlend),
       s.sprintDuty,
       this.sprintBlend,
     );
@@ -85,7 +91,7 @@ export class LocomotionAnimator {
     return this;
   }
 
-  sampleUpperBody(pose, phaseOffset = 0) {
+  sampleUpperBody(pose, phaseOffset = 0, acceleration = 0) {
     const s = this.style;
     const angle = (this.phase + phaseOffset) * Math.PI * 2;
     const wave = Math.cos(angle),
@@ -136,5 +142,6 @@ export class LocomotionAnimator {
           weight +
         Math.max(0, drive) * 0.12 * weight;
     }
+    this.running.applyBody(pose, this, this.phase + phaseOffset, acceleration);
   }
 }

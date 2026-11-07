@@ -16,6 +16,7 @@ export class DashAnimator {
     this.weight = 0;
     this.spineRoll = 0;
     this.recoveryDuration = style.recoveryTime;
+    this.entryTime = style.entryTime;
     this.sequence = -1;
     this.active = false;
     this.progress = 0;
@@ -39,12 +40,20 @@ export class DashAnimator {
     return this.active || this.weight > 0;
   }
 
-  update(dt, dash, feet, combatWeight, controlFeet = true) {
+  update(
+    dt,
+    dash,
+    feet,
+    combatWeight,
+    controlFeet = true,
+    entryTime = this.style.entryTime,
+  ) {
     const active = Boolean(dash?.active);
     const root = this.character.root;
     const ankleY = this.character.dimensions.ankleHeight;
     let completed = false;
     if (active && (!this.active || dash.sequence !== this.sequence)) {
+      this.entryTime = entryTime;
       this.sequence = dash.sequence;
       this.landed = false;
       this.recoveryTime = 0;
@@ -89,7 +98,7 @@ export class DashAnimator {
     if (active) {
       this.progress = clamp01(dash.progress);
       this.direction.copy(dash.direction);
-      this.weight = smooth(clamp01(dash.elapsed / this.style.entryTime));
+      this.weight = smooth(clamp01(dash.elapsed / this.entryTime));
       this.right.set(-this.direction.z, 0, this.direction.x);
       this.yaw.setFromAxisAngle(
         UP,

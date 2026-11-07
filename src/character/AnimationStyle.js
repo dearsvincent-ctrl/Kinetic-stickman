@@ -7,20 +7,20 @@ const definitions = {
     sprintStart: 3.1,
     sprintFull: 5.0,
     walkStride: 0.34,
-    runStride: 0.68,
-    sprintStride: 0.78,
+    runStride: 0.72,
+    sprintStride: 0.8,
     walkDuty: 0.66,
-    runDuty: 0.54,
-    sprintDuty: 0.34,
+    runDuty: 0.46,
+    sprintDuty: 0.28,
     walkLift: 0.055,
-    runLift: 0.105,
-    sprintLift: 0.17,
+    runLift: 0.42,
+    sprintLift: 0.52,
     walkLean: 0.035,
     runLean: 0.18,
-    sprintLean: 0.37,
+    sprintLean: 0.49,
     walkArm: 0.23,
-    runArm: 0.46,
-    sprintArm: 0.72,
+    runArm: 0.58,
+    sprintArm: 0.98,
     runElbow: 0.78,
     sprintElbow: 1.12,
     hipTwist: 0.075,
@@ -33,6 +33,24 @@ const definitions = {
     bob: 0.014,
     sprintBob: 0.022,
     response: 12,
+    heelFraction: 0.22,
+    kneeFraction: 0.56,
+    runKneeForward: 0.16,
+    sprintKneeForward: 0.24,
+    runHipHeight: 0.88,
+    sprintHipHeight: 0.85,
+    runCompression: 0.045,
+    sprintCompression: 0.065,
+    runFlightRise: 0.055,
+    sprintFlightRise: 0.115,
+    launchTrail: 0.85,
+    flightTrail: 0.82,
+    trailingArm: 0.9,
+    armResponse: 24,
+    kneeReach: 0.23,
+    dashHandoffTime: 0.08,
+    attackHandoffTime: 0.11,
+    swingHandoffTime: 0.08,
   },
   motion: {
     response: 14,
@@ -168,6 +186,22 @@ export function resolveAnimationStyle(overrides = {}) {
   for (const key of ["walkDuty", "runDuty", "sprintDuty", "guardDuty"])
     if (style.locomotion[key] <= 0 || style.locomotion[key] >= 1)
       throw new RangeError("Foot contact duty must be between zero and one");
+  if (
+    style.locomotion.heelFraction >= style.locomotion.kneeFraction ||
+    style.locomotion.kneeFraction >= 1
+  )
+    throw new RangeError(
+      "Running heel recovery must precede knee drive and landing",
+    );
+  if (style.locomotion.runDuty >= 0.5 || style.locomotion.sprintDuty >= 0.5)
+    throw new RangeError("Running contact duty must leave a flight interval");
+  if (
+    style.locomotion.launchTrail > 1 ||
+    style.locomotion.flightTrail > 1 ||
+    style.locomotion.kneeReach <= 0 ||
+    style.locomotion.kneeReach >= 0.5
+  )
+    throw new RangeError("Invalid running arm blend or knee reach");
   if (style.jump.landingPeak <= 0 || style.jump.landingPeak >= 1)
     throw new RangeError(
       "Landing compression peak must be between zero and one",
