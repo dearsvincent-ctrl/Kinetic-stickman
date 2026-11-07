@@ -31,7 +31,9 @@ export class AttackAnimator {
     const animation =
       combat?.currentTechnique?.animation ??
       (attack?.techniqueId === "flying-kick" ? "flying-kick" : "punch");
-    const active = Boolean(attack?.active && animation === "punch");
+    const active = Boolean(
+      attack?.active && (animation === "punch" || animation === "backhand"),
+    );
     const s = this.style;
     const previousReach = this.reach,
       previousChamber = this.chamber;

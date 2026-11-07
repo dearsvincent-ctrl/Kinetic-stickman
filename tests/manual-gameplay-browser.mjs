@@ -168,11 +168,16 @@ export async function checkGameplay(page, native) {
     await tap(page, native, n % 2 ? "kick" : "punch", 24);
     await advance(page, 30);
   }
-  await advance(page, 600);
+  // v0.7.6 permits a fresh tap during a compatible recovery window. Native
+  // delivery may straddle that boundary by one frame; it must never queue.
+  await advance(page, 34);
+  const afterEntries = await sequence(page);
+  assert.ok(afterEntries >= busy && afterEntries <= busy + 1);
+  await advance(page, 650);
   assert.equal(
     await sequence(page),
-    busy,
-    "No recovery queue from rapid released taps",
+    afterEntries,
+    "No queued or held repeat after released taps",
   );
   fingers = [touch(25, await point(page, sel("punch")))];
   await native("touchStart", fingers);

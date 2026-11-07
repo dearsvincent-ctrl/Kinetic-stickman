@@ -99,8 +99,8 @@ const makeRegistry = (definitions) => {
 };
 
 /** Technique timing only: never changes velocity, dash or actor transforms.
- * Presses during recovery are rejected, rather than queued for a later strike.
- * Future technique selection can inspect movement/opponent context at entry.
+ * Adaptive techniques declare compatible interruption windows. Entries are
+ * accepted immediately or rejected, never queued for a later strike.
  */
 export class CombatController {
   constructor({
@@ -133,6 +133,8 @@ export class CombatController {
       exitReason: null,
     };
     this._technique = null;
+    this.transitionCooldown = 0;
+    this.lastTransition = null;
     this._phaseElapsed = 0;
     this._recoveryDuration = 0;
     this._recoveryExtension = 0;
@@ -189,11 +191,16 @@ export class CombatController {
         eligible.set(technique.id, technique);
     if (!eligible.size) return false;
     const selected = this.selectTechnique(selectionContext, eligible);
-    const technique = eligible.get(
+    let technique = eligible.get(
       typeof selected === "string" ? selected : selected?.id,
     );
     if (!technique) return false;
-
+    if (technique.adaptive && selected?.side)
+      technique = Object.freeze({
+        ...technique,
+        side: selected.side,
+        label: selected.label ?? technique.label,
+      });
     this._technique = technique;
     this._phaseElapsed = 0;
     this._recoveryDuration = technique.recovery;
@@ -218,6 +225,7 @@ export class CombatController {
 
   update(dt) {
     if (!Number.isFinite(dt) || dt <= 0) return;
+    this.transitionCooldown = Math.max(0, this.transitionCooldown - dt);
     let remaining = dt;
     // Consume phase boundaries and leftover posture time even on a long frame.
     while (this.attack.active && remaining > EPSILON) {
@@ -277,6 +285,46 @@ export class CombatController {
           : this._technique[this.attack.phase];
       if (nextDuration === 0) this._nextPhase();
     }
+  }
+
+  transitionAttack(context = {}) {
+    const attack = this.attack,
+      from = this._technique;
+    if (
+      !from?.adaptive ||
+      !attack.active ||
+      attack.cancelled ||
+      this.blocking ||
+      this.transitionCooldown > 0
+    )
+      return false;
+    const rotational = from.gesture || context.rotationActive;
+    if (
+      attack.elapsed < (context.gesture ? 0 : (from.transitionAfter ?? 0.14)) ||
+      (!rotational && attack.phase !== "recovery")
+    )
+      return false;
+    const transition = {
+      techniqueId: from.id,
+      action: from.action,
+      side: from.side,
+      extension: attack.extension,
+      phase: attack.phase,
+      kind: context.gesture
+        ? "redirection"
+        : context.action !== from.action
+          ? "continuation"
+          : "cancellation",
+    };
+    attack.active = false;
+    const accepted = this.requestAttack({ ...context, transition });
+    if (!accepted) {
+      attack.active = true;
+      return false;
+    }
+    this.transitionCooldown = 0.14;
+    this.lastTransition = Object.freeze(transition);
+    return true;
   }
 
   // Movement states may end a grounded strike without releasing held defence.

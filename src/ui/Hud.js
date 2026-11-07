@@ -58,6 +58,7 @@ export class Hud {
     movement = null,
     hits = null,
     contactFeedback = 0,
+    rotation = null,
   ) {
     this.frameCount++;
     this.sampleTime += dt;
@@ -102,7 +103,9 @@ export class Hud {
           : (combat.currentTechnique?.label?.toUpperCase() ?? "ATTACKING")
         : combat?.postureActive
           ? "COMBAT POSTURE"
-          : "FREE MOVEMENT";
+          : rotation?.phase === "backflip"
+            ? "BACKFLIP · STEER ROTATION"
+            : "FREE MOVEMENT";
     this.speedValue.textContent = speed.toFixed(1);
     this.stanceLabel.dataset.technique = combat?.attack.active
       ? combat.attack.techniqueId
@@ -111,6 +114,17 @@ export class Hud {
     this.stanceLabel.dataset.sequence = String(combat?.attack.sequence ?? 0);
     this.stanceLabel.dataset.action =
       combat?.currentTechnique?.action ?? "none";
+    this.stanceLabel.dataset.side = combat?.currentTechnique?.side ?? "none";
+    this.stanceLabel.dataset.acroSequence = String(rotation?.sequence ?? 0);
+    this.stanceLabel.dataset.acroKind = rotation?.lastKind ?? "none";
+    this.stanceLabel.dataset.acroPhase = rotation?.phase ?? "idle";
+    this.stanceLabel.dataset.bodyUp = String(rotation?.up.y ?? 1);
+    this.stanceLabel.dataset.invertedWeight = String(
+      rotation?.invertedWeight ?? 0,
+    );
+    this.stanceLabel.dataset.angularPitch = String(
+      rotation?.angularVelocity.x ?? 0,
+    );
     this.stanceLabel.dataset.cancelled = String(
       combat?.attack.cancelled ?? false,
     );

@@ -11,7 +11,7 @@ export const TRAINING_DUMMY_CONFIG = Object.freeze({
 });
 
 /** A stationary target prop. Its circular base is the collision footprint;
- * the separate body strike sphere supplies three-dimensional combat reach.
+ * separate body/post strike spheres supply three-dimensional combat contact.
  */
 export class TrainingDummy {
   constructor() {
@@ -26,6 +26,13 @@ export class TrainingDummy {
       strikeHeight: config.strikeHeight,
       strikeRadius: config.strikeRadius,
       active: true,
+      hitboxes: Object.freeze([
+        Object.freeze({
+          height: config.strikeHeight,
+          radius: config.strikeRadius,
+        }),
+        Object.freeze({ height: 0.35, radius: 0.075 }),
+      ]),
     };
 
     const graphite = new THREE.MeshStandardMaterial({

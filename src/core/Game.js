@@ -11,9 +11,12 @@ import { Hud } from "../ui/Hud.js";
 import { CombatController } from "../combat/CombatController.js";
 import { AttackScheduler } from "../combat/AttackScheduler.js";
 import {
-  createManualTechniques,
-  selectManualTechnique,
-} from "../combat/ManualTechniques.js";
+  createAdaptiveTechniques,
+  ContextualLimbSelector,
+} from "../combat/AdaptiveTechniques.js";
+import { BodyRotation } from "../movement/BodyRotation.js";
+import { JoystickGestures } from "../movement/JoystickGestures.js";
+import { AcrobaticPresenter } from "../character/AcrobaticPresenter.js";
 import { StrikeHitDetector } from "../combat/StrikeHitDetector.js";
 import {
   createCombatContext,
@@ -56,9 +59,15 @@ export class Game {
       new ArenaBounds(this.arena.halfSize, [this.dummy.target]),
       { faceInputWhenBlocked: true },
     );
+    this.bodyRotation = new BodyRotation();
+    this.gestures = new JoystickGestures();
+    this.limbSelector = new ContextualLimbSelector();
+    this.bodyStart = new THREE.Quaternion();
+    this.bodyEnd = new THREE.Quaternion();
     this.combat = new CombatController({
-      techniques: createManualTechniques(),
-      selectTechnique: selectManualTechnique,
+      techniques: createAdaptiveTechniques(),
+      selectTechnique: (context, eligible) =>
+        this.limbSelector.choose(context, eligible),
     });
     this.attackScheduler = new AttackScheduler(this.combat);
     this.contactFeedbackRemaining = 0;
@@ -71,6 +80,10 @@ export class Game {
     // Reuse live movement context; accepted attacks take their own snapshot.
     this.combatContext = createCombatContext();
     this.animator = new CharacterAnimator(this.character);
+    this.acrobaticPresenter = new AcrobaticPresenter(
+      this.character,
+      this.animator,
+    );
     this.followCamera = new FollowCamera(
       this.camera,
       this.character.root.position,
@@ -173,6 +186,8 @@ export class Game {
     this.controller.stop();
     this.combat.reset();
     this.attackScheduler.reset();
+    this.gestures.reset();
+    this.bodyRotation.reset(this.controller.heading);
     this.accumulator = 0;
     this.lastTime = null;
   }
@@ -200,6 +215,26 @@ export class Game {
           if (action === "jump") this.controller.requestJump();
           else if (action === "dash") this.controller.requestDash();
         }
+        const gesture = this.gestures.update(
+          STEP,
+          this.input,
+          this.controller,
+          this.followCamera.yaw,
+        );
+        if (gesture) {
+          this.bodyRotation.start(
+            gesture.kind,
+            this.controller.heading,
+            gesture.direction,
+            gesture.intensity,
+          );
+          if (gesture.kind !== "backflip")
+            this.attackScheduler.gesture(
+              gesture.kind,
+              gesture.direction,
+              gesture.intensity,
+            );
+        }
         this.simulationSteps = this.physicsSandbox.enabled
           ? movementSubsteps(
               this.controller,
@@ -211,6 +246,7 @@ export class Game {
         const step = STEP / this.simulationSteps;
         for (let i = 0; i < this.simulationSteps; i++)
           this.simulateMovement(step);
+        this.acrobaticPresenter.begin(this.combat);
         this.animator.update(STEP, {
           speed: this.controller.speed,
           blocking: this.input.blocking,
@@ -219,6 +255,7 @@ export class Game {
           jump: this.controller.jump,
           sandbox: this.physicsSandbox.enabled && this.sandboxModified,
         });
+        this.acrobaticPresenter.apply(STEP, this.bodyRotation, this.combat);
         this.accumulator -= STEP;
       }
       this.followCamera.update(
@@ -240,6 +277,7 @@ export class Game {
       this.controller,
       this.hitDetector,
       this.contactFeedbackRemaining,
+      this.bodyRotation,
     );
   }
 
@@ -248,8 +286,32 @@ export class Game {
     // speed. Combat samples that resolved path at its own phase boundaries.
     this.simulationPrevious.copy(this.character.root.position);
     const heading = this.controller.heading;
+    const startLift = this.bodyRotation?.lift ?? 0;
+    if (this.bodyRotation) this.bodyStart.copy(this.bodyRotation.orientation);
     this.controller.update(dt, this.input, this.followCamera.yaw);
+    this.bodyRotation?.update(
+      dt,
+      this.controller,
+      this.input,
+      this.followCamera.yaw,
+    );
+    if (this.bodyRotation) this.bodyEnd.copy(this.bodyRotation.orientation);
     const context = updateCombatContext(this.combatContext, this.controller);
+    if (this.bodyRotation) {
+      context.clock = this.bodyRotation.time;
+      context.rotationActive = this.bodyRotation.phase !== "idle";
+      context.rotationRate ??= [0, 0, 0];
+      this.bodyRotation.angularVelocity.toArray(context.rotationRate);
+      context.previousAction = this.combat.currentTechnique?.action;
+      context.lateralMovement = this.input.move.x;
+      context.limbs ??= { left: {}, right: {} };
+      if (
+        (this.combat.ready && this.attackScheduler.held.size > 0) ||
+        this.attackScheduler.pending ||
+        this.attackScheduler.gestureRequest
+      )
+        this.acrobaticPresenter.fillLimbContext(context, this.bodyRotation);
+    }
     let elapsed = 0;
     const turn = Math.atan2(
       Math.sin(this.controller.heading - heading),
@@ -287,6 +349,12 @@ export class Game {
         this.combatEndRoot,
         heading + turn * t0,
         heading + turn * t1,
+        this.bodyRotation ? this.bodyStart : null,
+        this.bodyRotation ? this.bodyEnd : null,
+        startLift,
+        this.bodyRotation?.lift ?? 0,
+        t0,
+        t1,
       );
       this.combat.update(step);
       elapsed += step;
@@ -300,6 +368,17 @@ export class Game {
         values: this.physicsSandbox.values,
         substeps: this.simulationSteps,
         contacts: this.hitDetector.count,
+      },
+      acrobatics: {
+        phase: this.bodyRotation.phase,
+        kind: this.bodyRotation.lastKind,
+        sequence: this.bodyRotation.sequence,
+        quaternion: this.bodyRotation.orientation.toArray(),
+        angularVelocity: this.bodyRotation.angularVelocity.toArray(),
+        pitchTravel: this.bodyRotation.pitchTravel,
+        invertedWeight: this.bodyRotation.invertedWeight,
+        lift: this.bodyRotation.lift,
+        transition: this.combat.lastTransition,
       },
       position: this.character.root.position.toArray(),
       heading: this.controller.heading,
@@ -369,6 +448,7 @@ export class Game {
           extension: this.combat.attack.extension,
           sequence: this.combat.attack.sequence,
           techniqueId: this.combat.attack.techniqueId,
+          side: this.combat.currentTechnique?.side,
           cancelled: this.combat.attack.cancelled,
           environment: this.combat.attack.context?.environment ?? "ground",
         },

@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { openBrowser } from "./browser-driver.mjs";
 import { checkGameplay } from "./manual-gameplay-browser.mjs";
+import { checkAcrobatics } from "./acrobatic-browser.mjs";
 import { resolvePagesBase } from "../build/pagesBase.js";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
@@ -76,6 +77,7 @@ try {
     "undefined",
   );
   await checkGameplay(run.page, run.native);
+  await checkAcrobatics(run.page, run.native);
   for (const request of run.requests) {
     const url = new URL(request);
     assert.equal(url.origin, origin);

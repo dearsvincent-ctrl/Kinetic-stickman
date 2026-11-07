@@ -1,7 +1,7 @@
 import { BASIC_PUNCH, FLYING_KICK } from "./Techniques.js";
 
 /** Execution timing is separate from animation presentation and hit sensing.
- * These code-only factors are ready for v0.7.6; no new sandbox sliders yet. */
+ * Code-only factors remain separate from the developer sandbox controls. */
 export const ATTACK_TIMING_DEFAULTS = Object.freeze({
   punchSpeed: 1,
   kickSpeed: 1,

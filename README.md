@@ -1,10 +1,10 @@
-# Kinetic — Movement Lab v0.7.5
+# Kinetic — Movement Lab v0.7.6
 
-A mobile-first Three.js/Vite stickman prototype. Version 0.7.5 replaces automatic proximity attacks with player-controlled **Punch** and **Kick**. Normal movement, integrated analogue sprinting, jumping, air steering, Block, camera controls, custom layouts and the developer physics sandbox are preserved. There is no enemy AI, health, damage, grappling, multiplayer or combo system.
+A mobile-first Three.js/Vite stickman prototype. Version 0.7.6 adds a controlled acrobatic vertical slice: independent quaternion body rotation, joystick reversal kicks, a steerable backflip, kick-to-backhand transitions and contextual left/right strikes. Manual **Punch** and **Kick** remain the combat inputs. Normal movement, integrated analogue sprinting, jumping, air steering, Block, camera controls, custom layouts and the developer physics sandbox are preserved. There is no enemy AI, health, damage, grappling, multiplayer or combo system.
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.7.5** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.7.5**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.7.6** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.7.6**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -20,11 +20,36 @@ Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.7.5** in Androi
 
 Punch and Kick can start **without an opponent**. Punch uses a basic straight on the ground and an upper-body aerial straight while airborne. Kick uses a grounded front kick or the existing flying kick in the air. Approach the orange dummy and time the strike so its active hitbox actually intersects the body. The dummy's marker briefly flashes green and the readout says **CONTACT** for a confirmed contact. This is a contact signal, not damage or a hit reaction.
 
-Sliding between **Punch, Kick, Block and Jump** uses the same central action router after repositioning controls. Each entry onto Punch/Kick requests one strike. Holding repeats only after the previous technique recovers. The most recently entered held attack takes priority if two attack fingers are down; releasing it allows the other held attack to resume. Brief taps never become held repeats. Requests made during recovery are rejected rather than stored in a combo queue. Releasing a button finishes the current strike/recovery and stops repeats. Block cancels an active strike into recovery and suppresses new attacks while held.
+Sliding between **Punch, Kick, Block and Jump** uses the same central action router after repositioning controls. Each entry onto Punch/Kick requests one strike. Holding repeats only after the previous technique recovers. The most recently entered held attack takes priority if two attack fingers are down; releasing it allows the other held attack to resume. Brief taps never become held repeats. Fresh taps can redirect a normal strike during recovery, or continue a rotating strike after its short commitment window. Held repeats still wait for full recovery. Requests rejected during commitment are discarded; there is no combo queue. Releasing a button finishes the current strike/recovery and stops repeats. Block cancels an active strike into recovery and suppresses new attacks while held.
 
 Combat never reduces movement speed, applies root motion, pulls the character toward a target or automatically turns toward the dummy. Keep using the analogue joystick and Jump while attacking. When collision would leave the fighter facing a tiny tangent slide, facing smoothly retains the last joystick intent; it never reads the opponent to aim. A ground-only strike yields to takeoff; an air-only strike yields to landing. Held input can resume the appropriate technique when the new physical phase permits it. There is no automatic attack merely from standing near the dummy.
 
 **Dash is removed from the normal HUD, keyboard bindings and layout editor.** Its physical ground/aerial implementations remain in the code for future movement abilities. Developer mode retains E and a **Test preserved dash** utility inside the physics panel, so its existing dash sliders remain testable on a phone. Dash still moves continuously, steers, collides, permits ground-dash-to-jump transitions and tracks its aerial allowance independently.
+
+## Acrobatic gestures (v0.7.6)
+
+Gestures use the **MOVE joystick**, including mouse drags on it for desktop testing. Keyboard steering does not generate gestures. They work without a target. Block and active dash prevent gesture entry; ordinary air steering remains available throughout.
+
+- **Whip kick:** run with a strong forward stick for at least 0.22 seconds, then flick **through centre to back-left or back-right** in under 0.14 seconds. A 130°–168° reversal, confirmed against actual travel above 3.2 m/s, produces a fast horizontal rotating kick.
+- **Descending sweep:** use the same deliberate setup, then reverse almost **straight back** (168°–180°). The foot sweeps down toward the visible low dummy post. Speed influences sweep depth and rotational intensity. A planted supporting leg is approximated procedurally.
+- **Backflip:** after jumping, briefly establish strong forward stick **while airborne** (at least 0.065 seconds), then flick through centre to strong backward pressure. Initiate early enough to leave at least 0.27 seconds of flight. Backward steering from neutral alone never starts a flip. A neutral running jump also works: retain forward input briefly after takeoff, then flick back.
+- **Control the flip:** backward pressure accelerates pitch; forward pressure brakes it and can reverse it on a long sandbox jump. Release to keep rotating with drag. Side pressure adds bounded roll and yaw. The soft inverted easing adds drag near upside-down when pressure is light; deliberate pressure passes through it. Gravity, height and travel remain independent.
+- **Continue into attacks:** tap Kick during a flip to extend the chosen leg along the current body orientation. Tap Punch after the first ~0.13 seconds of a ground spinning kick to continue into a rotational backhand. Fresh taps can redirect or cancel compatible techniques; Block always takes defensive priority. Angular momentum is retained while the incoming pose blends from the current joints.
+
+Limb selection weighs compactness, support foot, lateral stick intent, rotational direction and recent recovery. Neutral held attacks can use both sides; directed movement can legitimately repeat the same limb. There is no forced alternation or random selection. A contact only counts during active frames when the swept hand/foot intersects a dummy hitbox; movement speed never increases striking reach.
+
+### Android playtest checklist
+
+1. Compare slow walk, jog, sprint, stopping, curved turns and casual reversals. They should retain normal responsiveness without frequent techniques.
+2. Try left/right diagonal reversal kicks and a straight-back sweep away from the dummy; then practise contacts near its body/post. Try Punch during the spin, then Block, movement and another kick.
+3. Jump, prime forward after takeoff, flick back; compare backward pressure, release and forward pressure. Use a 4× jump height in the sandbox for easier rotational control practice. Try side pressure and Kick while inverted. The camera should remain level.
+4. Land while steering, then immediately return to running, Jump, Punch or Kick. In developer mode, chain the preserved Dash utility → Jump → aerial Dash → flip/strike (gestures require the dash to have ended).
+5. Hold Punch/Kick, switch by sliding, tap briefly, and slide to Block. Look for both limbs, appropriate same-limb repeats and no stuck inputs. Repeat with a saved custom layout.
+6. Try Normal, Enhanced and Extreme sandbox settings, including 100× travel/jump/gravity combinations. Watch the device FPS and report any head/floor clipping, support-foot sliding, sudden joint changes or camera loss.
+
+### Scope and limitations
+
+This is a procedural vertical slice, not a full dynamic balance or ragdoll solver. Ground support follows the travelling root; extreme travel can slide the support foot. A bounded angular spring assists upright landing recovery, with up to 0.3 m of **visual-only** model clearance for a late inverted landing. It never lifts the physical actor or suspends gravity. Detailed body/floor collision, animation-perfect planted-foot pivots, arbitrary technique chains and moving-opponent prediction remain future work. The seven small mirrored technique families cover straight punches, front/flying kicks, whip, sweep and backhand; bicycle kicks, learned moves and a full combo system are not implemented.
 
 ## Custom controls and layout migration
 
@@ -34,7 +59,7 @@ Positions are normalized to the playable viewport and saved under `kinetic.contr
 
 ## Developer physics sandbox
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.7.5** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.7.6** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
 
 The original eight sliders still support **0.1×–100×**, with precise stops near 1×, 10×, 20×, 50× and 100×:
 
@@ -57,10 +82,13 @@ Numeric bounds are configurable in `PhysicsSandbox.js`. Defaults allow up to 520
 
 ## Combat architecture
 
-- `ManualTechniques.js`: separate ground/air Punch and Kick definitions. Each declares startup, active duration, recovery, playback speed, reach, hit radius and ground/air eligibility. `createManualTechniques()` resolves them to the existing windup/extension/impact/recovery animation phases. Code-only `punchSpeed`, `kickSpeed` and `recoverySpeed` factors are prepared for v0.7.6; **no new sandbox parameters are added** in this version.
+- `ManualTechniques.js`: separate ground/air Punch and Kick definitions. Each declares startup, active duration, recovery, playback speed, reach, hit radius and ground/air eligibility. `createManualTechniques()` resolves them to the existing windup/extension/impact/recovery animation phases. Code-only `punchSpeed`, `kickSpeed` and `recoverySpeed` factors remain available for future tuning; **no new sandbox parameters are added** in this version.
+- `AdaptiveTechniques.js`: seven mirrored procedural families and deterministic pose/momentum-based limb selection. `TechniqueGeometry.js` shares strike targets and captured limb-entry poses between procedural IK and contact queries.
+- `JoystickGestures.js`: bounded recent strong-input prime, centre crossing, reversal timing, actual-speed validation and cooldown. `BodyRotation.js`: separate normalized quaternion/angular velocity, bounded substeps, steerable torque, inverted drag and upright recovery. Neither changes physical translation.
+- `AcrobaticPresenter.js`, `ArmIK.js`, `LegIK.js`, `PoseTransitions.js`: body-only pelvis pivot, shared strike targets, supporting-leg approximation and current-pose crossfades; the original root and camera remain upright.
 - `AttackScheduler.js`: one bounded entry request plus held intent. It schedules by gameplay recovery boundaries, independently of render/animation loops. It never queries target range or changes movement.
 - `CombatController.js`: technique timing, cancellation, defensive priority and immutable accepted-strike context.
-- `StrikeHitDetector.js`: sweeps a bounded weapon sphere against the dummy's actual body sphere only during the technique's active window. It clips startup/recovery time out of movement segments, accounts for physical movement and limited yaw rotation, preserves configured reach/facing/vertical limits, and records each target once per strike. Optional previous opponent positions support future relative sweeps. Contact callbacks carry sequence, technique, opponent, time and contact point; no damage/health is applied.
+- `StrikeHitDetector.js`: sweeps a bounded weapon sphere against the dummy's body/post hitboxes only during the technique's active window. It clips startup/recovery time out of movement segments, samples quaternion-oriented hand/ankle trajectories with bounded angular subdivisions, preserves body-local reach limits, and records each target once per strike. The dummy has body and low post hitboxes matching its visible geometry. Optional previous opponent positions support future relative sweeps. Contact callbacks carry sequence, technique, opponent, time and contact point; no damage/health is applied.
 - `Game.simulateMovement()`: advances physical movement once at its own step size, then samples the resolved path at combat boundaries. Attack timing cannot change the ground integrator, acceleration, jump gravity, speed or dash state. Physics and visual presentation remain separate.
 - `TouchActionRouter.js`: reusable HOLD, PRESS, TOGGLE and TAP_HOLD behaviors with dynamic DOM hit testing, independent contact ownership, keyboard/accessibility support, capture fallback and cancellation. TAP_HOLD combines one entry request with held-state reporting; the router does not itself repeat attacks.
 - Existing punch and kick animators blend with locomotion and jump/dash poses. Manual punches retain the athletic lower-body gait at running/sprinting speed; the guard remains on the upper body. Deliberate Block retains defensive footwork. Aerial punches retain lower-body flight animation; the grounded kick retains the moving support leg. Animators never translate the physical root.
@@ -91,7 +119,7 @@ GITHUB_REPOSITORY=dearsvincent-ctrl/Kinetic-stickman npm run test:pages
 
 For a normal local build use `npm run build` and `npm run preview`. For a Pages-specific preview use the same `GITHUB_PAGES`/`GITHUB_REPOSITORY` variables with `npm run preview`, then open `http://localhost:4173/Kinetic-stickman/`.
 
-Logic tests cover scheduling, tap/hold switching, cancellation, numerical stability, swept active-window contacts/misses, one contact per target, moving-target preparation, root ownership, exact movement independence during attacks, animation blending and layout migration. Existing underlying dash, jump, movement, camera, input and sandbox regressions remain. Browser checks exercise real Chromium touch/pointer events, multitouch, action slides, moved controls, Save/Cancel/Reset, portrait/landscape sizes, manual ground/air strikes, Block, misses, extreme physics and production asset routing. Screenshots are written to `test-results/`.
+Logic tests additionally cover deliberate gestures versus false positives, three-axis normalization, counter-rotation/inverted easing, upright recovery, contextual and repeated same-limb selection, kick-to-backhand continuation, pose continuity and rotational swept contacts. They cover scheduling, tap/hold switching, cancellation, numerical stability, swept active-window contacts/misses, one contact per target, moving-target preparation, root ownership, exact movement independence during attacks, animation blending and layout migration. Existing underlying dash, jump, movement, camera, input and sandbox regressions remain. Browser checks exercise real Chromium touch/pointer events, multitouch, action slides, moved controls, Save/Cancel/Reset, portrait/landscape sizes, manual ground/air strikes, Block, misses, extreme physics and production asset routing. Native browser gesture checks cover the three reversal directions, false-positive prevention, kick during backflip, backhand continuation, Block, rotational steering and landing. Screenshots are written to `test-results/`.
 
 Browser testing uses desktop Chromium and Android-style touch emulation. **No physical Android phone or hardware performance is claimed.** The on-screen FPS indicator remains available for your device playtest.
 
@@ -104,6 +132,6 @@ Pages is already enabled for this repository. To inspect or rerun deployment fro
 1. Open [the repository](https://github.com/dearsvincent-ctrl/Kinetic-stickman) and its **Actions** tab.
 2. Choose **Deploy GitHub Pages** and inspect the latest run. To retry, tap **Run workflow**, select `main`, and confirm Run workflow.
 3. If Pages needs enabling, open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Chrome's **Desktop site** mode may help expose GitHub settings on a phone.
-4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.7.5** appears.
+4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.7.6** appears.
 
-No personal access token, added secret, `gh-pages` branch or local phone build is needed. Stop at Version 0.7.5 for Android playtesting before exposing attack-speed controls in a later release.
+No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.7.6 for Android playtesting.

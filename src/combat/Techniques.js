@@ -73,6 +73,7 @@ export function techniqueContext(context, id) {
 
 export function isTechniqueEligible(technique, context = {}) {
   if (technique.action && technique.action !== context.action) return false;
+  if (technique.gesture && technique.gesture !== context.gesture) return false;
   const environment = context.environment ?? "ground";
   if (
     !technique.environments.includes(environment) ||

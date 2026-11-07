@@ -26,7 +26,7 @@ export class LegIK {
     this.rootQuaternionWorld = new Quaternion();
   }
 
-  solve(side, targetWorld, footYawQuaternionWorld) {
+  solve(side, targetWorld, footYawQuaternionWorld, bodyOrientation) {
     const { joints: j, dimensions: d, root } = this.character;
     const hip = j[`${side}Hip`];
     const knee = j[`${side}Knee`];
@@ -34,7 +34,8 @@ export class LegIK {
     hip.updateWorldMatrix(true, false);
     hip.getWorldPosition(this.hipWorld);
     hip.parent.getWorldQuaternion(this.parentQuaternion);
-    root.getWorldQuaternion(this.rootQuaternionWorld);
+    if (bodyOrientation) this.rootQuaternionWorld.copy(bodyOrientation);
+    else root.getWorldQuaternion(this.rootQuaternionWorld);
 
     this.actualTargetWorld.copy(targetWorld);
     this.actualTargetWorld.y = Math.max(

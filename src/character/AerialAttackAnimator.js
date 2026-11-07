@@ -35,7 +35,10 @@ export class AerialAttackAnimator {
     const animation =
       combat?.currentTechnique?.animation ??
       (attack?.techniqueId === "flying-kick" ? "flying-kick" : "punch");
-    const groundedKick = animation === "ground-kick";
+    const groundedKick =
+      animation === "ground-kick" ||
+      animation === "whip-kick" ||
+      animation === "descending-sweep";
     const active = Boolean(
       attack?.active && (animation === "flying-kick" || groundedKick),
     );

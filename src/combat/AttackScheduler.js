@@ -9,6 +9,9 @@ export class AttackScheduler {
     this.order = 0;
     this.pending = null;
   }
+  gesture(kind, direction, intensity) {
+    this.gestureRequest = { kind, direction, intensity };
+  }
   press(action) {
     if (action !== "punch" && action !== "kick") return;
     this.pending = action;
@@ -32,9 +35,26 @@ export class AttackScheduler {
       combat.cancelAttack(
         context.environment === "ground" ? "landing" : "movement",
       );
+    const gesture = this.gestureRequest;
+    this.gestureRequest = null;
     const entry = this.pending;
     this.pending = null;
-    if (blocking || !combat.ready || context.canAttack === false) return false;
+    if (blocking || context.canAttack === false) return false;
+    const request = gesture
+      ? {
+          ...context,
+          action: "kick",
+          source: "manual",
+          gesture: gesture.kind,
+          gestureDirection: gesture.direction,
+          gestureIntensity: gesture.intensity,
+        }
+      : entry
+        ? { ...context, action: entry, source: "manual" }
+        : null;
+    if (!combat.ready)
+      return request ? combat.transitionAttack(request) : false;
+    if (gesture) return combat.requestAttack(request);
     let action = entry;
     if (!action) {
       let order = -1;
@@ -50,6 +70,7 @@ export class AttackScheduler {
   }
   reset() {
     this.pending = null;
+    this.gestureRequest = null;
     this.held.clear();
   }
 }
