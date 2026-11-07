@@ -86,9 +86,13 @@ export class Hud {
             ? "DASH"
             : speed < 0.08
               ? "IDLE"
-              : sprinting && speed > 2.7
+              : sprinting
                 ? "SPRINT"
-                : "WALK";
+                : speed > 2.5
+                  ? "RUN"
+                  : speed > 1.4
+                    ? "JOG"
+                    : "WALK";
     this.movementState.textContent = state;
     this.stanceLabel.textContent = combat?.blocking
       ? "BLOCKING"

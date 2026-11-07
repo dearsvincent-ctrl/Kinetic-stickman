@@ -6,7 +6,7 @@ import {
   TrainingDummy,
   TRAINING_DUMMY_CONFIG,
 } from "../src/world/TrainingDummy.js";
-import { CharacterController } from "../src/movement/CharacterController.js";
+import { CharacterController } from "./helpers/ControllerFixture.js";
 
 const closeTo = (actual, expected, tolerance = 1e-7) =>
   assert.ok(

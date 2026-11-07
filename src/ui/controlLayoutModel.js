@@ -1,10 +1,4 @@
-export const CONTROL_IDS = Object.freeze([
-  "move",
-  "sprint",
-  "dash",
-  "block",
-  "jump",
-]);
+export const CONTROL_IDS = Object.freeze(["move", "dash", "block", "jump"]);
 export const STORAGE_KEY = "kinetic.controls.v1";
 export const LAYOUT_MARGIN = 8;
 export const LAYOUT_GAP = 8;
@@ -81,7 +75,19 @@ export function loadLayout(storage) {
   try {
     const target = storage ?? globalThis.localStorage;
     const raw = target?.getItem(STORAGE_KEY);
-    return raw ? validateLayout(JSON.parse(raw)) : null;
+    if (!raw) return null;
+    const source = JSON.parse(raw);
+    const layout = validateLayout(source);
+    // The normalized schema and storage key stay compatible. Remove only the
+    // retired Sprint entry; a failed migration write must not discard a layout.
+    if (layout && Object.hasOwn(source.positions, "sprint")) {
+      try {
+        target.setItem(STORAGE_KEY, JSON.stringify(layout));
+      } catch {
+        /* still usable in memory */
+      }
+    }
+    return layout;
   } catch {
     return null;
   }

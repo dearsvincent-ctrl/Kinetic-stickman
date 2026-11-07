@@ -31,7 +31,6 @@ export class InputController {
   constructor({
     joystick,
     joystickKnob,
-    sprintButton,
     cameraSurface,
     resetButton,
     attackButton,
@@ -41,10 +40,10 @@ export class InputController {
     onReset,
     actionRoot = document.documentElement,
     actionBindings = [],
+    keyboardMagnitude = 0.7,
   }) {
     this.joystick = joystick;
     this.joystickKnob = joystickKnob;
-    this.sprintButton = sprintButton;
     this.cameraSurface = cameraSurface;
     this.attackButton = attackButton;
     this.blockButton = blockButton;
@@ -52,6 +51,8 @@ export class InputController {
     this.jumpButton = jumpButton;
     this.onReset = onReset ?? (() => {});
     this.enabled = true;
+    this.keyboardMagnitude = keyboardMagnitude;
+    this.movementMagnitude = 0;
 
     this.move = { x: 0, y: 0 };
     this.sprinting = false;
@@ -164,12 +165,6 @@ export class InputController {
         event.pointerId !== this.cameraPointer,
     });
     const bindings = [
-      {
-        id: "sprint",
-        element: sprintButton,
-        behavior: ActionBehavior.HOLD,
-        onHoldChange: () => this.updateState(),
-      },
       {
         id: "dash",
         element: dashButton,
@@ -390,12 +385,13 @@ export class InputController {
     const length = Math.max(1, Math.hypot(x, y));
     this.move.x = x / length;
     this.move.y = y / length;
-    this.sprinting =
-      this.actions.isHeld("sprint") ||
-      this.keys.has("ShiftLeft") ||
-      this.keys.has("ShiftRight");
-    this.sprintButton.classList.toggle("is-active", this.sprinting);
-    this.sprintButton.setAttribute("aria-pressed", String(this.sprinting));
+    this.movementMagnitude =
+      keyX || keyY
+        ? this.keys.has("ShiftLeft") || this.keys.has("ShiftRight")
+          ? 1
+          : this.keyboardMagnitude
+        : Math.min(1, Math.hypot(this.move.x, this.move.y));
+    this.sprinting = this.movementMagnitude >= 0.9;
     this.blocking = this.actions.isHeld("block") || this.keys.has("KeyQ");
     this.blockButton?.classList.toggle("is-active", this.blocking);
     this.blockButton?.setAttribute("aria-pressed", String(this.blocking));
@@ -450,9 +446,6 @@ export class InputController {
     this.updateState();
   }
 
-  get sprintPointer() {
-    return this.actions.getPointer("sprint");
-  }
   get attackPointer() {
     return this.actions.getPointer("attack");
   }

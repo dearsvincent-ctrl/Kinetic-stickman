@@ -131,7 +131,7 @@ export async function checkFluidCombat(page, native) {
   // for Sprint -> ground Dash -> Jump -> air Dash -> automatic aerial attack.
   await page.evaluate(() => {
     const positions = Object.fromEntries(
-      ["move", "sprint", "dash", "jump", "block"].map((id) => {
+      ["move", "dash", "jump", "block"].map((id) => {
         const b = document
           .querySelector(id === "move" ? "#joystick" : `#${id}-button`)
           .getBoundingClientRect();
@@ -157,7 +157,7 @@ export async function checkFluidCombat(page, native) {
   const joy = await center("#joystick");
   const actions = Object.fromEntries(
     await Promise.all(
-      ["sprint", "dash", "jump", "block"].map(async (id) => [
+      ["dash", "jump", "block"].map(async (id) => [
         id,
         await center(`#${id}-button`),
       ]),
@@ -166,9 +166,11 @@ export async function checkFluidCombat(page, native) {
   fingers = [
     touch(511, joy),
     touch(512, { x: 440, y: 205 }),
-    touch(513, actions.sprint),
+    touch(513, actions.block),
   ];
   await native("touchStart", fingers);
+  fingers[2] = touch(513, { x: 410, y: 240 });
+  await native("touchMove", fingers, [fingers[2]]);
   fingers[0] = touch(511, { x: joy.x, y: joy.y - 45 });
   await native("touchMove", fingers, [fingers[0]]);
   await advance(250);
@@ -210,14 +212,12 @@ export async function checkFluidCombat(page, native) {
   await advance(700);
   assert.equal(await page.locator("#stance-label").textContent(), "BLOCKING");
   assert.equal(await page.locator("#jump-status").textContent(), "READY");
-  await slide("sprint", 100);
+  fingers[2] = touch(513, { x: 410, y: 240 });
+  await native("touchMove", fingers, [fingers[2]]);
+  await advance(100);
   assert.equal(
     await page.locator("#block-button").getAttribute("aria-pressed"),
     "false",
-  );
-  assert.equal(
-    await page.locator("#sprint-button").getAttribute("aria-pressed"),
-    "true",
   );
   await native("touchCancel", [], []);
   await advance(300);

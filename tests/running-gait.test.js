@@ -4,7 +4,7 @@ import { Box3, Vector3 } from "three";
 import { Stickman } from "../src/character/Stickman.js";
 import { CharacterAnimator } from "../src/character/CharacterAnimator.js";
 import { resolveAnimationStyle } from "../src/character/AnimationStyle.js";
-import { CharacterController } from "../src/movement/CharacterController.js";
+import { CharacterController } from "./helpers/ControllerFixture.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
 import { CombatController } from "../src/combat/CombatController.js";
 
@@ -76,7 +76,7 @@ test("walking keeps support while run and sprint have actual sustained two-foot 
       else assert.ok(flight > 0 && contacts > 0);
       if (speed === 5.2)
         assert.ok(
-          flight > rate * 0.5 && longest * dt >= 0.06 && highest > 0.15,
+          flight > rate * 0.5 && longest * dt >= 0.06 && highest > 0.12,
           "Sprint includes long visible flight windows, not merely an unplanted flag",
         );
       a.character.dispose();
@@ -85,7 +85,7 @@ test("walking keeps support while run and sprint have actual sustained two-foot 
   }
 });
 
-test("sprint drives a high knee, extends the rear leg and loads before flight", () => {
+test("sprint drives the thigh without a high-knee march, extends the rear leg and loads before flight", () => {
   const a = fixture(),
     dt = 1 / 120;
   settle(a, 5.2, dt);
@@ -106,7 +106,7 @@ test("sprint drives a high knee, extends the rear leg and loads before flight", 
         rearExtension = Math.max(rearExtension, hip.distanceTo(ankle));
     }
   }
-  assert.ok(kneeDrive > 0.1 && rearExtension > 0.8);
+  assert.ok(kneeDrive > -0.12 && kneeDrive < 0.08 && rearExtension > 0.8);
   assert.ok(high - low > 0.13 && low > 0.75 && high < 1.02);
   a.character.dispose();
 });

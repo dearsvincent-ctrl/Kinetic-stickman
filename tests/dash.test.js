@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Group, Vector3 } from "three";
-import { CharacterController } from "../src/movement/CharacterController.js";
+import { CharacterController } from "./helpers/ControllerFixture.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
 
 const controls = (x = 0, y = 0, sprinting = false, blocking = false) => ({

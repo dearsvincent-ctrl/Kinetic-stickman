@@ -6,7 +6,7 @@ import {
   COMBAT_CONFIG,
   CombatController,
 } from "../src/combat/CombatController.js";
-import { CharacterController } from "../src/movement/CharacterController.js";
+import { CharacterController } from "./helpers/ControllerFixture.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
 
 const close = (actual, expected, tolerance = 1e-9) => {

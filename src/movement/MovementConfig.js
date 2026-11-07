@@ -1,5 +1,9 @@
 import { DASH_CONFIG } from "./DashState.js";
 import { JUMP_CONFIG } from "./JumpState.js";
+import {
+  ANALOGUE_DEFAULTS,
+  createAnalogueProfile,
+} from "./AnalogueLocomotion.js";
 
 const dashSpeed = DASH_CONFIG.distance / DASH_CONFIG.duration;
 export const MOVEMENT_DEFAULTS = Object.freeze({
@@ -17,6 +21,7 @@ export const MOVEMENT_DEFAULTS = Object.freeze({
   }),
   jump: JUMP_CONFIG,
   maxAerialDashes: 1,
+  analogue: ANALOGUE_DEFAULTS,
 });
 
 function dashProfile(defaults, overrides = {}, legacy = {}) {
@@ -72,6 +77,7 @@ export function resolveMovementConfig(options = {}) {
     throw new RangeError("maxAerialDashes must be a nonnegative integer");
   return Object.freeze({
     locomotion: Object.freeze(locomotion),
+    analogue: createAnalogueProfile(locomotion, config.analogue),
     groundDash: dashProfile(
       MOVEMENT_DEFAULTS.groundDash,
       config.groundDash,

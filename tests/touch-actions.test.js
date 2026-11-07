@@ -5,7 +5,7 @@ import {
   ActionBehavior,
   TouchActionRouter,
 } from "../src/input/TouchActionRouter.js";
-import { CharacterController } from "../src/movement/CharacterController.js";
+import { CharacterController } from "./helpers/ControllerFixture.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
 
 // DOM event/hit-test doubles verify routing, not browser or physical-phone touch

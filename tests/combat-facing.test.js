@@ -4,7 +4,7 @@ import { Group, Vector3 } from "three";
 import {
   CharacterController,
   TARGET_FACING_CONFIG,
-} from "../src/movement/CharacterController.js";
+} from "./helpers/ControllerFixture.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
 import { dampAngle } from "../src/core/math.js";
 

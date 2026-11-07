@@ -1,6 +1,7 @@
 import { MathUtils } from "three";
 import { ANIME_STYLE } from "./AnimationStyle.js";
 import { RunningGait } from "./RunningGait.js";
+import { WalkingGait } from "./WalkingGait.js";
 
 /** Speed-driven contact clock: stride is travel during a foot's planted phase.
  * Walking, running and sprinting blend continuously from resolved speed. */
@@ -8,6 +9,7 @@ export class LocomotionAnimator {
   constructor(style = ANIME_STYLE.locomotion) {
     this.style = style;
     this.running = new RunningGait(style);
+    this.walking = new WalkingGait(style);
     this.freeRunBlend = 0;
     this.phase = 0;
     this.time = 0;
@@ -21,7 +23,7 @@ export class LocomotionAnimator {
     this.cadence = 0;
   }
 
-  update(dt, { speed = 0, combatWeight = 0 } = {}) {
+  update(dt, { speed = 0, combatWeight = 0, cadenceLimit = Infinity } = {}) {
     const s = this.style;
     this.dt = dt;
     speed = Math.max(0, speed);
@@ -45,10 +47,14 @@ export class LocomotionAnimator {
       dt,
     );
     this.freeRunBlend = this.runBlend * (1 - combatWeight);
-    const brisk = MathUtils.smoothstep(speed, 0.2, 2.6);
+    const walkStride = MathUtils.lerp(
+      s.creepStride,
+      s.walkStride,
+      MathUtils.smoothstep(speed, 0.05, 1.3),
+    );
     const fast = MathUtils.smoothstep(speed, 0.2, 5.2);
     const freeStride = MathUtils.lerp(
-      MathUtils.lerp(s.walkStride, s.runStride, brisk),
+      MathUtils.lerp(walkStride, s.runStride, this.runBlend),
       s.sprintStride,
       this.sprintBlend,
     );
@@ -86,7 +92,14 @@ export class LocomotionAnimator {
       s.response,
       dt,
     );
-    this.cadence = speed < 0.015 ? 0 : (speed * this.duty) / this.stride;
+    this.cadence =
+      speed < 0.015
+        ? 0
+        : Math.min(
+            MathUtils.lerp(s.maxCadence, s.guardCadence, combatWeight),
+            cadenceLimit,
+            (speed * this.duty) / this.stride,
+          );
     this.phase += this.cadence * dt;
     return this;
   }
@@ -110,12 +123,16 @@ export class LocomotionAnimator {
     pose.hipZ = 0;
     pose.hipY =
       0.955 -
-      weight * (0.025 + 0.025 * this.runBlend + 0.045 * this.sprintBlend) +
+      weight * (0.015 + 0.035 * this.runBlend + 0.045 * this.sprintBlend) +
       Math.cos(angle * 2) * bob * weight +
       breath * 0.004 * (1 - weight);
     pose.hipYaw =
       swing *
-      MathUtils.lerp(s.hipTwist, s.sprintTwist, this.sprintBlend) *
+      MathUtils.lerp(
+        MathUtils.lerp(s.walkHipTwist, s.hipTwist, this.runBlend),
+        s.sprintTwist,
+        this.sprintBlend,
+      ) *
       weight;
     pose.hipRoll = -swing * 0.02 * weight;
     pose.spinePitch =

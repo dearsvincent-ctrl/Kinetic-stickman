@@ -7,7 +7,7 @@ import {
 } from "../src/character/AnimationStyle.js";
 import { Stickman } from "../src/character/Stickman.js";
 import { CharacterAnimator } from "../src/character/CharacterAnimator.js";
-import { CharacterController } from "../src/movement/CharacterController.js";
+import { CharacterController } from "./helpers/ControllerFixture.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
 import {
   CombatController,

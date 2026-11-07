@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Group, Vector3 } from "three";
 import { JumpState, JUMP_CONFIG } from "../src/movement/JumpState.js";
-import { CharacterController } from "../src/movement/CharacterController.js";
+import { CharacterController } from "./helpers/ControllerFixture.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
 
 const DT = 1 / 60;

@@ -3,6 +3,7 @@ import { dampAngle, dampFactor } from "../core/math.js";
 import { DashState } from "./DashState.js";
 import { JumpState } from "./JumpState.js";
 import { resolveMovementConfig } from "./MovementConfig.js";
+import { speedForMagnitude } from "./AnalogueLocomotion.js";
 
 export const TARGET_FACING_CONFIG = Object.freeze({
   turnRate: 6,
@@ -24,7 +25,7 @@ export class CharacterController {
     this.world = world;
     this.walkingSpeed = this.config.locomotion.walkSpeed;
     this.runSpeed = this.config.locomotion.runSpeed;
-    this.walkSpeed = this.runSpeed; // Backward-compatible full-stick speed.
+    this.walkSpeed = this.runSpeed; // Legacy public name for the normal-run anchor.
     this.sprintSpeed = this.config.locomotion.sprintSpeed;
     this.radius = radius;
     this.velocity = new Vector3();
@@ -97,26 +98,14 @@ export class CharacterController {
     if (!Number.isFinite(dt) || dt <= 0) return;
     const x = input.move.x;
     const y = input.move.y;
-    const speed = input.sprinting ? this.sprintSpeed : this.walkSpeed;
+    const magnitude = Math.min(1, Math.hypot(x, y));
+    const extension = input.movementMagnitude ?? magnitude;
+    const maximum = speedForMagnitude(extension, this.config.analogue);
     const sin = Math.sin(cameraYaw),
       cos = Math.cos(cameraYaw);
     // Forward points away from the camera; right is screen-right on the floor.
-    this.desired.set(
-      (x * cos - y * sin) * speed,
-      0,
-      (-x * sin - y * cos) * speed,
-    );
-    const magnitude = Math.min(1, Math.hypot(x, y));
-    let maximum = speed * magnitude;
-    if (!input.sprinting && this.walkingSpeed * 2 !== this.runSpeed) {
-      maximum =
-        magnitude <= 0.5
-          ? this.walkingSpeed * magnitude * 2
-          : this.walkingSpeed +
-            (this.runSpeed - this.walkingSpeed) * (magnitude - 0.5) * 2;
-      if (this.desired.lengthSq() > 0) this.desired.setLength(maximum);
-    }
-    if (this.desired.length() > maximum) this.desired.setLength(maximum);
+    this.desired.set(x * cos - y * sin, 0, -x * sin - y * cos);
+    if (this.desired.lengthSq() > 0) this.desired.setLength(maximum);
     this.dashDirection.copy(this.desired);
     if (this.dashRequested) {
       this.dashRequested = false;
@@ -256,7 +245,15 @@ export class CharacterController {
   }
 
   updateLocomotion(dt, maximum) {
-    this.velocity.lerp(this.desired, dampFactor(maximum > 0.01 ? 11 : 15, dt));
+    this.velocity.lerp(
+      this.desired,
+      dampFactor(
+        maximum > 0.01
+          ? this.config.analogue.accelerationResponse
+          : this.config.analogue.decelerationResponse,
+        dt,
+      ),
+    );
     if (this.velocity.lengthSq() < 0.0001 && maximum < 0.01)
       this.velocity.set(0, 0, 0);
     this.displacement.copy(this.velocity).multiplyScalar(dt);

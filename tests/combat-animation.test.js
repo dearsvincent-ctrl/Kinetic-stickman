@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Vector3 } from "three";
 import { Stickman } from "../src/character/Stickman.js";
 import { CharacterAnimator } from "../src/character/CharacterAnimator.js";
-import { CharacterController } from "../src/movement/CharacterController.js";
+import { CharacterController } from "./helpers/ControllerFixture.js";
 import { CombatController } from "../src/combat/CombatController.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
 

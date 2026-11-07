@@ -27,6 +27,7 @@ function createFoot(side, offset, sign) {
     lastPhase: offset,
     startPhase: 0,
     duty: 0.66,
+    pitch: 0,
     runningSwing: false,
     deferSwing: false,
     runningCorrection: new Vector3(),
@@ -108,6 +109,7 @@ export class CharacterAnimator {
     gait.update(dt, {
       speed: dash?.active ? Math.min(speed, 2.6) : speed,
       combatWeight: this.combatWeight,
+      cadenceLimit: dash?.active ? this.style.locomotion.dashCadence : Infinity,
     });
     const moving = speed >= 0.015;
     const distance = root.position.distanceTo(this.previousPosition);
@@ -153,8 +155,12 @@ export class CharacterAnimator {
         foot.runningSwing = false;
         foot.deferSwing = false;
       }
-      if (dashOwnsFeet || jumpOwnsFeet) continue;
+      if (dashOwnsFeet || jumpOwnsFeet) {
+        foot.pitch = 0;
+        continue;
+      }
       if (!moving) {
+        foot.pitch = MathUtils.damp(foot.pitch, 0, 20, dt);
         foot.runningSwing = false;
         foot.deferSwing = false;
         foot.target.lerp(this.rest, 1 - Math.exp(-12 * dt));
@@ -290,6 +296,7 @@ export class CharacterAnimator {
             .addScaledVector(this.legDirection, minimum / reach);
       }
       this.ik.solve(foot.side, foot.target, foot.yaw);
+      j[`${foot.side}Ankle`].rotateX(foot.pitch);
     }
   }
 
@@ -352,7 +359,12 @@ export class CharacterAnimator {
       foot.target.lerpVectors(foot.swingStart, this.landing, smooth(t));
       foot.target.y =
         this.character.dimensions.ankleHeight +
-        Math.sin(Math.PI * t) * gait.lift;
+        Math.sin(Math.PI * t) *
+          MathUtils.lerp(
+            this.style.locomotion.walkLift,
+            gait.lift,
+            this.combatWeight,
+          );
       const runWeight = gait.freeRunBlend;
       if (runWeight > 0.001) {
         this.runningFootGoal(foot, phase, this.runningGoal);
@@ -376,6 +388,13 @@ export class CharacterAnimator {
       foot.target.z = root.position.z + (dz / horizontal) * 0.62;
       if (foot.planted) foot.anchor.copy(foot.target);
     }
+    gait.walking.applyFoot(
+      foot,
+      phase,
+      foot.duty,
+      gait.freeRunBlend,
+      this.combatWeight,
+    );
     foot.lastPhase = phase;
   }
 

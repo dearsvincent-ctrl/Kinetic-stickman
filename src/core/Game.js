@@ -4,6 +4,7 @@ import { ArenaBounds } from "../world/ArenaBounds.js";
 import { Stickman } from "../character/Stickman.js";
 import { CharacterAnimator } from "../character/CharacterAnimator.js";
 import { CharacterController } from "../movement/CharacterController.js";
+import { magnitudeForSpeed } from "../movement/AnalogueLocomotion.js";
 import { FollowCamera } from "../camera/FollowCamera.js";
 import { InputController } from "../input/InputController.js";
 import { Hud } from "../ui/Hud.js";
@@ -61,7 +62,10 @@ export class Game {
     this.input = new InputController({
       joystick: document.querySelector("#joystick"),
       joystickKnob: document.querySelector("#joystick-knob"),
-      sprintButton: document.querySelector("#sprint-button"),
+      keyboardMagnitude: magnitudeForSpeed(
+        this.controller.runSpeed,
+        this.controller.config.analogue,
+      ),
       blockButton: document.querySelector("#block-button"),
       dashButton: document.querySelector("#dash-button"),
       jumpButton: document.querySelector("#jump-button"),
@@ -180,10 +184,6 @@ export class Game {
         });
         this.animator.update(STEP, {
           speed: this.controller.speed,
-          maxSpeed: this.input.sprinting
-            ? this.controller.sprintSpeed
-            : this.controller.walkSpeed,
-          sprinting: this.input.sprinting,
           blocking: this.input.blocking,
           combat: this.combat,
           dash: this.controller.dash,
@@ -203,7 +203,7 @@ export class Game {
       Math.max(0.001, elapsed),
       this.controller.speed,
       this.controller.sprintSpeed,
-      this.input.sprinting,
+      this.controller.speed >= this.animator.style.locomotion.sprintStart,
       this.combat,
       this.controller.dash,
       this.proximity,
@@ -250,6 +250,7 @@ export class Game {
       },
       input: {
         move: { ...this.input.move },
+        movementMagnitude: this.input.movementMagnitude,
         sprinting: this.input.sprinting,
         blocking: this.input.blocking,
         attackPointer: this.input.attackPointer,
@@ -257,7 +258,6 @@ export class Game {
         jumpPointer: this.input.jumpPointer,
         joystickPointer: this.input.joystickPointer,
         cameraPointer: this.input.cameraPointer,
-        sprintPointer: this.input.sprintPointer,
       },
       camera: {
         position: this.camera.position.toArray(),
@@ -334,7 +334,8 @@ export class Game {
         feet: this.animator.footList.map((foot) => ({
           planted: foot.planted,
           position: this.character.joints[`${foot.side}Ankle`]
-            .getWorldPosition(new THREE.Vector3()).toArray(),
+            .getWorldPosition(new THREE.Vector3())
+            .toArray(),
         })),
       },
       halfSize: this.arena.halfSize,

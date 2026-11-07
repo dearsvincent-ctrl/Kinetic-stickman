@@ -413,6 +413,7 @@ h1 {
   margin: 0 6px;
 }
 .right-controls {
+  pointer-events: none;
   position: absolute;
   right: max(59px, env(safe-area-inset-right));
   bottom: 75px;
@@ -422,6 +423,10 @@ h1 {
   align-items: center;
   /* Preserve the action column's footprint after relocating Reset View. */
   width: 132px;
+  height: 141px;
+}
+.right-controls button {
+  pointer-events: auto;
 }
 .jump-button,
 .block-button {
@@ -540,53 +545,13 @@ h1 {
   margin-left: 4px;
   color: #8b9a88;
 }
-.sprint-button {
-  width: 112px;
-  height: 112px;
-  border-radius: 50%;
-  background: var(--orange);
-  color: #252b24;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 5px;
-  position: relative;
-  box-shadow: 0 5px 36px #fc7a3f0d;
-  outline: 1px solid #ff885e45;
-  outline-offset: 7px;
-  font-size: 9px;
-  letter-spacing: 2px;
-  font-weight: 800;
-  transition:
-    background 0.15s,
-    box-shadow 0.15s;
-}
-.sprint-button svg {
-  width: 32px;
-  height: 32px;
-  stroke-width: 1.5;
-}
-.sprint-button:hover {
-  color: #252b24;
-  background: #ff9e7a;
-}
-.sprint-button.is-active {
-  background: #ffc3a1;
-  box-shadow: 0 0 35px #ff885e30;
-  transform: scale(0.96);
-}
+
 /* Action hit areas must stay fixed while thumbs cross their edges. */
 [data-touch-action]:active,
 [data-touch-action].is-active {
   transform: none;
 }
-.sprint-caption {
-  font-size: 8px;
-  letter-spacing: 1.7px;
-  color: #95a28e;
-  margin-top: 18px;
-}
+
 .movement-readout {
   position: absolute;
   z-index: 3;
@@ -863,7 +828,6 @@ h1 {
 .layout-button:active {
   transform: none;
 }
-.has-custom-controls .sprint-caption,
 .has-custom-controls .joystick-caption,
 .has-custom-controls .keyboard-label {
   visibility: hidden;
@@ -946,9 +910,6 @@ h1 {
   }
   .movement-readout {
     bottom: 66px;
-  }
-  .sprint-caption {
-    margin-top: 17px;
   }
 }
 @media (max-height: 600px) {
@@ -1049,22 +1010,9 @@ h1 {
     right: max(43px, env(safe-area-inset-right));
     bottom: 36px;
     width: 119px;
+    height: 112px;
   }
-  .sprint-button {
-    width: 87px;
-    height: 87px;
-    font-size: 8px;
-    gap: 1px;
-    outline-offset: 6px;
-  }
-  .sprint-button svg {
-    width: 28px;
-    height: 28px;
-  }
-  .sprint-caption {
-    font-size: 7px;
-    margin-top: 16px;
-  }
+
   .movement-readout {
     bottom: 48px;
     padding: 10px 12px 15px;
@@ -1261,16 +1209,10 @@ h1 {
     right: 32px;
     bottom: 71px;
     width: 115px;
+    height: 115px;
     --reset-stack-space: 61px;
   }
-  .sprint-button {
-    width: 90px;
-    height: 90px;
-    font-size: 8px;
-  }
-  .sprint-caption {
-    font-size: 7px;
-  }
+
   .movement-readout {
     bottom: max(44px, calc(env(safe-area-inset-bottom) + 27px));
     padding: 10px 12px 15px;

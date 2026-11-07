@@ -33,6 +33,7 @@ export class RunningGait {
   sampleFoot(t, stride, swingTravel, sprint, out) {
     const s = this.style;
     const lift = MathUtils.lerp(s.runLift, s.sprintLift, sprint);
+    const kneeLift = MathUtils.lerp(s.runKneeLift, s.sprintKneeLift, sprint);
     const rear = stride * 0.5;
     const knee = MathUtils.lerp(s.runKneeForward, s.sprintKneeForward, sprint);
     if (t < s.heelFraction) {
@@ -43,12 +44,12 @@ export class RunningGait {
       const length = s.kneeFraction - s.heelFraction;
       const p = clamp01((t - s.heelFraction) / length);
       out.z = curve(p, length, rear * 0.6, -knee, -1, -1);
-      out.y = curve(p, length, lift * 0.9, lift);
+      out.y = curve(p, length, lift * 0.9, kneeLift);
     } else {
       const length = 1 - s.kneeFraction;
       const p = clamp01((t - s.kneeFraction) / length);
       out.z = curve(p, length, -knee, -rear, -1, swingTravel);
-      out.y = curve(p, length, lift, 0);
+      out.y = curve(p, length, kneeLift, 0);
     }
     return out;
   }

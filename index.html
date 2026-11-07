@@ -34,7 +34,7 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.7.2</b></span>
+          <span class="version">PROTOTYPE <b>0.7.3</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
@@ -49,7 +49,9 @@
             title="Settings"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m9 3-.7 2.6-2.4 1-2.3-.7-2 3.4 1.8 1.9v2.7l-1.8 1.9 2 3.4 2.3-.7 2.4 1L9 22h4l.7-2.5 2.4-1 2.3.7 2-3.4-1.8-1.9v-2.7l1.8-1.9-2-3.4-2.3.7-2.4-1L13 3z" />
+              <path
+                d="m9 3-.7 2.6-2.4 1-2.3-.7-2 3.4 1.8 1.9v2.7l-1.8 1.9 2 3.4 2.3-.7 2.4 1L9 22h4l.7-2.5 2.4-1 2.3.7 2-3.4-1.8-1.9v-2.7l1.8-1.9-2-3.4-2.3.7-2.4-1L13 3z"
+              />
               <circle cx="11" cy="12.5" r="3" />
             </svg>
           </button>
@@ -176,17 +178,6 @@
           <span>JUMP</span>
           <span id="jump-status" class="jump-status">READY</span>
         </button>
-        <button
-          id="sprint-button"
-          class="sprint-button"
-          aria-label="Hold to sprint"
-        >
-          <svg viewBox="0 0 32 32"><path d="m8 23 8-8 8 8M8 14l8-8 8 8" /></svg
-          ><span>SPRINT</span>
-        </button>
-        <span class="sprint-caption"
-          >HOLD <span class="desktop-shift">/ SHIFT</span></span
-        >
       </div>
       <div class="movement-readout" aria-live="off">
         <div class="readout-state">
@@ -231,9 +222,13 @@
           <p id="layout-status" role="status">Drag buttons to move them.</p>
         </div>
         <div class="control-editor-actions">
-          <button id="layout-save" class="layout-button layout-save">Save</button>
+          <button id="layout-save" class="layout-button layout-save">
+            Save
+          </button>
           <button id="layout-cancel" class="layout-button">Cancel</button>
-          <button id="layout-reset" class="layout-button">Reset to Default</button>
+          <button id="layout-reset" class="layout-button">
+            Reset to Default
+          </button>
         </div>
       </section>
       <dialog
@@ -266,15 +261,19 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.7.2</div>
+        <div class="eyebrow">KINETIC / VERSION 0.7.3</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
-          Approach the training dummy.<br />Practise punches, flying kicks, and guard.
+          Approach the training dummy.<br />Practise punches, flying kicks, and
+          guard.
         </p>
         <dl>
           <div>
             <dt>Move</dt>
-            <dd>Left joystick <span>or WASD / arrow keys</span></dd>
+            <dd>
+              Extend the left joystick to walk, jog, run and sprint
+              <span>or WASD / arrow keys</span>
+            </dd>
           </div>
           <div>
             <dt>Look</dt>
@@ -282,11 +281,15 @@
           </div>
           <div>
             <dt>Sprint</dt>
-            <dd>Hold or slide onto SPRINT <span>or Shift</span></dd>
+            <dd>
+              Extend the MOVE joystick fully <span>or hold Shift + WASD</span>
+            </dd>
           </div>
           <div>
             <dt>Auto attack</dt>
-            <dd>Approach the dummy to punch on the ground or kick in the air</dd>
+            <dd>
+              Approach the dummy to punch on the ground or kick in the air
+            </dd>
           </div>
           <div>
             <dt>Block</dt>
@@ -298,7 +301,8 @@
           <div>
             <dt>Dash</dt>
             <dd>
-              Tap or slide onto DASH, steer with the joystick. Once per jump in the air.
+              Tap or slide onto DASH, steer with the joystick. Once per jump in
+              the air.
               <span>or E + movement keys</span>
             </dd>
           </div>
@@ -319,7 +323,8 @@
           </div>
         </dl>
         <p class="help-note">
-          Use the joystick for light air control. Land before dashing or punching.
+          Use the joystick for light air control. Land before dashing or
+          punching.
         </p>
         <form method="dialog">
           <button class="primary-button">

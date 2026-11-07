@@ -71,6 +71,37 @@ test("saved layout validation clones only known normalized control positions", (
   assert.notEqual(validated.positions.move.x, 0.9);
 });
 
+test("retired Sprint migrates without moving or resetting any remaining saved control", () => {
+  const store = storage(),
+    legacy = layout();
+  legacy.positions.sprint = { x: 0.91, y: 0.73 };
+  store.setItem(STORAGE_KEY, JSON.stringify(legacy));
+  const migrated = loadLayout(store);
+  assert.deepEqual(migrated, layout());
+  assert.equal(
+    Object.hasOwn(JSON.parse(store.getItem(STORAGE_KEY)).positions, "sprint"),
+    false,
+  );
+  assert.deepEqual(Object.keys(migrated.positions), [
+    "move",
+    "dash",
+    "block",
+    "jump",
+  ]);
+});
+
+test("a malformed removed Sprint entry or failed migration write never discards valid remaining positions", () => {
+  const legacy = layout();
+  legacy.positions.sprint = null;
+  const migrated = loadLayout({
+    getItem: () => JSON.stringify(legacy),
+    setItem: () => {
+      throw Error("read only");
+    },
+  });
+  assert.deepEqual(migrated, layout());
+});
+
 test("malformed, partial, nonfinite, out-of-range and outdated layouts fall back safely", () => {
   const invalid = [
     null,

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 // Shared native-browser regressions for the editor's viewport/utility edges.
 // They use the visible controls and browser storage, never game-state writes.
 export async function checkLayoutEditorEdges(page, advance) {
-  const ids = ["move", "sprint", "dash", "block", "jump"];
+  const ids = ["move", "dash", "block", "jump"];
   const rects = () =>
     page.evaluate(() =>
       Object.fromEntries(
@@ -101,7 +101,7 @@ export async function checkLayoutEditorEdges(page, advance) {
   await page.setViewportSize({ width: 844, height: 390 });
   await advance(100);
   await open();
-  await drag("sprint", { x: 478, y: 219 });
+  await drag("jump", { x: 478, y: 219 });
   await click("#layout-save");
   const saved = await page.evaluate(() =>
     localStorage.getItem("kinetic.controls.v1"),
