@@ -14,18 +14,7 @@ export const DASH_CONFIG = Object.freeze({
 /** A movement skill's timing/profile, independent of input, world and rendering. */
 export class DashState {
   constructor(overrides = {}) {
-    this.config = { ...DASH_CONFIG, ...overrides };
-    for (const key of Object.keys(DASH_CONFIG)) {
-      if (!Number.isFinite(this.config[key]) || this.config[key] < 0)
-        this.config[key] = DASH_CONFIG[key];
-    }
-    this.config.duration = Math.max(0.001, this.config.duration);
-    this.config.maxSubstep = Math.max(0.001, this.config.maxSubstep);
-    const rampTime = this.config.accelerationTime + this.config.brakingTime;
-    if (rampTime > this.config.duration) {
-      this.config.accelerationTime *= this.config.duration / rampTime;
-      this.config.brakingTime *= this.config.duration / rampTime;
-    }
+    this.configure(overrides);
     this.active = false;
     this.elapsed = 0;
     this.cooldownRemaining = 0;
@@ -37,6 +26,25 @@ export class DashState {
     this.sequence = 0;
     this.distanceTravelled = 0;
     this.exitReason = null;
+  }
+
+  configure(overrides) {
+    if (this.active) {
+      this.pendingConfig = { ...overrides };
+      return;
+    }
+    this.config = { ...DASH_CONFIG, ...overrides };
+    for (const key of Object.keys(DASH_CONFIG)) {
+      if (!Number.isFinite(this.config[key]) || this.config[key] < 0)
+        this.config[key] = DASH_CONFIG[key];
+    }
+    this.config.duration = Math.max(0.00001, this.config.duration);
+    this.config.maxSubstep = Math.max(0.001, this.config.maxSubstep);
+    const rampTime = this.config.accelerationTime + this.config.brakingTime;
+    if (rampTime > this.config.duration) {
+      this.config.accelerationTime *= this.config.duration / rampTime;
+      this.config.brakingTime *= this.config.duration / rampTime;
+    }
   }
 
   get ready() {
@@ -130,6 +138,10 @@ export class DashState {
     this.active = false;
     this.speed = 0;
     this.exitReason = reason;
+    if (this.pendingConfig) {
+      this.configure(this.pendingConfig);
+      this.pendingConfig = null;
+    }
   }
 
   tickCooldown(dt) {

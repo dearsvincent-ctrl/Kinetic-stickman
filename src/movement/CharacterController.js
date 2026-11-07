@@ -53,6 +53,17 @@ export class CharacterController {
     this.jumpRequested = false;
   }
 
+  applyMovementConfig(config) {
+    // Retain velocity, ability counts, cooldowns and the current jump/dash.
+    this.config = config;
+    this.walkingSpeed = config.locomotion.walkSpeed;
+    this.runSpeed = this.walkSpeed = config.locomotion.runSpeed;
+    this.sprintSpeed = config.locomotion.sprintSpeed;
+    this.jump.configure(config.jump);
+    this.groundDash.configure(config.groundDash);
+    this.airDash.configure(config.aerialDash);
+  }
+
   requestDash() {
     if (!this.canDash) return false;
     this.dashRequested = true;

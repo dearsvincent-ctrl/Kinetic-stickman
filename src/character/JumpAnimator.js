@@ -158,9 +158,9 @@ export class JumpAnimator {
           this.startYaws[i].copy(feet[i].yaw);
         }
       }
-      const launchSpeed = Math.sqrt(
-        2 * jump.config.gravity * jump.config.height,
-      );
+      const launchSpeed =
+        jump.flightLaunchVelocity ??
+        Math.sqrt(2 * jump.config.gravity * jump.config.height);
       const p = clamp01(0.5 - jump.verticalVelocity / (2 * launchSpeed));
       this.progress = p;
       this.weight = 1;

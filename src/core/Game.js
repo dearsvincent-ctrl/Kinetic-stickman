@@ -15,6 +15,11 @@ import {
   updateCombatContext,
 } from "../combat/CombatContext.js";
 import { TrainingDummy } from "../world/TrainingDummy.js";
+import { PhysicsSandboxPanel } from "../ui/PhysicsSandboxPanel.js";
+import {
+  movementSubsteps,
+  sandboxMovementConfig,
+} from "../sandbox/PhysicsSandbox.js";
 import { ControlLayoutEditor } from "../ui/ControlLayoutEditor.js";
 
 const STEP = 1 / 60;
@@ -75,6 +80,7 @@ export class Game {
     });
     this.controlLayoutEditor = new ControlLayoutEditor({
       onActiveChange: (active) => {
+        if (active) this.physicsSandbox?.setOpen(false);
         this.controlsOpen = active;
         this.input.setEnabled(!active && !this.helpOpen);
         this.clearMotion();
@@ -82,9 +88,28 @@ export class Game {
     });
     this.hud = new Hud({
       onHelpChange: (open) => {
+        if (open) this.physicsSandbox?.setOpen(false);
         this.helpOpen = open;
         this.input.setEnabled(!open && !this.controlsOpen);
         this.clearMotion();
+      },
+    });
+    this.proximityOptions = {
+      position: this.character.root.position,
+      blocking: false,
+      facing: 0,
+      context: this.combatContext,
+      grounded: true,
+    };
+    this.simulationPrevious = new THREE.Vector3();
+    this.simulationSteps = 1;
+    this.physicsSandbox = new PhysicsSandboxPanel({
+      onChange: (values) => {
+        this.controller.applyMovementConfig(sandboxMovementConfig(values));
+        // Keep the normal camera angle and user orbit. Bound follow lag only in
+        // the explicit sandbox, so a fast launch cannot outrun the view.
+        this.sandboxModified = Object.values(values).some((v) => v !== 1);
+        this.followCamera.maxLag = this.sandboxModified ? 0.65 : Infinity;
       },
     });
     this.accumulator = 0;
@@ -159,35 +184,24 @@ export class Game {
           if (action === "jump") this.controller.requestJump();
           else if (action === "dash") this.controller.requestDash();
         }
-        this.controller.update(
-          STEP,
-          this.input,
-          this.followCamera.yaw,
-          this.controller.jump.ready ? this.proximity.target?.position : null,
-        );
-        const jump = this.controller.jump;
-        const context = updateCombatContext(
-          this.combatContext,
-          this.controller,
-        );
-        this.combat.setBlocking(this.input.blocking);
-        if (this.input.consumeAttackRequest()) {
-          // Kept for future dedicated techniques; basic mobile punches are automatic.
-          if (jump.ready) this.combat.requestAttack(context);
-        }
-        this.proximity.update(STEP, {
-          position: this.character.root.position,
-          blocking: this.input.blocking,
-          facing: this.controller.heading,
-          context,
-          grounded: jump.ready,
-        });
+        this.simulationSteps = this.physicsSandbox.enabled
+          ? movementSubsteps(
+              this.controller,
+              STEP,
+              undefined,
+              this.input.movementMagnitude,
+            )
+          : 1;
+        const step = STEP / this.simulationSteps;
+        for (let i = 0; i < this.simulationSteps; i++)
+          this.simulateMovement(step);
         this.animator.update(STEP, {
           speed: this.controller.speed,
           blocking: this.input.blocking,
           combat: this.combat,
           dash: this.controller.dash,
           jump: this.controller.jump,
+          sandbox: this.physicsSandbox.enabled && this.sandboxModified,
         });
         this.accumulator -= STEP;
       }
@@ -212,8 +226,37 @@ export class Game {
     );
   }
 
+  simulateMovement(dt) {
+    this.simulationPrevious.copy(this.character.root.position);
+    const phase = this.controller.jump.phase;
+    this.controller.update(
+      dt,
+      this.input,
+      this.followCamera.yaw,
+      this.controller.jump.ready ? this.proximity.target?.position : null,
+    );
+    const jump = this.controller.jump;
+    const context = updateCombatContext(this.combatContext, this.controller);
+    this.combat.setBlocking(this.input.blocking);
+    if (this.input.consumeAttackRequest() && jump.ready)
+      this.combat.requestAttack(context);
+    const options = this.proximityOptions;
+    options.blocking = this.input.blocking;
+    options.facing = this.controller.heading;
+    options.grounded = jump.ready;
+    if (this.physicsSandbox.enabled && phase === jump.phase)
+      this.proximity.updateSwept(dt, options, this.simulationPrevious);
+    else this.proximity.update(dt, options);
+  }
+
   snapshot() {
     return {
+      sandbox: {
+        enabled: this.physicsSandbox.enabled,
+        values: this.physicsSandbox.values,
+        substeps: this.simulationSteps,
+        sweptOpportunities: this.proximity.sweptOpportunities,
+      },
       position: this.character.root.position.toArray(),
       heading: this.controller.heading,
       velocity: this.controller.velocity.toArray(),

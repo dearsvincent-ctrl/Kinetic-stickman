@@ -5,6 +5,8 @@ export class FollowCamera {
   constructor(camera, position) {
     this.camera = camera;
     this.distance = 4.8;
+    this.maxLag = Infinity;
+    this.lag = new Vector3();
     this.targetYaw = 0;
     this.yaw = 0;
     this.targetPitch = 0.23;
@@ -35,6 +37,12 @@ export class FollowCamera {
     this.desiredTarget.copy(position);
     this.desiredTarget.y += 1.02;
     this.target.lerp(this.desiredTarget, dampFactor(16, dt));
+    this.lag.subVectors(this.target, this.desiredTarget);
+    const lag = this.lag.length();
+    if (lag > this.maxLag)
+      this.target
+        .copy(this.desiredTarget)
+        .addScaledVector(this.lag, this.maxLag / lag);
     const horizontal = Math.cos(this.pitch) * this.distance;
     this.offset.set(
       Math.sin(this.yaw) * horizontal,

@@ -34,11 +34,21 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.7.3</b></span>
+          <span class="version">PROTOTYPE <b>0.7.4</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
           >
+          <button
+            id="physics-toggle"
+            class="physics-toggle"
+            hidden
+            aria-expanded="false"
+            aria-controls="physics-panel"
+            title="Developer physics sandbox"
+          >
+            DEV
+          </button>
           <span class="action-divider"></span>
           <button
             id="settings-button"
@@ -251,7 +261,50 @@
         <button id="edit-controls-button" class="primary-button">
           Edit Controls <span aria-hidden="true">↗</span>
         </button>
+        <details class="developer-tools">
+          <summary>Developer tools</summary>
+          <a href="?sandbox=1">Open physics sandbox</a>
+        </details>
       </dialog>
+      <aside
+        id="physics-panel"
+        class="physics-panel"
+        hidden
+        aria-label="Developer physics sandbox"
+        data-gameplay-ui
+      >
+        <div class="physics-heading">
+          <div>
+            <div class="eyebrow">DEVELOPER ONLY</div>
+            <h2>Physics sandbox</h2>
+          </div>
+          <button id="physics-close" aria-label="Close physics sandbox">
+            ×
+          </button>
+        </div>
+        <div class="physics-scroll">
+          <p>Live multipliers · 0.1×–100×. Normal = original physics.</p>
+          <div
+            id="physics-presets"
+            class="physics-presets"
+            aria-label="Experimental presets"
+          ></div>
+          <div id="physics-fields"></div>
+          <p class="physics-note">
+            Jump height and dash profiles apply on the next launch. Gravity,
+            movement and air control change live. Attack reach stays unchanged.
+          </p>
+          <div class="physics-storage">
+            <button id="physics-save">Save custom</button
+            ><button id="physics-load">Load saved</button
+            ><button id="physics-reset">Reset to Defaults</button>
+          </div>
+          <p id="physics-status" role="status">
+            Developer configuration · separate from character progression
+          </p>
+          <a href="./">Exit developer sandbox</a>
+        </div>
+      </aside>
       <dialog id="help-dialog" class="help-dialog">
         <form method="dialog">
           <button
@@ -261,7 +314,7 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.7.3</div>
+        <div class="eyebrow">KINETIC / VERSION 0.7.4</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
           Approach the training dummy.<br />Practise punches, flying kicks, and
@@ -323,8 +376,8 @@
           </div>
         </dl>
         <p class="help-note">
-          Use the joystick for light air control. Land before dashing or
-          punching.
+          Use the joystick for air control. Dash once per jump; strikes trigger
+          automatically within reach.
         </p>
         <form method="dialog">
           <button class="primary-button">

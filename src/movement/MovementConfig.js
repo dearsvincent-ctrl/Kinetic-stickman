@@ -44,7 +44,7 @@ function dashProfile(defaults, overrides = {}, legacy = {}) {
     if (!Number.isFinite(profile[key]) || profile[key] < 0)
       throw new RangeError(`Invalid dash ${key}`);
   }
-  profile.duration = Math.max(0.001, profile.duration);
+  profile.duration = Math.max(0.00001, profile.duration);
   profile.speed = profile.distance / profile.duration;
   if (
     profile.exitSpeed !== undefined &&

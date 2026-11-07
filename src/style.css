@@ -1287,3 +1287,142 @@ h1 {
     transition: none !important;
   }
 }
+
+/* Opt-in developer tool, kept separate from the gameplay/control layout. */
+.physics-toggle {
+  border: 1px solid #f3976a;
+  border-radius: 5px;
+  padding: 7px;
+  color: #f3976a;
+  background: #172124;
+  min-height: 32px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: auto;
+}
+.developer-tools {
+  margin-top: 18px;
+  font-size: 12px;
+}
+.developer-tools summary {
+  padding: 10px 0;
+  cursor: pointer;
+}
+.developer-tools a,
+.physics-panel a {
+  color: #ffab88;
+  font-size: 12px;
+}
+.physics-panel {
+  position: fixed;
+  z-index: 35;
+  top: max(68px, env(safe-area-inset-top));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(320px, calc(100vw - 28px));
+  border: 1px solid #697e77;
+  border-radius: 10px;
+  background: #152322f7;
+  color: #f3f0e7;
+  box-shadow: 0 12px 40px #0008;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  touch-action: pan-y;
+}
+.physics-panel[hidden],
+.physics-toggle[hidden] {
+  display: none;
+}
+.physics-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid #41564f;
+  flex-shrink: 0;
+}
+.physics-heading .eyebrow {
+  font-size: 9px;
+}
+.physics-heading h2 {
+  font-size: 17px;
+  margin: 4px 0 0;
+}
+.physics-panel button {
+  border: 1px solid #64766d;
+  border-radius: 5px;
+  background: #263832;
+  color: #f3f0e7;
+  padding: 9px;
+  min-height: 40px;
+  font-size: 11px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.physics-heading button {
+  min-width: 42px;
+  font-size: 21px;
+}
+.physics-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 14px 14px;
+  touch-action: pan-y;
+}
+.physics-panel p {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #c3cec6;
+}
+.physics-presets,
+.physics-storage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.physics-presets button {
+  flex: 1;
+}
+.physics-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+  font-size: 12px;
+  padding: 12px 0 5px;
+}
+.physics-row output {
+  color: #ffab88;
+  font-variant-numeric: tabular-nums;
+}
+.physics-row input {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 30px;
+  margin: 0;
+  accent-color: #ff986d;
+  touch-action: none;
+}
+#physics-status {
+  min-height: 30px;
+}
+@media (max-width: 700px) {
+  .has-physics-sandbox .version {
+    display: none;
+  }
+  .physics-panel {
+    bottom: max(172px, env(safe-area-inset-bottom));
+  }
+}
+@media (max-height: 430px) {
+  .physics-panel {
+    top: 58px;
+    bottom: 12px;
+    width: min(300px, 38vw);
+  }
+  .physics-heading {
+    padding: 6px 12px;
+  }
+}

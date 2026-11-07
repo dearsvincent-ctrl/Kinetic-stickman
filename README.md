@@ -1,4 +1,37 @@
-# Kinetic — Movement Lab v0.7.3
+# Kinetic — Movement Lab v0.7.4
+
+Version **0.7.4** adds an opt-in **developer physics sandbox**. Normal play retains the Version 0.7.3 analogue joystick, natural walk/run and explosive sprint, movement chains, automatic ground/aerial combat, camera and saved control layouts. This tool is independent of future character progression; it adds no techniques, damage, enemies, stats or abilities.
+
+## Developer physics sandbox on Android
+
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1** or choose **Settings → Developer tools → Open physics sandbox**. Tap **DEV** in the top bar to expand/collapse the panel. Gameplay continues while it is open; slider/scroll contacts belong to the panel, while other fingers can keep controlling movement. Close the panel for the full arena view. Edit Controls and How to Play close the panel and retain their existing pause behavior.
+
+Each live slider displays a multiplier from **0.1× to 100×**, on a logarithmic scale with precise stops near **1×, 10×, 20×, 50× and 100×**:
+
+| Parameter            | 1× default                        | Independent effect                                              |
+| -------------------- | --------------------------------- | --------------------------------------------------------------- |
+| Movement speed       | walk 1.3, run 2.6, sprint 5.2 m/s | Scales the entire continuous analogue curve                     |
+| Jump height          | 0.8 m                             | Next launch uses `sqrt(2 × effective gravity × desired height)` |
+| Ground dash speed    | 10 m/s average                    | Changes duration, keeping selected distance                     |
+| Ground dash distance | 2.5 m                             | Changes duration, keeping selected speed                        |
+| Aerial dash speed    | 10 m/s average                    | Independent of ground dash                                      |
+| Aerial dash distance | 2.5 m                             | Independent of ground dash                                      |
+| Air steering/control | 3.5/s response                    | Changes directional convergence without snapping velocity       |
+| Gravity              | 18 m/s²                           | Applies live, preserving current height and vertical velocity   |
+
+Jump height and dash profiles take effect on the **next launch** so a slider cannot rewrite an impulse in progress. Movement speed, gravity and normal air control respond live. Current dash steering, cooldowns and the one-air-dash allowance remain intact. An air dash keeps its dedicated steering profile; the air-control slider adjusts ordinary airborne steering before/after the burst.
+
+**Normal** restores the original values. **Enhanced** increases movement 3×, jump 5× and dash speed 5×/distance 3×. **Extreme** uses movement 20×, jump 50×, dash speed 50×/distance 20×, air control 10× and gravity 2×. Each slider remains independent after selecting a preset. **Reset to Defaults** applies Normal immediately. **Save custom** stores one configuration locally; **Load saved** recalls it. Refreshing a sandbox URL loads the saved configuration. Presets and Reset do not overwrite that save until Save is pressed. Storage failure shows a message while live changes remain usable.
+
+Saved physics uses `kinetic.physics-sandbox.v1`, entirely separate from `kinetic.controls.v1`. Invalid, nonfinite and outdated data is rejected or normalized. Saved developer values **never affect the ordinary game URL**; choose **Exit developer sandbox** to return to normal play without losing either save. This is an explicitly enabled development tool, not authentication or a progression system.
+
+The sandbox bounds numerical inputs rather than gameplay balance: 0.1–100× means up to 520 m/s movement, 80 m jump height, 1,000 m/s average dash speed, 250 m dash distance and 1,800 m/s² gravity. Speed and distance derive dash duration independently (0.00025–250 seconds across slider combinations). Physical acceleration/braking ramps shorten proportionally for very short dashes. A burst shorter than a rendered frame still follows its continuous collision-tested path and gets a short visual launch/recovery; it cannot display every physical intermediate position on a 60 Hz screen.
+
+Simulation stays at a bounded 60 Hz catch-up budget with up to **32 adaptive movement/combat substeps** per tick, driven by intended/actual travel rather than allocating maximum work while idle. Swept arena/dummy collision covers unresolved long segments; swept 3D technique queries catch fast range crossings while respecting the same reach, vertical limits, facing, recovery and Block. Starting a strike during a fast pass does not guarantee the opponent remains in reach during extension; this version has no hit or damage simulation. No attack reach scales with movement. The existing arena is deliberately unchanged, so long dashes encounter its walls.
+
+Extreme camera follow lag is bounded while retaining the existing angle, distance, orbit and Reset View. Animation cadence and reachable leg positions stay bounded; excess world travel is carried through visual foot contacts rather than stretching a human-sized rig or cycling legs 100× faster. Long developer dashes use a brief launch, an animated ground cruise and a brief touchdown instead of stretching one bound across a very long burst. Some foot sliding is unavoidable at supernatural travel speeds. These are presentation adaptations only and never move the physical actor.
+
+## Existing gameplay
 
 A mobile-first, third-person 3D stickman prototype built with JavaScript, Three.js, and Vite. Version 0.7.3 integrates the entire movement range into the analogue joystick: a small extension walks slowly, moderate extension walks/jogs, greater extension runs, and full extension reaches the existing 5.2 m/s sprint. There is no Sprint action button. The speed curve and animation blend continuously rather than selecting fixed speed modes.
 
@@ -48,19 +81,19 @@ For an Android phone, connect the phone and development computer to the same Wi-
 
 ## Controls
 
-| Action               | Touch                                     | Desktop                        |
-| -------------------- | ----------------------------------------- | ------------------------------ |
-| Move                 | Drag MOVE joystick (default: bottom-left) | WASD or arrow keys             |
-| Look                 | Drag the right side of the viewport       | Click and drag the right side  |
-| Sprint               | Fully extend the MOVE joystick            | Hold Shift + movement keys     |
+| Action               | Touch                                      | Desktop                                    |
+| -------------------- | ------------------------------------------ | ------------------------------------------ |
+| Move                 | Drag MOVE joystick (default: bottom-left)  | WASD or arrow keys                         |
+| Look                 | Drag the right side of the viewport        | Click and drag the right side              |
+| Sprint               | Fully extend the MOVE joystick             | Hold Shift + movement keys                 |
 | Automatic strikes    | Approach the dummy on the ground or in air | Approach the dummy on the ground or in air |
-| Defensive guard      | Hold or slide onto BLOCK                  | Hold Q                         |
-| Directional dash     | Tap or slide onto DASH                    | Press E                        |
-| Jump                 | Tap or slide onto JUMP                    | Press Space                    |
-| Reset camera         | Tap RESET VIEW                            | Press R                        |
-| Edit control layout  | Settings → Edit Controls                  | Settings → Edit Controls       |
-| Instructions / pause | Tap the question-mark button              | Click the question-mark button |
-| Fullscreen           | Tap the fullscreen button where supported | Click the fullscreen button    |
+| Defensive guard      | Hold or slide onto BLOCK                   | Hold Q                                     |
+| Directional dash     | Tap or slide onto DASH                     | Press E                                    |
+| Jump                 | Tap or slide onto JUMP                     | Press Space                                |
+| Reset camera         | Tap RESET VIEW                             | Press R                                    |
+| Edit control layout  | Settings → Edit Controls                   | Settings → Edit Controls                   |
+| Instructions / pause | Tap the question-mark button               | Click the question-mark button             |
+| Fullscreen           | Tap the fullscreen button where supported  | Click the fullscreen button                |
 
 Start a finger on any gameplay action button, then slide it between buttons without lifting:
 
@@ -120,53 +153,53 @@ npm run build
 npm run preview
 ```
 
-The production build is written to `dist/`. Preview it at `http://localhost:4173`; preview is for local verification, not a production server. A Pages-specific build is served beneath `/Kinetic-stickman/`, so use that path when previewing it.
+The production build is written to `dist/`. Preview it at `http://localhost:4173`; preview is for local verification, not a production server. For a Pages-specific build, run `GITHUB_PAGES=true GITHUB_REPOSITORY=dearsvincent-ctrl/Kinetic-stickman npm run preview` so Vite mounts the same base path, then open `http://localhost:4173/Kinetic-stickman/`.
 
 For other static HTTPS hosts, use the ordinary `npm run build` command without the Pages environment variables and publish `dist/`. Netlify or Vercel can use that build command and output directory. No backend, API keys, database, or Node.js runtime is required in production. Open the hosted HTTPS URL on the phone; do not open `index.html` directly as a `file://` URL.
 
 ## Project structure
 
-| Module                                  | Responsibility                                                                      |
-| --------------------------------------- | ----------------------------------------------------------------------------------- |
-| `src/main.js`                           | Application entry point and startup error handling                                  |
-| `src/core/Game.js`                      | Renderer, scene composition, game loop, simulation ownership                        |
-| `src/core/math.js`                      | Shared damping and angle helpers                                                    |
-| `src/ui/Hud.js`                         | FPS/speed readouts, dash/jump availability, combat posture, instructions, fullscreen  |
-| `src/ui/ControlLayoutEditor.js`          | Settings/editor flow, drag placement, Save/Cancel/reset, and browser storage          |
-| `src/ui/controlLayoutModel.js`           | Versioned normalized layouts, validation, and responsive placement constraints        |
-| `src/input/InputController.js`          | Pointer ownership, joystick normalization, keyboard state, camera deltas            |
-| `src/input/TouchActionRouter.js`        | Shared HOLD/PRESS/TOGGLE registry, slide routing, cancellation, keyboard activation |
-| `src/movement/CharacterController.js`   | Locomotion/dash/jump states, camera-relative steering, facing, world movement       |
-| `src/movement/AnalogueLocomotion.js` | Validated monotone speed curve, independent of direction, facing and physics |
-| `src/movement/MovementConfig.js`       | Central per-character locomotion, ground/air dash, jump and allowance tuning         |
-| `src/movement/DashState.js`             | Configurable dash timing, acceleration profile, steering, and cooldown              |
-| `src/movement/JumpState.js`             | Configurable ballistic elevation, vertical velocity, and jump phase timing          |
-| `src/combat/CombatController.js`         | Technique phases/recovery, held Block, automatic posture and eligible technique selection |
-| `src/combat/Techniques.js`               | Individual reach/timing/environment definitions, eligibility and simple strike selection |
-| `src/combat/CombatContext.js`            | Reused read-only movement sensor data for combat; no movement ownership |
-| `src/combat/ProximityCombatController.js` | 3D target selection, per-technique geometry, hysteresis and automatic action requests  |
-| `src/world/ArenaBounds.js`              | Flat-ground movement adapter, boundary containment, and swept circular obstacles     |
-| `src/world/TrainingDummy.js`            | Stationary dummy visual, target data, and shared collision footprint                  |
-| `src/world/createArena.js`              | Lightweight arena visuals, lighting, and authoritative arena dimensions             |
-| `src/camera/FollowCamera.js`            | Smoothed follow target, orbit angles, pitch limits, floor clearance                 |
-| `src/character/Stickman.js`             | Named hierarchical body parts and joint pivots                                      |
-| `src/character/AnimationStyle.js` | Validated immutable visual personality and per-layer timing; no gameplay settings |
-| `src/character/MotionPresentation.js` | Resolved-velocity launch, braking and balance cues; no root movement |
-| `src/character/CharacterAnimator.js`    | Composes animation layers and applies the final joint pose                          |
-| `src/character/WalkingGait.js` | Low-clearance walking and visual heel/flat/toe progression |
-| `src/character/RunningGait.js` | Dedicated heel-recovery/knee-drive/landing curves, loaded support and visual flight, athletic arm drive and brief trails |
-| `src/character/LocomotionAnimator.js`   | Speed-driven gait timing and foot contacts                                          |
-| `src/character/CombatStanceAnimator.js` | Smooth defensive guard and balanced stance poses                                    |
-| `src/character/DashAnimator.js`         | Dash push-off, directional lean, foot targets, and recovery overlay                 |
-| `src/character/AttackAnimator.js`       | Right straight / left cross upper-body extension, torso rotation and recovery         |
-| `src/character/AerialDashAnimator.js` | Directional air balance, limb posing, Block and landing blending without root movement |
-| `src/character/AerialAttackAnimator.js` | Flying-kick chamber, extension, impact, recovery and landing blend; no root movement |
-| `src/character/JumpAnimator.js`         | Takeoff, flight, landing, and recovery poses without root movement                    |
-| `src/character/LegIK.js`                | Lightweight two-bone leg posing and floor contact                                   |
-| `src/style.css`                         | Responsive HUD, touch controls, safe-area spacing                                   |
-| `build/pagesBase.js`                    | GitHub Pages repository base-path selection                                         |
-| `.github/workflows/deploy-pages.yml`    | Automated checks, production build, and Pages deployment                            |
-| `tests/`                                | Movement/camera checks and browser smoke coverage                                   |
+| Module                                    | Responsibility                                                                                                           |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `src/main.js`                             | Application entry point and startup error handling                                                                       |
+| `src/core/Game.js`                        | Renderer, scene composition, game loop, simulation ownership                                                             |
+| `src/core/math.js`                        | Shared damping and angle helpers                                                                                         |
+| `src/ui/Hud.js`                           | FPS/speed readouts, dash/jump availability, combat posture, instructions, fullscreen                                     |
+| `src/ui/ControlLayoutEditor.js`           | Settings/editor flow, drag placement, Save/Cancel/reset, and browser storage                                             |
+| `src/ui/controlLayoutModel.js`            | Versioned normalized layouts, validation, and responsive placement constraints                                           |
+| `src/input/InputController.js`            | Pointer ownership, joystick normalization, keyboard state, camera deltas                                                 |
+| `src/input/TouchActionRouter.js`          | Shared HOLD/PRESS/TOGGLE registry, slide routing, cancellation, keyboard activation                                      |
+| `src/movement/CharacterController.js`     | Locomotion/dash/jump states, camera-relative steering, facing, world movement                                            |
+| `src/movement/AnalogueLocomotion.js`      | Validated monotone speed curve, independent of direction, facing and physics                                             |
+| `src/movement/MovementConfig.js`          | Central per-character locomotion, ground/air dash, jump and allowance tuning                                             |
+| `src/movement/DashState.js`               | Configurable dash timing, acceleration profile, steering, and cooldown                                                   |
+| `src/movement/JumpState.js`               | Configurable ballistic elevation, vertical velocity, and jump phase timing                                               |
+| `src/combat/CombatController.js`          | Technique phases/recovery, held Block, automatic posture and eligible technique selection                                |
+| `src/combat/Techniques.js`                | Individual reach/timing/environment definitions, eligibility and simple strike selection                                 |
+| `src/combat/CombatContext.js`             | Reused read-only movement sensor data for combat; no movement ownership                                                  |
+| `src/combat/ProximityCombatController.js` | 3D target selection, per-technique geometry, hysteresis and automatic action requests                                    |
+| `src/world/ArenaBounds.js`                | Flat-ground movement adapter, boundary containment, and swept circular obstacles                                         |
+| `src/world/TrainingDummy.js`              | Stationary dummy visual, target data, and shared collision footprint                                                     |
+| `src/world/createArena.js`                | Lightweight arena visuals, lighting, and authoritative arena dimensions                                                  |
+| `src/camera/FollowCamera.js`              | Smoothed follow target, orbit angles, pitch limits, floor clearance                                                      |
+| `src/character/Stickman.js`               | Named hierarchical body parts and joint pivots                                                                           |
+| `src/character/AnimationStyle.js`         | Validated immutable visual personality and per-layer timing; no gameplay settings                                        |
+| `src/character/MotionPresentation.js`     | Resolved-velocity launch, braking and balance cues; no root movement                                                     |
+| `src/character/CharacterAnimator.js`      | Composes animation layers and applies the final joint pose                                                               |
+| `src/character/WalkingGait.js`            | Low-clearance walking and visual heel/flat/toe progression                                                               |
+| `src/character/RunningGait.js`            | Dedicated heel-recovery/knee-drive/landing curves, loaded support and visual flight, athletic arm drive and brief trails |
+| `src/character/LocomotionAnimator.js`     | Speed-driven gait timing and foot contacts                                                                               |
+| `src/character/CombatStanceAnimator.js`   | Smooth defensive guard and balanced stance poses                                                                         |
+| `src/character/DashAnimator.js`           | Dash push-off, directional lean, foot targets, and recovery overlay                                                      |
+| `src/character/AttackAnimator.js`         | Right straight / left cross upper-body extension, torso rotation and recovery                                            |
+| `src/character/AerialDashAnimator.js`     | Directional air balance, limb posing, Block and landing blending without root movement                                   |
+| `src/character/AerialAttackAnimator.js`   | Flying-kick chamber, extension, impact, recovery and landing blend; no root movement                                     |
+| `src/character/JumpAnimator.js`           | Takeoff, flight, landing, and recovery poses without root movement                                                       |
+| `src/character/LegIK.js`                  | Lightweight two-bone leg posing and floor contact                                                                        |
+| `src/style.css`                           | Responsive HUD, touch controls, safe-area spacing                                                                        |
+| `build/pagesBase.js`                      | GitHub Pages repository base-path selection                                                                              |
+| `.github/workflows/deploy-pages.yml`      | Automated checks, production build, and Pages deployment                                                                 |
+| `tests/`                                  | Movement/camera checks and browser smoke coverage                                                                        |
 
 All world distances are metres. The coordinate system is Y-up, and the character's local forward direction is −Z. Input uses normalized screen-right `x` and screen-forward `y`; the controller converts these into horizontal world movement.
 
@@ -227,11 +260,11 @@ The router captures each action finger on a stable root and hit-tests current co
 
 Definitions live in `src/combat/Techniques.js`; `CombatController` also re-exports the three technique constants. All times are seconds, reach and heights are metres, and angles are radians.
 
-| Technique | Environment | Surface reach | Strike origin above root | Vertical limit | Windup | Extension | Impact | Recovery |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `basic-punch` | ground | 0.76 | 1.4 | ±0.35 | 0.08 | 0.10 | 0 | 0.24 |
-| `cross-punch` | ground | 0.80 | 1.4 | ±0.35 | 0.10 | 0.12 | 0.025 | 0.26 |
-| `flying-kick` | air | 0.81 | 0.9 | ±0.65 | 0.06 | 0.07 | 0.035 | 0.22 |
+| Technique     | Environment | Surface reach | Strike origin above root | Vertical limit | Windup | Extension | Impact | Recovery |
+| ------------- | ----------- | ------------- | ------------------------ | -------------- | ------ | --------- | ------ | -------- |
+| `basic-punch` | ground      | 0.76          | 1.4                      | ±0.35          | 0.08   | 0.10      | 0      | 0.24     |
+| `cross-punch` | ground      | 0.80          | 1.4                      | ±0.35          | 0.10   | 0.12      | 0.025  | 0.26     |
+| `flying-kick` | air         | 0.81          | 0.9                      | ±0.65          | 0.06   | 0.07      | 0.035  | 0.22     |
 
 All three use a 45-degree front-facing half-angle. The kick additionally uses `minHeight: 0.08` and `minAirTimeRemaining: 0.22`. `COMBAT_CONFIG` defines 0.16-second interrupted recovery and 0.15-second posture hold. Recovery remains authoritative while the player moves, jumps, dashes or blocks. An impact phase holds the pose without applying damage or an impulse.
 
@@ -267,10 +300,10 @@ Desktop digital movement uses the normal-run anchor, with Shift selecting full e
 
 Jump defaults originate in `JUMP_CONFIG` in `src/movement/JumpState.js` and are exposed through `MOVEMENT_DEFAULTS.jump`. Supply `movementConfig.jump` to the controller; the existing `jumpConfig` constructor option remains supported.
 
-| Setting           | Default | Meaning                                                    |
-| ----------------- | ------- | ---------------------------------------------------------- |
+| Setting           | Default | Meaning                                                     |
+| ----------------- | ------- | ----------------------------------------------------------- |
 | `height`          | 0.8 m   | Ballistic apex above the flat floor                         |
-| `gravity`         | 18 m/s² | Downward acceleration; launch velocity derives from height |
+| `gravity`         | 18 m/s² | Downward acceleration; launch velocity derives from height  |
 | `airControl`      | 3.5 /s  | Smooth response to camera-relative joystick input in flight |
 | `airDrag`         | 0.1 /s  | Gentle momentum decay with a centred joystick in flight     |
 | `takeoffDuration` | 0.08 s  | Short preparation before leaving the floor                  |
@@ -303,7 +336,7 @@ The scene uses shared low-poly geometry and materials, instanced arena details, 
 
 ## Validation
 
-Version 0.7.3 passed all 305 unit and integration tests, the production build, development mobile-browser checks and the production Pages browser suite. Checks cover monotone continuous joystick speeds and slopes, joystick-only sprinting, unchanged acceleration/dash/jump defaults, full movement chains, low walking clearance and heel/toe roll, reduced marching knee positions, real sprint flight, fixed world contacts, Block, proximity attacks and kicks, camera reset, wall containment, legacy-layout migration, touch/mouse dragging, Save/Cancel/reset, refresh, portrait/landscape resizing and relocated slide controls. Both browser entry points share the same gameplay scenarios and retain the detailed aerial-dash, dash-to-jump, combat and editor-edge helpers. Historical physics fixtures adapt their input magnitudes to keep testing their original world speeds; new tests exercise the real analogue controller directly. Production assets are checked strictly under `/Kinetic-stickman/`.
+Version 0.7.4 includes the full existing gameplay suite plus sandbox checks for all eight independent sliders through 100×, exact default preservation, speed/distance independence, frame-rate-independent physical dashes, extreme jump/gravity combinations, landing, live tuning without position resets, ability/cooldown preservation, collision containment, swept ground/aerial reach and Block, camera tracking, bounded substep budgets and finite animation joints. Browser checks exercise opt-in isolation, all slider stops, native joystick/slider multitouch, touch scrolling, presets, Save/Load/refresh/reset, unchanged saved layouts, extreme dash/jump/air control/landing and mobile viewport fit. The same scenarios run against the development app and the production bundle mounted strictly under `/Kinetic-stickman/`. No physical Android hardware or hardware performance is claimed.
 
 Run the checks below and inspect the GitHub Actions run for the current commit. Unit tests cover movement, camera limits, input ownership, Pages base paths, proximity thresholds and facing, repeat-punch recovery, Block priority, automatic posture transitions, dummy collision, animation blending, and character-root ownership. Layout checks cover normalized positioning, validation, responsive constraints, and saved-data handling. Jump checks cover height, gravity, phases, horizontal momentum and steering, ground-skill ordering, repeated-input rejection, pause continuity, collision, and ground/air technique eligibility. Dash checks cover ground and aerial distance at 30/60/120 Hz, ascent/apex/descent activation, momentum and steering, cooldown, per-jump limits and landing resets, wall/dummy containment, late-dash landing, configuration overrides, state transitions, and animation blending. Action-router checks cover HOLD/PRESS/TOGGLE entry and re-entry, multiple fingers, cancellation, keyboard activation, and binding replacement. Browser checks cover control editing, Save/Cancel/reset, storage failure, refresh and rotation, gameplay-input isolation, rendering, Jump taps and slides, moving jumps, approaching and leaving the dummy, automatic ground and aerial techniques, held Block, native emulated multi-touch input and cancellation, action slides, recovery and dash cooldown, camera reset/pitch limits, instructions, and responsive layout. Screenshots are saved under `test-results/` by the browser scripts. UI fonts are bundled locally; the game makes no external asset requests.
 
@@ -328,7 +361,7 @@ CHROMIUM_PATH=/path/to/chromium npm run test:browser
 
 In development, opening `http://localhost:5173/?debug` exposes a read-only `window.__KINETIC__.snapshot()` function for inspecting position, inputs, movement state, dash timing, jump phases and elevation, combat phases and proximity targeting, camera limits, and render statistics. This hook is excluded from production builds.
 
-Version 0.7.3 has not been verified on a physical Android device by the implementer. Desktop Chromium and touch emulation can check rendering, pointer behavior, and responsive layouts, but cannot establish real mobile GPU performance, thermals, browser chrome behavior, or device-specific touch handling.
+Version 0.7.4 has not been verified on a physical Android device by the implementer. Desktop Chromium and touch emulation can check rendering, pointer behavior, and responsive layouts, but cannot establish real mobile GPU performance, thermals, browser chrome behavior, or device-specific touch handling.
 
 Before shipping to phones, verify on physical Android devices:
 

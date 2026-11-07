@@ -21,15 +21,26 @@ export class JumpState {
     }
     if (config.height <= 0 || config.gravity <= 0)
       throw new RangeError("Jump height and gravity must be positive");
-    this.config = Object.freeze(config);
-    this.launchVelocity = Math.sqrt(2 * config.gravity * config.height);
-    this.flightDuration = (2 * this.launchVelocity) / config.gravity;
+    this.configure(config);
     this.phase = "grounded";
     this.height = 0;
     this.verticalVelocity = 0;
     this.elapsed = 0;
     this.sequence = 0;
     this.landingSpeed = 0;
+  }
+
+  configure(config) {
+    for (const key of Object.keys(JUMP_CONFIG))
+      if (!Number.isFinite(config[key]) || config[key] < 0)
+        throw new RangeError(`Invalid jump ${key}`);
+    if (config.height <= 0 || config.gravity <= 0)
+      throw new RangeError("Jump height and gravity must be positive");
+    this.config = Object.freeze({ ...config });
+    this.launchVelocity = Math.sqrt(2 * config.gravity * config.height);
+    this.flightDuration = (2 * this.launchVelocity) / config.gravity;
+    // Height/launch velocity affect the next launch. Gravity and air response
+    // can change during flight without rewriting position or current velocity.
   }
 
   get ready() {
@@ -91,6 +102,7 @@ export class JumpState {
     this.phase = "airborne";
     this.elapsed = 0;
     this.verticalVelocity = this.launchVelocity;
+    this.flightLaunchVelocity = this.launchVelocity;
   }
 
   advance(dt) {

@@ -1,3 +1,4 @@
+import { checkPhysicsSandbox } from "./physics-sandbox-browser.mjs";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
@@ -76,6 +77,7 @@ try {
     "undefined",
   );
   await checkGameplay(run.page, run.native);
+  await checkPhysicsSandbox(run.page, run.native);
   for (const request of run.requests) {
     const url = new URL(request);
     assert.equal(url.origin, origin);

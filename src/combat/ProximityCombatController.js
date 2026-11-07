@@ -1,3 +1,4 @@
+import { sweptTechniqueEntry } from "./SweptProximity.js";
 import { TARGET_STRIKE_DEFAULTS } from "./Techniques.js";
 
 export const PROXIMITY_CONFIG = Object.freeze({
@@ -46,6 +47,9 @@ export class ProximityCombatController {
       throw new RangeError("Invalid facing angle");
     this.targets = new Map();
     this.sample = {};
+    this.sweepInterval = new Float64Array(2);
+    this.sweepPosition = { x: 0, y: 0, z: 0 };
+    this.sweptOpportunities = 0;
     this.reset();
     this.setTargets(targets);
   }
@@ -156,6 +160,59 @@ export class ProximityCombatController {
       }
     }
     this.combat.update(dt);
+  }
+
+  updateSwept(dt, options, previousPosition) {
+    const { position, facing = 0, blocking, context = {} } = options;
+    if (
+      !validPosition(previousPosition) ||
+      blocking ||
+      !this.combat.ready ||
+      context.canAttack === false
+    ) {
+      this.update(dt, options);
+      return;
+    }
+    const environment =
+      context.environment ?? (options.grounded === false ? "air" : "ground");
+    const entry =
+      environment === "air"
+        ? this.config.aerialEntryDistance
+        : this.config.entryDistance;
+    let first = Infinity;
+    for (const target of this.targets.values()) {
+      if (!validTarget(target)) continue;
+      for (const technique of this.combat.techniques.values()) {
+        if (!technique.environments.includes(environment)) continue;
+        const time = sweptTechniqueEntry(
+          previousPosition,
+          position,
+          target,
+          technique,
+          entry,
+          facing,
+          this.sweepInterval,
+        );
+        if (time !== null && time < first) first = time;
+      }
+    }
+    if (first < 1) {
+      // Sample just inside the boundary to avoid floating-point tangent misses.
+      const t = Math.min(1, first + 1e-9);
+      const sample = this.sweepPosition;
+      sample.x = previousPosition.x + (position.x - previousPosition.x) * t;
+      sample.y = previousPosition.y + (position.y - previousPosition.y) * t;
+      sample.z = previousPosition.z + (position.z - previousPosition.z) * t;
+      const sequence = this.combat.attack.sequence;
+      this.update(dt, {
+        ...options,
+        position: sample,
+        context: { ...context, height: sample.y },
+      });
+      if (this.combat.attack.sequence > sequence) this.sweptOpportunities++;
+      // Hysteresis/selection describe the live endpoint, never a stale contact.
+      this._refreshTarget(position, environment, facing);
+    } else this.update(dt, options);
   }
 
   _sample(technique, target, position, facing) {

@@ -161,6 +161,7 @@ export class InputController {
       root: actionRoot,
       canClaimPointer: (event) =>
         this.enabled &&
+        !event.target.closest?.("[data-gameplay-ui]") &&
         event.pointerId !== this.joystickPointer &&
         event.pointerId !== this.cameraPointer,
     });
@@ -267,7 +268,7 @@ export class InputController {
       target instanceof Element &&
       Boolean(
         target.closest(
-          'input, textarea, select, [contenteditable="true"], dialog[open], [role="dialog"][aria-modal="true"]',
+          'input, textarea, select, [data-gameplay-ui], [contenteditable="true"], dialog[open], [role="dialog"][aria-modal="true"]',
         ),
       )
     );

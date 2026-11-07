@@ -1,3 +1,4 @@
+import { DashPresentation } from "./DashPresentation.js";
 import { MathUtils, Quaternion, Vector3 } from "three";
 import { LocomotionAnimator } from "./LocomotionAnimator.js";
 import { CombatStanceAnimator } from "./CombatStanceAnimator.js";
@@ -44,6 +45,7 @@ export class CharacterAnimator {
     this.locomotion = new LocomotionAnimator(this.style.locomotion);
     this.motion = new MotionPresentation(this.style.motion);
     this.combat = new CombatStanceAnimator(this.style.locomotion);
+    this.dashPresentation = new DashPresentation();
     this.dashAnimation = new DashAnimator(character, this.style.groundDash);
     this.attackAnimation = new AttackAnimator(this.style.punch);
     this.jumpAnimation = new JumpAnimator(character, this.style.jump);
@@ -73,6 +75,7 @@ export class CharacterAnimator {
     this.travelDirection = new Vector3(0, 0, -1);
     this.runningGoal = new Vector3();
     this.runningLocal = new Vector3();
+    this.visualCarry = new Vector3();
     this.legDirection = new Vector3();
     this.rootYaw = new Quaternion();
     this.landing = new Vector3();
@@ -83,9 +86,32 @@ export class CharacterAnimator {
     this.initialized = false;
   }
 
-  update(dt, { speed = 0, blocking = false, combat, dash, jump } = {}) {
+  update(
+    dt,
+    { speed = 0, blocking = false, combat, dash, jump, sandbox = false } = {},
+  ) {
     if (dt <= 0) return;
+    if (sandbox) dash = this.dashPresentation.sample(dt, dash);
     const root = this.character.root;
+    // At superhuman speed a human-length rig cannot plant feet for 100× the
+    // distance. Carry contacts with excess travel instead of stretching the IK
+    // or resetting the gait every frame. The physical root is never changed.
+    const visualSpeed =
+      sandbox && speed > 5.2
+        ? 5.2 + Math.min(2, Math.log2(speed / 5.2)) * 0.4
+        : speed;
+    const visualRatio = speed > 0 ? visualSpeed / speed : 1;
+    this.visualCarry
+      .subVectors(root.position, this.previousPosition)
+      .setY(0)
+      .multiplyScalar(1 - visualRatio);
+    if (sandbox && visualRatio < 1 && this.initialized) {
+      for (const foot of this.footList) {
+        foot.target.add(this.visualCarry);
+        foot.anchor.add(this.visualCarry);
+        foot.swingStart.add(this.visualCarry);
+      }
+    }
     const j = this.character.joints;
     const gait = this.locomotion;
     const sprintHandoff = gait.sprintBlend * (1 - this.combatWeight);
@@ -105,17 +131,21 @@ export class CharacterAnimator {
         sprintHandoff,
       ),
     );
-    // The dash has its own single bound, not a 12 m/s running cycle.
+    // Ordinary dashes use a single bound. Exceptionally long developer
+    // bursts release the feet to a bounded gait between launch and touchdown.
+    const dashBound = dash?.active && !dash.cruising;
     gait.update(dt, {
-      speed: dash?.active ? Math.min(speed, 2.6) : speed,
+      speed: dashBound ? Math.min(visualSpeed, 2.6) : visualSpeed,
       combatWeight: this.combatWeight,
-      cadenceLimit: dash?.active ? this.style.locomotion.dashCadence : Infinity,
+      cadenceLimit: dashBound ? this.style.locomotion.dashCadence : Infinity,
     });
     const moving = speed >= 0.015;
-    const distance = root.position.distanceTo(this.previousPosition);
+    const distance =
+      root.position.distanceTo(this.previousPosition) * visualRatio;
     this.velocity
       .subVectors(root.position, this.previousPosition)
       .multiplyScalar(1 / dt);
+    if (sandbox) this.velocity.multiplyScalar(visualRatio);
     this.previousPosition.copy(root.position);
     this.rootYaw.copy(root.quaternion);
     this.velocity.y = 0;
@@ -130,7 +160,8 @@ export class CharacterAnimator {
     );
     const groundDash = dash?.mode === "air" ? null : dash;
     const dashOwnsFeet =
-      Boolean(groundDash?.active) || this.dashAnimation.ownsFeet;
+      !groundDash?.cruising &&
+      (Boolean(groundDash?.active) || this.dashAnimation.ownsFeet);
     const jumpOwnsFeet =
       Boolean(jump && jump.phase !== "grounded") || this.jumpAnimation.ownsFeet;
     if (jumpOwnsFeet) this.velocity.y = 0;
@@ -178,7 +209,7 @@ export class CharacterAnimator {
       groundDash,
       this.footList,
       this.combatWeight,
-      !jumpOwnsFeet,
+      !jumpOwnsFeet && !groundDash?.cruising,
       MathUtils.lerp(
         this.style.groundDash.entryTime,
         Math.max(
