@@ -59,6 +59,7 @@ export class Hud {
     hits = null,
     contactFeedback = 0,
     rotation = null,
+    recovery = null,
   ) {
     this.frameCount++;
     this.sampleTime += dt;
@@ -117,6 +118,11 @@ export class Hud {
     this.stanceLabel.dataset.side = combat?.currentTechnique?.side ?? "none";
     this.stanceLabel.dataset.acroSequence = String(rotation?.sequence ?? 0);
     this.stanceLabel.dataset.acroKind = rotation?.lastKind ?? "none";
+    this.stanceLabel.dataset.recoverySequence = String(recovery?.sequence ?? 0);
+    this.stanceLabel.dataset.recoveryKind = recovery?.kind ?? "none";
+    this.stanceLabel.dataset.recoveryIntensity = String(
+      recovery?.intensity ?? 0,
+    );
     this.stanceLabel.dataset.acroPhase = rotation?.phase ?? "idle";
     this.stanceLabel.dataset.bodyUp = String(rotation?.up.y ?? 1);
     this.stanceLabel.dataset.invertedWeight = String(

@@ -16,6 +16,8 @@ import {
 } from "../combat/AdaptiveTechniques.js";
 import { BodyRotation } from "../movement/BodyRotation.js";
 import { JoystickGestures } from "../movement/JoystickGestures.js";
+import { MomentumRecovery } from "../movement/MomentumRecovery.js";
+import { GroundStreaks } from "../world/GroundStreaks.js";
 import { AcrobaticPresenter } from "../character/AcrobaticPresenter.js";
 import { StrikeHitDetector } from "../combat/StrikeHitDetector.js";
 import {
@@ -61,6 +63,12 @@ export class Game {
     );
     this.bodyRotation = new BodyRotation();
     this.gestures = new JoystickGestures();
+    this.momentumRecovery = new MomentumRecovery();
+    this.recoveryPrevious = new THREE.Vector3();
+    this.streaks = new GroundStreaks();
+    this.scene.add(this.streaks.mesh);
+    this.streakOrigin = new THREE.Vector3();
+    this.lastPlantSequence = 0;
     this.limbSelector = new ContextualLimbSelector();
     this.bodyStart = new THREE.Quaternion();
     this.bodyEnd = new THREE.Quaternion();
@@ -187,6 +195,8 @@ export class Game {
     this.combat.reset();
     this.attackScheduler.reset();
     this.gestures.reset();
+    this.momentumRecovery.reset();
+    this.streaks.reset();
     this.bodyRotation.reset(this.controller.heading);
     this.accumulator = 0;
     this.lastTime = null;
@@ -227,13 +237,8 @@ export class Game {
             this.controller.heading,
             gesture.direction,
             gesture.intensity,
+            gesture.referenceYaw,
           );
-          if (gesture.kind !== "backflip")
-            this.attackScheduler.gesture(
-              gesture.kind,
-              gesture.direction,
-              gesture.intensity,
-            );
         }
         this.simulationSteps = this.physicsSandbox.enabled
           ? movementSubsteps(
@@ -254,8 +259,23 @@ export class Game {
           dash: this.controller.dash,
           jump: this.controller.jump,
           sandbox: this.physicsSandbox.enabled && this.sandboxModified,
+          recovery: this.momentumRecovery,
         });
         this.acrobaticPresenter.apply(STEP, this.bodyRotation, this.combat);
+        const plant = this.animator.recoveryAnimation;
+        if (plant.impactSequence !== this.lastPlantSequence) {
+          this.lastPlantSequence = plant.impactSequence;
+          this.character.joints[`${plant.side}Ankle`].getWorldPosition(
+            this.streakOrigin,
+          );
+          this.streaks.emit(
+            this.streakOrigin,
+            this.momentumRecovery.incoming,
+            this.momentumRecovery.intensity,
+            this.momentumRecovery.speed,
+          );
+        }
+        this.streaks.update(STEP);
         this.accumulator -= STEP;
       }
       this.followCamera.update(
@@ -278,6 +298,7 @@ export class Game {
       this.hitDetector,
       this.contactFeedbackRemaining,
       this.bodyRotation,
+      this.momentumRecovery,
     );
   }
 
@@ -288,7 +309,16 @@ export class Game {
     const heading = this.controller.heading;
     const startLift = this.bodyRotation?.lift ?? 0;
     if (this.bodyRotation) this.bodyStart.copy(this.bodyRotation.orientation);
+    if (this.momentumRecovery)
+      this.recoveryPrevious.copy(this.controller.velocity);
     this.controller.update(dt, this.input, this.followCamera.yaw);
+    this.momentumRecovery?.update(
+      dt,
+      this.recoveryPrevious,
+      this.controller,
+      this.input,
+      this.followCamera.yaw,
+    );
     this.bodyRotation?.update(
       dt,
       this.controller,
@@ -363,6 +393,17 @@ export class Game {
 
   snapshot() {
     return {
+      recovery: {
+        sequence: this.momentumRecovery.sequence,
+        kind: this.momentumRecovery.kind,
+        intensity: this.momentumRecovery.intensity,
+        weight: this.momentumRecovery.weight,
+        compression: this.momentumRecovery.compression,
+        speed: this.momentumRecovery.speed,
+        braking: this.momentumRecovery.braking,
+        plantSide: this.animator.recoveryAnimation.side,
+        streaks: this.streaks.emissions,
+      },
       sandbox: {
         enabled: this.physicsSandbox.enabled,
         values: this.physicsSandbox.values,
@@ -377,6 +418,7 @@ export class Game {
         angularVelocity: this.bodyRotation.angularVelocity.toArray(),
         pitchTravel: this.bodyRotation.pitchTravel,
         invertedWeight: this.bodyRotation.invertedWeight,
+        referenceYaw: this.bodyRotation.referenceYaw,
         lift: this.bodyRotation.lift,
         transition: this.combat.lastTransition,
       },

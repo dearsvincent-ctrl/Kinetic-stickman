@@ -1,12 +1,13 @@
 import { Quaternion, Vector3 } from "three";
 export const BODY_ROTATION_CONFIG = Object.freeze({
-  maxAngularSpeed: 28,
-  flipLaunch: 15,
-  pitchTorque: 37,
+  maxAngularSpeed: 18,
+  flipLaunch: 11.5,
+  pitchTorque: 18,
   rollTorque: 5,
   yawTorque: 3,
-  airDrag: 0.6,
-  invertedDrag: 2.4,
+  airDrag: 0.85,
+  invertedDrag: 7.5,
+  invertedCoastSpeed: 3.5,
   recoveryStiffness: 75,
   recoveryDamping: 14,
   landingAssistStiffness: 10,
@@ -42,9 +43,9 @@ export class BodyRotation {
     this.lift = 0;
     this.lastKind = "none";
   }
-  start(kind, heading, direction = 1, intensity = 1) {
+  start(kind, heading, direction = 1, intensity = 1, referenceYaw = heading) {
     if (this.phase === "idle") this.orientation.setFromAxisAngle(UP, heading);
-    this.referenceYaw = heading;
+    this.referenceYaw = referenceYaw;
     this.elapsed = 0;
     this.sequence++;
     this.lastKind = kind;
@@ -96,13 +97,23 @@ export class BodyRotation {
       this.local.x * Math.cos(this.referenceYaw) -
       this.local.z * Math.sin(this.referenceYaw);
     this.up.copy(UP).applyQuaternion(this.orientation);
-    this.invertedWeight = Math.max(0, Math.min(1, (-this.up.y - 0.55) / 0.45));
+    this.invertedWeight = Math.max(0, Math.min(1, (-this.up.y - 0.15) / 0.85));
     if (this.phase === "backflip" && air) {
       // Extra drag near inversion is soft and bypassed by deliberate pressure.
       const easing =
         c.invertedDrag *
         this.invertedWeight *
-        (1 - Math.min(1, Math.abs(backwards)));
+        Math.max(
+          0,
+          1 -
+            (c.invertedCoastSpeed /
+              Math.max(
+                c.invertedCoastSpeed,
+                Math.abs(this.angularVelocity.x),
+              )) **
+              2,
+        ) *
+        (1 - Math.max(0, Math.min(1, backwards)));
       this.angularVelocity.multiplyScalar(Math.exp(-(c.airDrag + easing) * dt));
       this.angularVelocity.x += backwards * c.pitchTorque * dt;
       this.angularVelocity.z -= lateral * c.rollTorque * dt;

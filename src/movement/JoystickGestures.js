@@ -1,27 +1,22 @@
-import { Vector3 } from "three";
 export const GESTURE_CONFIG = Object.freeze({
   strong: 0.9,
   centre: 0.28,
-  groundPrime: 0.22,
   airPrime: 0.065,
   reversalWindow: 0.14,
-  minGroundSpeed: 3.2,
   minAirTime: 0.27,
-  groundCooldown: 0.8,
   airCooldown: 0.65,
   diagonalAngle: (130 * Math.PI) / 180,
-  straightAngle: (168 * Math.PI) / 180,
 });
-/** Touch-stick gestures only. World velocity validates intent; reversal is
+/** Airborne touch-stick gestures only. A deliberate reversal is
  * measured in stick coordinates so orbiting the camera cannot create a flick.
- * A fresh stable prime and centre crossing are required for each technique. */
+ * A fresh airborne prime and centre crossing are required for a backflip.
+ * Ground input never requests attacks; MomentumRecovery observes braking. */
 export class JoystickGestures {
   constructor(config = {}) {
     this.config = { ...GESTURE_CONFIG, ...config };
     this.time = 0;
     this.cooldown = 0;
     this.sequence = 0;
-    this.world = new Vector3();
     this.reset();
   }
   reset() {
@@ -29,7 +24,8 @@ export class JoystickGestures {
     this.stable = 0;
     this.lastStrong = -Infinity;
     this.crossed = false;
-    this.previous = { x: 0, y: 0 };
+    this.previous ??= { x: 0, y: 0 };
+    this.previous.x = this.previous.y = 0;
     this.wasAirborne = false;
     this.pointer = null;
   }
@@ -39,6 +35,10 @@ export class JoystickGestures {
     this.cooldown = Math.max(0, this.cooldown - dt);
     const air = movement.jump.airborne,
       c = this.config;
+    if (!air) {
+      if (this.wasAirborne || this.anchor) this.reset();
+      return null;
+    }
     if (
       input.joystickPointer == null ||
       input.blocking ||
@@ -50,12 +50,7 @@ export class JoystickGestures {
       this.wasAirborne = air;
       this.pointer = input.joystickPointer;
     }
-    if (
-      input.joystickPointer == null ||
-      input.blocking ||
-      movement.dash.active ||
-      (!air && !movement.jump.ready)
-    )
+    if (input.joystickPointer == null || input.blocking || movement.dash.active)
       return null;
     const x = input.move.x,
       y = input.move.y,
@@ -81,51 +76,38 @@ export class JoystickGestures {
           ),
           angle = Math.acos(dot);
         if (angle > 0.3) {
-          const prime = air ? c.airPrime : c.groundPrime;
-          const sin = Math.sin(cameraYaw),
-            cos = Math.cos(cameraYaw);
-          this.world.set(nx * cos - ny * sin, 0, -nx * sin - ny * cos);
-          const velocity = movement.velocity,
-            speed = velocity.length();
-          const against = speed > 0.1 ? this.world.dot(velocity) / speed : 0;
-          const forward =
-            -this.world.x * Math.sin(movement.heading) -
-            this.world.z * Math.cos(movement.heading);
-          // Validate an airborne flick against the forward stick direction
-          // captured when priming. The character's facing can rotate during
-          // air steering, so comparing the final input to the *current*
-          // heading rejects legitimate forward-to-back flicks.
+          const prime = c.airPrime;
+          // Compare to the primed stick direction, never the current heading:
+          // steering can already have rotated the fighter during a valid flick.
           const airborneIntent =
             air &&
             dot < -0.82 &&
             movement.jump.height > 0.12 &&
             movement.jump.timeToBoundary >= c.minAirTime;
-          const groundIntent =
-            !air && speed >= c.minGroundSpeed && against < -0.55;
           if (
             this.cooldown === 0 &&
             this.stable >= prime &&
             this.crossed &&
             this.time - this.lastStrong <= c.reversalWindow &&
             angle >= c.diagonalAngle &&
-            (airborneIntent || groundIntent)
+            airborneIntent
           ) {
             const cross = this.anchor.x * ny - this.anchor.y * nx;
-            const kind = air
-              ? "backflip"
-              : angle >= c.straightAngle
-                ? "descending-sweep"
-                : "whip-kick";
+            const kind = "backflip";
             result = {
               kind,
+              referenceYaw: this.anchor.heading,
               direction: cross >= 0 ? 1 : -1,
               intensity: Math.max(
                 0.25,
-                Math.min(1, speed / Math.max(3.2, movement.sprintSpeed)),
+                Math.min(
+                  1,
+                  movement.speed / Math.max(3.2, movement.sprintSpeed),
+                ),
               ),
               sequence: ++this.sequence,
             };
-            this.cooldown = air ? c.airCooldown : c.groundCooldown;
+            this.cooldown = c.airCooldown;
           }
           this.anchor = null;
           this.stable = 0;
@@ -138,8 +120,12 @@ export class JoystickGestures {
         const forward =
           nx * Math.sin(cameraYaw - movement.heading) +
           ny * Math.cos(cameraYaw - movement.heading);
-        if (!air || forward > 0.8) {
-          this.anchor = { x: nx, y: ny };
+        if (forward > 0.8) {
+          this.anchor = {
+            x: nx,
+            y: ny,
+            heading: cameraYaw - Math.atan2(nx, ny),
+          };
           this.stable = dt;
           this.crossed = false;
         }

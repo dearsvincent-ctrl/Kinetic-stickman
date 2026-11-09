@@ -10,6 +10,8 @@ import { AerialDashAnimator } from "./AerialDashAnimator.js";
 import { AerialAttackAnimator } from "./AerialAttackAnimator.js";
 import { resolveAnimationStyle } from "./AnimationStyle.js";
 import { MotionPresentation } from "./MotionPresentation.js";
+import { MomentumRecoveryAnimator } from "./MomentumRecoveryAnimator.js";
+import { GroundCombatBalance } from "./GroundCombatBalance.js";
 
 const fract = (value) => value - Math.floor(value);
 const smooth = (value) => value * value * (3 - 2 * value);
@@ -44,6 +46,8 @@ export class CharacterAnimator {
     this.style = resolveAnimationStyle(style);
     this.locomotion = new LocomotionAnimator(this.style.locomotion);
     this.motion = new MotionPresentation(this.style.motion);
+    this.recoveryAnimation = new MomentumRecoveryAnimator(character);
+    this.groundBalance = new GroundCombatBalance(character);
     this.combat = new CombatStanceAnimator(this.style.locomotion);
     this.dashPresentation = new DashPresentation();
     this.dashAnimation = new DashAnimator(character, this.style.groundDash);
@@ -90,7 +94,15 @@ export class CharacterAnimator {
 
   update(
     dt,
-    { speed = 0, blocking = false, combat, dash, jump, sandbox = false } = {},
+    {
+      speed = 0,
+      blocking = false,
+      combat,
+      dash,
+      jump,
+      sandbox = false,
+      recovery,
+    } = {},
   ) {
     if (dt <= 0) return;
     if (sandbox) dash = this.dashPresentation.sample(dt, dash);
@@ -246,6 +258,8 @@ export class CharacterAnimator {
     this.airDashWeight = this.aerialDashAnimation.weight;
     this.aerialAttackAnimation.update(dt, combat, jump, this.footList);
     this.aerialAttackWeight = this.aerialAttackAnimation.weight;
+    this.recoveryAnimation.plan(dt, recovery, this.feet, jump, dash, combat);
+    this.groundBalance.plan(dt, combat, jump, speed, this.feet);
     if (dashOwnsFeet || jumpOwnsFeet || this.aerialAttackWeight > 0) {
       // Resume the ordinary planner from the physical landing, without a
       // stale pre-dash world anchor or a phase-wrap contact reset.
@@ -273,6 +287,7 @@ export class CharacterAnimator {
         (1 - this.dashWeight) *
         (1 - this.jumpWeight),
     );
+    this.recoveryAnimation.apply(this.pose, recovery, root.quaternion);
     this.combat.apply(
       this.pose,
       gait.movementBlend,
@@ -288,6 +303,7 @@ export class CharacterAnimator {
     this.aerialDashAnimation.apply(this.pose);
     this.aerialAttackAnimation.apply(this.pose);
     if (aerialPunch) this.attackAnimation.apply(this.pose, true);
+    this.groundBalance.apply(this.pose, speed);
     const pose = this.pose;
     j.hips.position.set(pose.hipX, pose.hipY, pose.hipZ ?? 0);
     j.hips.rotation.set(0, pose.hipYaw, pose.hipRoll);

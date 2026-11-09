@@ -133,7 +133,7 @@ export class AttackAnimator {
     );
     strike.elbow = MathUtils.lerp(
       strike.elbow,
-      MathUtils.lerp(1.84, 0.1, drive) + coil * 0.04,
+      MathUtils.lerp(1.84, 0.18, drive) + coil * 0.04,
       w,
     );
     // Shift the visual pelvis over the existing support legs. Their world
@@ -158,7 +158,9 @@ export class AttackAnimator {
         this.recoil * s.recoil) *
       sign *
       w;
+    // Recovery unwinds through the torso instead of retracting the fist alone.
     pose.spinePitch -= (drive * 0.04 + coil * 0.02) * w;
+    pose.spineYaw += sign * this.recoil * 0.06 * w;
     pose.spineRoll = (pose.spineRoll ?? 0) + sign * drive * 0.04 * w;
   }
 }

@@ -33,20 +33,14 @@ function airMovement() {
   m.jump.verticalVelocity = 1;
   return m;
 }
-test("fast centre-crossing diagonal reversals distinguish left/right whip and straight-back sweep", () => {
-  for (const [x, y, kind, sign] of [
-    [-0.707, -0.707, "whip-kick", 1],
-    [0.707, -0.707, "whip-kick", -1],
-    [0, -1, "descending-sweep", 1],
-  ]) {
+test("ground reversals never request an attack or body spin", () => {
+  for (const x of [-0.707, 0.707, 0, 1]) {
     const g = new JoystickGestures(),
       m = movement();
     prime(g, m);
     assert.equal(g.update(1 / 60, stick(), m, 0), null);
-    const result = g.update(1 / 60, stick(x, y), m, 0);
-    assert.equal(result?.kind, kind);
-    assert.equal(result.direction, sign);
-    assert.ok(result.intensity > 0.5);
+    assert.equal(g.update(1 / 60, stick(x, x === 1 ? 0 : -1), m, 0), null);
+    assert.equal(g.sequence, 0);
   }
 });
 test("walks, jogging reversals, slow turns, camera orbit, Block and non-joystick movement never generate techniques", () => {
@@ -75,8 +69,8 @@ test("walks, jogging reversals, slow turns, camera orbit, Block and non-joystick
 });
 test("gesture cooldown and fresh stable prime prevent repeated reversal spam", () => {
   const g = new JoystickGestures(),
-    m = movement();
-  prime(g, m);
+    m = airMovement();
+  prime(g, m, stick(0, 1), 0.1);
   assert.ok(g.update(1 / 60, stick(0, -1), m, 0));
   for (let n = 0; n < 30; n++)
     assert.equal(g.update(1 / 60, stick(0, n % 2 ? -1 : 1), m, 0), null);
@@ -209,5 +203,29 @@ test("invalid angular parameters fail safely and speed bounds remain configurabl
   assert.equal(
     new BodyRotation({ maxAngularSpeed: 1000 }).config.maxAngularSpeed,
     60,
+  );
+});
+
+test("backflip control reference stays on the primed direction even if steering has turned the body", () => {
+  const g = new JoystickGestures(),
+    m = airMovement();
+  prime(g, m, stick(0, 1), 0.1);
+  m.heading = Math.PI;
+  g.update(1 / 60, stick(), m, 0);
+  const gesture = g.update(1 / 60, stick(0, -1), m, 0);
+  assert.equal(gesture.kind, "backflip");
+  assert.equal(gesture.referenceYaw, 0);
+  const rotations = [];
+  for (const y of [-1, 1]) {
+    const r = new BodyRotation();
+    r.start("backflip", m.heading, gesture.direction, 1, gesture.referenceYaw);
+    const original = r.orientation.clone();
+    for (let n = 0; n < 12; n++) r.update(1 / 120, m, stick(0, y), 0);
+    rotations.push(r.angularVelocity.x);
+    assert.ok(r.orientation.angleTo(original) > 0);
+  }
+  assert.ok(
+    rotations[0] > rotations[1] + 2,
+    "Backward pressure accelerates; forward pressure brakes independently of the turned travel heading",
   );
 });

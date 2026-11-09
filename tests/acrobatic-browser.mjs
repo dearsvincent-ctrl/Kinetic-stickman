@@ -61,14 +61,14 @@ async function stick(p, native) {
     },
   };
 }
-async function groundGesture(p, native, x) {
+async function groundGesture(p, native, x, y) {
   const s = await stick(p, native);
   await s.move(0, 1);
   await advance(p, 430);
   await s.move(0, 0);
   await advance(p, 17);
-  await s.move(x, x === 0 ? -1 : -Math.SQRT1_2);
-  await advance(p, 70);
+  await s.move(x, y);
+  await advance(p, 100);
   return s;
 }
 export async function checkAcrobatics(page, native) {
@@ -77,40 +77,55 @@ export async function checkAcrobatics(page, native) {
     localStorage.removeItem("kinetic.controls.v1");
   });
   await fresh(page);
-  // Two distinct diagonal reversals and a straight-back descending sweep.
-  for (const x of [-Math.SQRT1_2, Math.SQRT1_2, 0]) {
+  // Ground intent expresses braking only: no gesture technique or attack request.
+  for (const [x, y, kind, action] of [
+    [0, -1, "back", "punch"],
+    [-Math.SQRT1_2, -Math.SQRT1_2, "diagonal", "kick"],
+    [Math.SQRT1_2, -Math.SQRT1_2, "diagonal", "punch"],
+    [1, 0, "lateral", "kick"],
+  ]) {
     await fresh(page);
     const camera = (await snap(page))?.camera,
-      s = await groundGesture(page, native, x);
+      s = await groundGesture(page, native, x, y);
     let a = await read(page);
-    assert.equal(a.acroSequence, "1", `Ground reversal x=${x}: ${JSON.stringify(a)}; joystick=${JSON.stringify(await page.evaluate(() => ({ width: document.querySelector("#joystick")?.getBoundingClientRect().width, height: document.querySelector("#joystick")?.getBoundingClientRect().height, knob: document.querySelector("#joystick-knob")?.style.transform })))}`);
-    assert.equal(a.acroKind, x === 0 ? "descending-sweep" : "whip-kick");
-    assert.equal(a.technique, a.acroKind);
-    if (x < 0) {
-      await advance(page, 80);
-      await s.enter("punch");
-      await advance(page, 100);
-      a = await read(page);
-      assert.equal(a.technique, "rotational-backhand");
-      const state = await snap(page);
-      if (state) {
-        assert.equal(state.acrobatics.transition.action, "kick");
-        assert.ok(Math.abs(state.acrobatics.angularVelocity[1]) > 2);
-        assert.equal(state.camera.yaw, camera.yaw);
-        assert.equal(state.camera.pitch, camera.pitch);
-      }
-      await page.screenshot({ path: "test-results/v076-kick-to-backhand.png" });
-      await s.releaseAction();
-    }
-    await s.stop();
-    await advance(page, 1500);
+    assert.equal(a.acroSequence, "0");
+    assert.equal(a.sequence, "0");
+    assert.equal(a.technique, "none");
+    assert.equal(a.recoverySequence, "1", JSON.stringify(a));
+    assert.equal(a.recoveryKind, kind);
+    assert.ok(Number(a.recoveryIntensity) > 0.2);
+    assert.equal(
+      await page.locator("#contact-status").getAttribute("data-count"),
+      "0",
+    );
+    const recovery = (await snap(page))?.recovery;
+    if (recovery)
+      assert.ok(
+        recovery.streaks > 0,
+        "Forceful plant emits a bounded streak burst",
+      );
+    if (x === 0)
+      await page.screenshot({ path: "test-results/v077-hard-reversal.png" });
+    await s.enter(action);
+    await advance(page, 100);
     a = await read(page);
-    assert.equal(a.acroPhase, "idle");
+    assert.equal(a.action, action);
+    assert.equal(a.sequence, "1");
+    const state = await snap(page);
+    if (state) {
+      assert.equal(state.camera.yaw, camera.yaw);
+      assert.equal(state.camera.pitch, camera.pitch);
+      assert.ok(state.speed > 1);
+    }
+    await s.releaseAction();
+    await s.stop();
+    await advance(page, 850);
+    assert.equal((await read(page)).acroPhase, "idle");
   }
   console.log(
-    "PASS: native diagonal whip kicks, descending reversal sweep, active kick→backhand continuation and stable camera",
+    "PASS: broad back/diagonal/lateral recovery without auto attacks, responsive manual strikes during recovery, stable camera and foot streaks",
   );
-  // Casual reversals, round-the-rim turning and ordinary air steering stay ordinary.
+  // Moderate reversals recover without striking; curved turns stay ordinary.
   await fresh(page);
   let s = await stick(page, native);
   await s.move(0, 0.55);
@@ -118,6 +133,8 @@ export async function checkAcrobatics(page, native) {
   await s.move(0, -0.55);
   await advance(page, 250);
   assert.equal((await read(page)).acroSequence, "0");
+  assert.equal((await read(page)).sequence, "0");
+  assert.equal((await read(page)).recoveryKind, "back");
   await s.stop();
   await fresh(page);
   s = await stick(page, native);
@@ -141,7 +158,7 @@ export async function checkAcrobatics(page, native) {
   await s.stop();
   await advance(page, 800);
   console.log(
-    "PASS: ordinary walk/run reversals, curved steering and backward air steering do not trigger gestures",
+    "PASS: moderate reversal recovery, gentle curved steering and ordinary backward air control never trigger attacks",
   );
   // Prime a deliberate forward→back flick after launch. Never requires a target.
   async function flip() {
@@ -171,7 +188,7 @@ export async function checkAcrobatics(page, native) {
     assert.equal(during.camera.yaw, before.camera.yaw);
     assert.ok(during.acrobatics.pitchTravel > before.acrobatics.pitchTravel);
   }
-  await page.screenshot({ path: "test-results/v076-backflip-kick.png" });
+  await page.screenshot({ path: "test-results/v077-backflip-kick.png" });
   await s.enter("block");
   await advance(page, 100);
   a = await read(page);
@@ -222,12 +239,14 @@ export async function checkAcrobatics(page, native) {
     await s.move(0, direction);
     let inverted = false,
       minUp = 1;
-    for (let n = 0; n < 6; n++) {
+    // Sample pressure over 0.5 s, before landing. The HUD refreshes every
+    // 80 ms; a shorter final-value comparison can straddle different samples.
+    for (let n = 0; n < 10; n++) {
       await advance(page, 50);
       a = await read(page);
       minUp = Math.min(minUp, Number(a.bodyUp));
       if (direction === 0 && !inverted && Number(a.invertedWeight) > 0.4)
-        await page.screenshot({ path: "test-results/v076-air-rotation.png" });
+        await page.screenshot({ path: "test-results/v077-air-rotation.png" });
       inverted ||= Number(a.invertedWeight) > 0.4;
       assert.ok(Number.isFinite(Number(a.angularPitch)));
     }
@@ -243,11 +262,52 @@ export async function checkAcrobatics(page, native) {
     assert.equal((await read(page)).acroPhase, "idle");
   }
   assert.ok(
-    results[0] > results[1] + 3 && results[1] > results[2] + 3,
+    results[0] > results[1] + 3 && results[1] > results[2] + 1.5,
     `Back / neutral / forward rates: ${results}`,
   );
   console.log(
     "PASS: backwards pressure accelerates, forward pressure brakes, neutral inverted easing continues, configurable jump remains physical",
+  );
+  // Reverse before a 100x fighter can reach the first arena wall.
+  await page.goto(
+    new URL("?sandbox=1" + ((await snap(page)) ? "&debug" : ""), page.url())
+      .href,
+    { waitUntil: "networkidle" },
+  );
+  await advance(page, 450);
+  await page.locator("#physics-toggle").click();
+  await page.evaluate(() => {
+    const e = document.querySelector("#physics-movement");
+    e.value = Math.log10(100);
+    e.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#physics-close").click();
+  await advance(page, 34);
+  await page.evaluate(() => document.activeElement?.blur());
+  s = await stick(page, native);
+  await s.move(0, 1);
+  await advance(page, 40);
+  await s.move(0.7, -0.7);
+  await advance(page, 100);
+  a = await read(page);
+  assert.equal(a.sequence, "0");
+  assert.ok(Number(a.recoverySequence) > 0);
+  assert.ok(Number(a.recoveryIntensity) > 0.65);
+  const extreme = await snap(page);
+  if (extreme) {
+    assert.ok(extreme.position.every(Number.isFinite));
+    assert.ok(Math.abs(extreme.position[0]) <= extreme.halfSize);
+    assert.ok(Math.abs(extreme.position[2]) <= extreme.halfSize);
+    assert.ok(extreme.renderer.calls < 80);
+    assert.ok(extreme.recovery.streaks > 0);
+  }
+  await page.screenshot({ path: "test-results/v077-extreme-recovery.png" });
+  await s.enter("kick");
+  await advance(page, 100);
+  assert.equal((await read(page)).action, "kick");
+  await s.stop();
+  console.log(
+    "PASS: 100x reversal recovery, bounded foot effects/arena positions and manual Kick without automatic attacks",
   );
   // Contextual limbs, held attack rates, sliding and moved controls are also
   // covered by the unchanged full manual gameplay/layout regression suite.
@@ -273,5 +333,46 @@ export async function checkAcrobatics(page, native) {
   await s.stop();
   console.log(
     "PASS: native held Punch and Kick use both sides at the configured rate without stacking",
+  );
+  await checkPartialAnalogueRecovery(page, native);
+}
+
+export async function checkPartialAnalogueRecovery(page, native) {
+  for (const extreme of [false, true]) {
+    await page.goto(new URL(extreme ? "?sandbox=1" : "?", page.url()).href, {
+      waitUntil: "networkidle",
+    });
+    await advance(page, 450);
+    if (extreme) {
+      await page.locator("#physics-toggle").click();
+      await page.evaluate(() => {
+        const e = document.querySelector("#physics-movement");
+        e.value = 2;
+        e.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await page.locator("#physics-close").click();
+      await advance(page, 34);
+      await page.evaluate(() => document.activeElement?.blur());
+    }
+    const s = await stick(page, native);
+    await s.move(0, 0.28);
+    await advance(page, 150);
+    await s.move(0, -0.28);
+    await advance(page, 100);
+    const a = await read(page);
+    assert.equal(a.sequence, "0");
+    assert.equal(a.acroSequence, "0");
+    assert.equal(
+      Number(a.recoverySequence),
+      extreme ? 1 : 0,
+      JSON.stringify(a),
+    );
+    await page.screenshot({
+      path: `test-results/v077-partial-${extreme ? "100x" : "normal"}.png`,
+    });
+    await s.stop();
+  }
+  console.log(
+    "PASS: partial analogue reversals remain gentle normally and recover from actual braking at 100x without attacking",
   );
 }
