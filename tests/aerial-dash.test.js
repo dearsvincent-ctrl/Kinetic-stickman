@@ -209,8 +209,15 @@ test("normal air steering resumes after the dash instead of freezing or retainin
 });
 
 test("an aerial dash into the dummy retains Block, suspends punches and reacquires after landing", () => {
-  const dummy = { id: "training", position: new Vector3(0, 0, -0.9), radius: 0.32 };
-  const actor = rig({}, new ArenaBounds(18, [dummy]));
+  const dummy = {
+    id: "training",
+    position: new Vector3(0, 0, -0.9),
+    radius: 0.32,
+  };
+  const actor = rig(
+    { jumpConfig: { height: 0.8 } },
+    new ArenaBounds(18, [dummy]),
+  ); // Authored legacy proximity range.
   const combat = new CombatController();
   const proximity = new ProximityCombatController(combat, { targets: [dummy] });
   const step = (blocking = false) => {
@@ -219,7 +226,8 @@ test("an aerial dash into the dummy retains Block, suspends punches and reacquir
       position: actor.root.position,
       facing: actor.heading,
       blocking,
-      grounded: actor.jump.ready && !(actor.dash.active && actor.dash.mode === "air"),
+      grounded:
+        actor.jump.ready && !(actor.dash.active && actor.dash.mode === "air"),
     });
   };
   step();
@@ -231,7 +239,10 @@ test("an aerial dash into the dummy retains Block, suspends punches and reacquir
     step(true);
     assert.equal(combat.blocking, true);
     assert.equal(combat.attack.sequence, 1);
-    assert.ok(proximity.target, "Proximity stays live while manual Block suppresses attacks");
+    assert.ok(
+      proximity.target,
+      "Proximity stays live while manual Block suppresses attacks",
+    );
   } while (!actor.jump.ready);
   assert.equal(actor.dash.exitReason, "blocked");
   assert.ok(proximity.target);

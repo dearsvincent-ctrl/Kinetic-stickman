@@ -310,6 +310,7 @@ const actor = (dummy, withRig = false) => {
   const movement = new CharacterController(
     character?.root ?? new Group(),
     new ArenaBounds(18, [dummy]),
+    { jumpConfig: { height: 0.8 } }, // Fixed trajectory for the archived proximity-combat scenarios.
   );
   const combat = new CombatController();
   const proximity = new ProximityCombatController(combat, { targets: [dummy] });

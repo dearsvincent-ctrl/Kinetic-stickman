@@ -34,7 +34,7 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.7.7</b></span>
+          <span class="version">PROTOTYPE <b>0.7.8</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
@@ -301,7 +301,7 @@
           </button>
         </div>
         <div class="physics-scroll">
-          <p>Live multipliers · 0.1×–100×. Normal = original physics.</p>
+          <p>Live multipliers · 0.1×–100×. Normal = current defaults.</p>
           <div
             id="physics-presets"
             class="physics-presets"
@@ -309,8 +309,9 @@
           ></div>
           <div id="physics-fields"></div>
           <p class="physics-note">
-            Jump height and dash profiles apply on the next launch. Gravity,
-            movement and air control change live. Attack reach stays unchanged.
+            Jump height applies to the next launch, including the second jump.
+            Dash profiles apply on the next burst. Gravity, movement and air
+            control change live. Attack reach stays unchanged.
           </p>
           <div class="physics-storage">
             <button id="physics-save">Save custom</button
@@ -332,7 +333,7 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.7.7</div>
+        <div class="eyebrow">KINETIC / VERSION 0.7.8</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
           Choose when to strike.<br />Tap for one strike. Hold to repeat after
@@ -373,7 +374,7 @@
           <div>
             <dt>Jump</dt>
             <dd>
-              Tap or slide onto JUMP, including during a ground dash
+              Tap or slide onto JUMP. Press again in the air for the second jump
               <span>or Space</span>
             </dd>
           </div>
@@ -390,13 +391,13 @@
             </dd>
           </div>
           <div>
-            <dt>Backflip</dt>
+            <dt>Directional double jump</dt>
             <dd>
-              After takeoff, briefly hold forward, then flick through centre
-              backwards. Back pressure accelerates rotation; forward pressure
-              brakes it. Release to coast through the inverted easing phase.
-              Punch, Kick and Block stay available without finishing a full
-              turn.
+              On the second Jump, hold forward for a frontflip, backwards for a
+              backflip, or centre MOVE to stay upright. Diagonals work.
+              Direction is relative to your take-off travel/facing, not the
+              screen. Both jumps use the same strength; landing restores both
+              jumps.
             </dd>
           </div>
           <div>

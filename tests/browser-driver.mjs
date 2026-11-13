@@ -75,7 +75,13 @@ export async function openBrowser(url) {
         { eventType, expected: changed },
       );
     await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
-    previousPoints = new Map(points.map((p) => [p.id, p]));
+    // CDP partial touchEnd lists the contacts being ended, not the survivors.
+    // Keep the joystick's last position when an independent action finger lifts.
+    if (type === "touchCancel" || (type === "touchEnd" && !points.length))
+      previousPoints.clear();
+    else if (type === "touchEnd")
+      for (const p of points) previousPoints.delete(p.id);
+    else for (const p of points) previousPoints.set(p.id, p);
     if (changed.length) {
       let timer;
       try {

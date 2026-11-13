@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { JUMP_CONFIG } from "../src/movement/JumpState.js";
 import { speedForMagnitude } from "../src/movement/AnalogueLocomotion.js";
 import { resolveMovementConfig } from "../src/movement/MovementConfig.js";
 import {
@@ -486,7 +487,15 @@ export async function checkSandbox(page, native) {
     "flying-kick",
   );
   await page.keyboard.up("g");
-  await advance(page, 3000);
+  await advance(
+    page,
+    Math.ceil(
+      1000 *
+        (Math.sqrt((8 * JUMP_CONFIG.height * 20) / JUMP_CONFIG.gravity) +
+          JUMP_CONFIG.landingDuration +
+          0.2),
+    ),
+  );
   assert.equal(await page.locator("#jump-status").textContent(), "READY");
   await click(page, "#physics-toggle");
   for (const [width, height] of [

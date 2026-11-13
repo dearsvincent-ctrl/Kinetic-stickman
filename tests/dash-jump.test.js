@@ -6,7 +6,10 @@ import { ArenaBounds } from "../src/world/ArenaBounds.js";
 import { Stickman } from "../src/character/Stickman.js";
 import { CharacterAnimator } from "../src/character/CharacterAnimator.js";
 
-const controls = (x = 0, y = 0, sprinting = false) => ({ move: { x, y }, sprinting });
+const controls = (x = 0, y = 0, sprinting = false) => ({
+  move: { x, y },
+  sprinting,
+});
 const rig = (world = new ArenaBounds(100), options = {}) =>
   new CharacterController(new Group(), world, options);
 const close = (a, b, tolerance = 1e-7) =>
@@ -42,15 +45,22 @@ test("Jump interrupts the beginning, middle and end of ground Dash without stack
       close(actor.groundDash.distanceTravelled, travelled);
       close(actor.groundDash.cooldownRemaining, cooldown - dt);
       const response = actor.jump.config.airDrag;
-      close(actor.velocity.length(), velocity.length() * Math.exp(-response * dt));
+      close(
+        actor.velocity.length(),
+        velocity.length() * Math.exp(-response * dt),
+      );
       close(
         actor.root.position.distanceTo(position),
-        velocity.length() * (1 - Math.exp(-response * dt)) / response,
+        (velocity.length() * (1 - Math.exp(-response * dt))) / response,
       );
       assert.equal(actor.airDashesRemaining, 1);
       advance(actor, 0.12, controls(), dt);
       assert.equal(actor.jump.airborne, true);
-      assert.equal(actor.groundDash.elapsed, elapsed, "Cancelled acceleration never resumes");
+      assert.equal(
+        actor.groundDash.elapsed,
+        elapsed,
+        "Cancelled acceleration never resumes",
+      );
     }
 });
 
@@ -77,7 +87,7 @@ test("normal and sprint Dash -> Jump -> Air Dash chains preserve momentum and in
     while (actor.dash.active) actor.update(1 / 60, input, 0);
     close(actor.dash.distanceTravelled, 2.5);
     while (!actor.jump.ready) {
-      assert.equal(actor.requestJump(), false);
+      assert.equal(actor.canJump, actor.jump.airborne);
       assert.equal(actor.requestDash(), false);
       actor.update(1 / 60, input, 0);
     }
@@ -108,8 +118,10 @@ test("rapid ground Dash and Jump entries resolve in order without a free extra i
   assert.equal(actor.jump.ready, true);
 });
 
-test("air bursts still reject Jump through touchdown even with zero landing recovery", () => {
-  const actor = rig(new ArenaBounds(100), { jumpConfig: { landingDuration: 0 } });
+test("an exhausted jump allowance rejects Jump through an air burst touchdown", () => {
+  const actor = rig(new ArenaBounds(100), {
+    jumpConfig: { height: 0.8, maxJumps: 1, landingDuration: 0 },
+  });
   actor.requestJump();
   advance(actor, 0.64);
   actor.requestDash();
@@ -128,8 +140,13 @@ test("air bursts still reject Jump through touchdown even with zero landing reco
 
 test("interrupted dash momentum and a subsequent air burst stay inside walls and dummy collision", () => {
   for (const dt of [1 / 30, 1 / 60, 1 / 120])
-    for (const dummy of [null, { position: new Vector3(0, 0, -1.4), radius: 0.32 }]) {
-      const actor = rig(dummy ? new ArenaBounds(18, [dummy]) : new ArenaBounds(1.2));
+    for (const dummy of [
+      null,
+      { position: new Vector3(0, 0, -1.4), radius: 0.32 },
+    ]) {
+      const actor = rig(
+        dummy ? new ArenaBounds(18, [dummy]) : new ArenaBounds(1.2),
+      );
       actor.requestDash();
       advance(actor, 0.05, controls(), dt);
       actor.requestJump();
@@ -144,7 +161,10 @@ test("interrupted dash momentum and a subsequent air burst stay inside walls and
         assert.ok(actor.root.position.distanceTo(before) < 20 * dt);
         assert.ok(actor.root.position.y >= 0);
         if (dummy)
-          assert.ok(Math.hypot(actor.root.position.x, actor.root.position.z + 1.4) >= 0.68 - 1e-7);
+          assert.ok(
+            Math.hypot(actor.root.position.x, actor.root.position.z + 1.4) >=
+              0.68 - 1e-7,
+          );
         else assert.ok(Math.abs(actor.root.position.z) <= 0.84 + 1e-7);
       }
       assert.ok(requestedAir);
@@ -160,21 +180,44 @@ test("dash recovery yields foot contacts to Jump while its body pose blends out"
   const animator = new CharacterAnimator(character);
   const step = () => {
     actor.update(1 / 60, controls(0, 1), 0);
-    animator.update(1 / 60, { speed: actor.speed, jump: actor.jump, dash: actor.dash });
+    animator.update(1 / 60, {
+      speed: actor.speed,
+      jump: actor.jump,
+      dash: actor.dash,
+    });
   };
   step();
   actor.requestDash();
   for (let i = 0; i < 6; i++) step();
   actor.requestJump();
   actor.update(1 / 60, controls(0, 1), 0);
-  const contacts = animator.footList.map(foot => foot.target.clone());
-  animator.dashAnimation.update(1 / 60, actor.dash, animator.footList, 0, false);
-  for (let i = 0; i < 2; i++) assert.ok(animator.footList[i].target.equals(contacts[i]));
-  assert.ok(animator.dashAnimation.weight > 0 && animator.dashAnimation.weight < 1);
-  assert.ok(Math.min(...contacts.map(foot => foot.y)) > 0.12);
-  animator.jumpAnimation.update(1 / 60, actor.jump, animator.footList, actor.velocity, 0, false);
+  const contacts = animator.footList.map((foot) => foot.target.clone());
+  animator.dashAnimation.update(
+    1 / 60,
+    actor.dash,
+    animator.footList,
+    0,
+    false,
+  );
+  for (let i = 0; i < 2; i++)
+    assert.ok(animator.footList[i].target.equals(contacts[i]));
+  assert.ok(
+    animator.dashAnimation.weight > 0 && animator.dashAnimation.weight < 1,
+  );
+  assert.ok(Math.min(...contacts.map((foot) => foot.y)) > 0.12);
+  animator.jumpAnimation.update(
+    1 / 60,
+    actor.jump,
+    animator.footList,
+    actor.velocity,
+    0,
+    false,
+  );
   const support = animator.footList[animator.jumpAnimation.support];
-  assert.ok(support.target.y > 0.12, "An elevated dash foot loads gradually instead of snapping to the floor");
+  assert.ok(
+    support.target.y > 0.12,
+    "An elevated dash foot loads gradually instead of snapping to the floor",
+  );
   assert.equal(support.planted, false);
   character.dispose();
 });
@@ -183,23 +226,38 @@ test("interrupted dash, jump, air dash and landing animations keep finite joints
   for (const rate of [30, 60, 120])
     for (const time of [1 / rate, 0.125, 0.24]) {
       const character = new Stickman();
-      const actor = new CharacterController(character.root, new ArenaBounds(100));
+      const actor = new CharacterController(
+        character.root,
+        new ArenaBounds(100),
+      );
       const animator = new CharacterAnimator(character);
       const step = () => {
         actor.update(1 / rate, controls(0.4, 0.9, true), 0);
         const position = character.root.position.clone();
-        animator.update(1 / rate, { speed: actor.speed, jump: actor.jump, dash: actor.dash, blocking: true });
+        animator.update(1 / rate, {
+          speed: actor.speed,
+          jump: actor.jump,
+          dash: actor.dash,
+          blocking: true,
+        });
         assert.ok(character.root.position.equals(position));
         for (const joint of Object.values(character.joints))
-          assert.ok([...joint.position, ...joint.quaternion].every(Number.isFinite));
+          assert.ok(
+            [...joint.position, ...joint.quaternion].every(Number.isFinite),
+          );
         for (const side of ["left", "right"])
-          assert.ok(character.joints[`${side}Ankle`].getWorldPosition(new Vector3()).y >= 0.09);
+          assert.ok(
+            character.joints[`${side}Ankle`].getWorldPosition(new Vector3())
+              .y >= 0.09,
+          );
       };
       step();
       actor.requestDash();
       for (let i = 0; i < Math.max(1, Math.round(time * rate)); i++) step();
       actor.requestJump();
-      do { step(); } while (!actor.jump.airborne);
+      do {
+        step();
+      } while (!actor.jump.airborne);
       actor.requestDash();
       for (let i = 0; i < rate * 1.3; i++) step();
       assert.equal(actor.jump.ready, true);

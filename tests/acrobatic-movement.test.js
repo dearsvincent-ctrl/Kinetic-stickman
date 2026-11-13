@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Group, Quaternion, Vector3 } from "three";
-import { JoystickGestures } from "../src/movement/JoystickGestures.js";
+
 import { BodyRotation } from "../src/movement/BodyRotation.js";
 import { CharacterController } from "../src/movement/CharacterController.js";
 import { ArenaBounds } from "../src/world/ArenaBounds.js";
@@ -21,10 +21,6 @@ const stick = (x = 0, y = 0) => ({
   joystickPointer: 1,
   blocking: false,
 });
-function prime(g, m, input = stick(0, 1), duration = 0.3) {
-  for (let t = 0; t < duration - 1e-9; t += 1 / 60)
-    assert.equal(g.update(1 / 60, input, m, 0), null);
-}
 function airMovement() {
   const m = movement();
   m.jump.phase = "airborne";
@@ -33,74 +29,6 @@ function airMovement() {
   m.jump.verticalVelocity = 1;
   return m;
 }
-test("ground reversals never request an attack or body spin", () => {
-  for (const x of [-0.707, 0.707, 0, 1]) {
-    const g = new JoystickGestures(),
-      m = movement();
-    prime(g, m);
-    assert.equal(g.update(1 / 60, stick(), m, 0), null);
-    assert.equal(g.update(1 / 60, stick(x, x === 1 ? 0 : -1), m, 0), null);
-    assert.equal(g.sequence, 0);
-  }
-});
-test("walks, jogging reversals, slow turns, camera orbit, Block and non-joystick movement never generate techniques", () => {
-  for (const variant of ["slow", "speed", "camera", "block", "keyboard"]) {
-    const g = new JoystickGestures(),
-      m = movement();
-    if (variant === "speed") m.velocity.z = -2;
-    prime(g, m);
-    if (variant === "slow") {
-      for (let n = 1; n <= 20; n++) {
-        const a = (n * Math.PI) / 20;
-        assert.equal(
-          g.update(1 / 60, stick(Math.sin(a), Math.cos(a)), m, 0),
-          null,
-        );
-      }
-    } else if (variant === "camera")
-      assert.equal(g.update(1 / 60, stick(0, 1), m, Math.PI), null);
-    else {
-      const input = stick(0, -1);
-      if (variant === "block") input.blocking = true;
-      if (variant === "keyboard") input.joystickPointer = null;
-      assert.equal(g.update(1 / 60, input, m, 0), null);
-    }
-  }
-});
-test("gesture cooldown and fresh stable prime prevent repeated reversal spam", () => {
-  const g = new JoystickGestures(),
-    m = airMovement();
-  prime(g, m, stick(0, 1), 0.1);
-  assert.ok(g.update(1 / 60, stick(0, -1), m, 0));
-  for (let n = 0; n < 30; n++)
-    assert.equal(g.update(1 / 60, stick(0, n % 2 ? -1 : 1), m, 0), null);
-});
-test("air backflip requires forward prime and a fast backward flick, not ordinary backward air steering", () => {
-  const m = airMovement();
-  let g = new JoystickGestures();
-  assert.equal(g.update(1 / 60, stick(0, -1), m, 0), null);
-  g = new JoystickGestures();
-  prime(g, m, stick(0, 1), 0.1);
-  g.update(1 / 60, stick(), m, 0);
-  assert.equal(g.update(1 / 60, stick(0, -1), m, 0)?.kind, "backflip");
-  m.jump.height = 0.05;
-  g = new JoystickGestures();
-  prime(g, m, stick(0, 1), 0.1);
-  assert.equal(g.update(1 / 60, stick(0, -1), m, 0), null);
-});
-test("late descent, touch release or a stale prime cannot initiate an air flip", () => {
-  const m = airMovement();
-  m.jump.height = 0.1;
-  m.jump.verticalVelocity = -5;
-  const g = new JoystickGestures();
-  prime(g, m, stick(0, 1), 0.1);
-  assert.equal(g.update(1 / 60, stick(0, -1), m, 0), null);
-  const m2 = airMovement(),
-    g2 = new JoystickGestures();
-  prime(g2, m2, stick(0, 1), 0.1);
-  g2.update(1 / 60, { ...stick(), joystickPointer: null }, m2, 0);
-  assert.equal(g2.update(1 / 60, stick(0, -1), m2, 0), null);
-});
 function rotate(input, duration = 0.25) {
   const m = airMovement(),
     r = new BodyRotation();
@@ -206,26 +134,15 @@ test("invalid angular parameters fail safely and speed bounds remain configurabl
   );
 });
 
-test("backflip control reference stays on the primed direction even if steering has turned the body", () => {
-  const g = new JoystickGestures(),
-    m = airMovement();
-  prime(g, m, stick(0, 1), 0.1);
+test("flip pressure remains relative to the captured take-off direction after travel heading changes", () => {
+  const m = airMovement();
   m.heading = Math.PI;
-  g.update(1 / 60, stick(), m, 0);
-  const gesture = g.update(1 / 60, stick(0, -1), m, 0);
-  assert.equal(gesture.kind, "backflip");
-  assert.equal(gesture.referenceYaw, 0);
-  const rotations = [];
+  const rates = [];
   for (const y of [-1, 1]) {
     const r = new BodyRotation();
-    r.start("backflip", m.heading, gesture.direction, 1, gesture.referenceYaw);
-    const original = r.orientation.clone();
+    r.start("backflip", m.heading, 1, 1, 0);
     for (let n = 0; n < 12; n++) r.update(1 / 120, m, stick(0, y), 0);
-    rotations.push(r.angularVelocity.x);
-    assert.ok(r.orientation.angleTo(original) > 0);
+    rates.push(r.angularVelocity.x);
   }
-  assert.ok(
-    rotations[0] > rotations[1] + 2,
-    "Backward pressure accelerates; forward pressure brakes independently of the turned travel heading",
-  );
+  assert.ok(rates[0] > rates[1] + 2);
 });

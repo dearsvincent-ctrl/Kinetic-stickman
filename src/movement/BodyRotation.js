@@ -43,18 +43,21 @@ export class BodyRotation {
     this.lift = 0;
     this.lastKind = "none";
   }
+  get flipping() {
+    return this.phase === "backflip" || this.phase === "frontflip";
+  }
   start(kind, heading, direction = 1, intensity = 1, referenceYaw = heading) {
     if (this.phase === "idle") this.orientation.setFromAxisAngle(UP, heading);
     this.referenceYaw = referenceYaw;
     this.elapsed = 0;
     this.sequence++;
     this.lastKind = kind;
-    if (kind === "backflip") {
-      this.phase = "backflip";
-      this.angularVelocity.x = Math.max(
-        10,
-        this.angularVelocity.x + this.config.flipLaunch,
-      );
+    if (kind === "backflip" || kind === "frontflip") {
+      this.phase = kind;
+      const sign = kind === "backflip" ? 1 : -1;
+      this.angularVelocity.x =
+        sign *
+        Math.max(10, sign * this.angularVelocity.x + this.config.flipLaunch);
       this.pitchTravel = 0;
     } else {
       this.phase = "spin";
@@ -98,7 +101,7 @@ export class BodyRotation {
       this.local.z * Math.sin(this.referenceYaw);
     this.up.copy(UP).applyQuaternion(this.orientation);
     this.invertedWeight = Math.max(0, Math.min(1, (-this.up.y - 0.15) / 0.85));
-    if (this.phase === "backflip" && air) {
+    if (this.flipping && air) {
       // Extra drag near inversion is soft and bypassed by deliberate pressure.
       const easing =
         c.invertedDrag *
@@ -113,7 +116,18 @@ export class BodyRotation {
               )) **
               2,
         ) *
-        (1 - Math.max(0, Math.min(1, backwards)));
+        (1 -
+          Math.max(
+            0,
+            Math.min(
+              1,
+              backwards *
+                Math.sign(
+                  this.angularVelocity.x ||
+                    (this.lastKind === "frontflip" ? -1 : 1),
+                ),
+            ),
+          ));
       this.angularVelocity.multiplyScalar(Math.exp(-(c.airDrag + easing) * dt));
       this.angularVelocity.x += backwards * c.pitchTorque * dt;
       this.angularVelocity.z -= lateral * c.rollTorque * dt;
@@ -133,8 +147,7 @@ export class BodyRotation {
       air &&
       movement.jump.verticalVelocity < 0 &&
       movement.jump.timeToBoundary < 0.16;
-    const recovering =
-      this.phase === "recover" || (!air && this.phase === "backflip");
+    const recovering = this.phase === "recover" || (!air && this.flipping);
     if (recovering || landingSoon) {
       if (!air) this.phase = "recover";
       this.target.setFromAxisAngle(UP, movement.heading);

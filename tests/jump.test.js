@@ -66,7 +66,7 @@ test("jump phases include a grounded push, continuous ballistic ascent/descent a
       new Set(["takeoff", "airborne", "landing", "grounded"]),
     );
     assert.ok(ascended && descended);
-    close(maximum, 0.8, 0.003);
+    close(maximum, JUMP_CONFIG.height, 0.003);
     close(root.position.y, 0);
     close(c.jump.verticalVelocity, 0);
     assert.equal(c.jump.ready, true);
@@ -88,7 +88,8 @@ test("vertical height and touchdown timing use exact gravity at arbitrary step s
   });
   const flightTime = 0.38 - JUMP_CONFIG.takeoffDuration;
   const expected =
-    Math.sqrt(2 * 18 * 0.8) * flightTime - 0.5 * 18 * flightTime ** 2;
+    Math.sqrt(2 * 18 * JUMP_CONFIG.height) * flightTime -
+    0.5 * 18 * flightTime ** 2;
   for (const jump of states) {
     close(jump.height, expected);
     close(jump.verticalVelocity, jump.launchVelocity - 18 * flightTime);
@@ -210,24 +211,29 @@ test("air control and drag are configurable and constant-input paths are rate in
   close(coast.controller.velocity.x, 3);
 });
 
-test("repeat input during takeoff, flight and landing is rejected rather than buffered", () => {
+test("takeoff, third-jump and landing input is rejected without buffering", () => {
   const { controller: c } = actor();
   assert.equal(c.requestJump(), true);
   assert.equal(c.requestJump(), false);
   const phases = new Set();
+  let second = false;
   do {
     c.update(DT, input(), 0);
     if (!c.jump.ready) {
       phases.add(c.jump.phase);
-      assert.equal(c.requestJump(), false);
+      if (c.jump.airborne && !second) {
+        assert.equal(c.requestJump(), true);
+        assert.equal(c.requestJump(), false);
+        second = true;
+      } else assert.equal(c.requestJump(), false);
     }
   } while (!c.jump.ready);
   assert.deepEqual(phases, new Set(["takeoff", "airborne", "landing"]));
   advance(c, 1);
-  assert.equal(c.jump.sequence, 1);
+  assert.equal(c.jump.sequence, 2);
   assert.equal(c.requestJump(), true);
   c.update(DT, input(), 0);
-  assert.equal(c.jump.sequence, 2);
+  assert.equal(c.jump.sequence, 3);
 });
 
 test("ground skills keep request order without buffering takeoff or landing requests", () => {
@@ -332,7 +338,8 @@ test("stop clears pending input but preserves active height and vertical momentu
   close(c.jump.elapsed, elapsed);
   close(c.velocity.length(), 0);
   assert.equal(c.movementState, "jump");
-  assert.equal(c.requestJump(), false);
+  assert.equal(c.canJump, true);
+  assert.equal(c.jump.jumpCount, 1);
   c.update(DT, input(), 0);
   assert.ok(root.position.y > height);
   advance(c, 1);

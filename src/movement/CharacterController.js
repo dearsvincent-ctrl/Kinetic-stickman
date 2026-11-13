@@ -1,4 +1,8 @@
 import { Vector3 } from "three";
+import {
+  intendedJumpFacing,
+  selectDoubleJumpFlip,
+} from "./JoystickGestures.js";
 import { dampAngle, dampFactor } from "../core/math.js";
 import { DashState } from "./DashState.js";
 import { JumpState } from "./JumpState.js";
@@ -53,6 +57,9 @@ export class CharacterController {
     this.dashRequested = false;
     this.requestedDashMode = null;
     this.jumpRequested = false;
+    this.jumpReferenceYaw = 0;
+    this.jumpEvent = { sequence: 0, kind: null, referenceYaw: 0 };
+    this.jumpIntent = { move: { x: 0, y: 0 }, cameraYaw: 0, captured: false };
   }
 
   applyMovementConfig(config) {
@@ -94,16 +101,26 @@ export class CharacterController {
     // Ground dash is interruptible. Vertical eligibility and the aerial dash
     // remain independent; neither a landing nor an air burst grants a jump.
     return (
-      this.jump.ready &&
+      this.jump.canJump &&
       !this.jumpRequested &&
-      !(this.dash.active && this.dash.mode !== "ground") &&
-      !(this.dashRequested && this.requestedDashMode !== "ground")
+      !(this.jump.ready && this.dash.active && this.dash.mode !== "ground") &&
+      !(
+        this.jump.ready &&
+        this.dashRequested &&
+        this.requestedDashMode !== "ground"
+      )
     );
   }
 
-  requestJump() {
+  requestJump(input = null, cameraYaw = 0) {
     if (!this.canJump) return false;
     this.jumpRequested = true;
+    this.jumpIntent.captured = Boolean(input);
+    if (input) {
+      this.jumpIntent.move.x = input.move.x;
+      this.jumpIntent.move.y = input.move.y;
+      this.jumpIntent.cameraYaw = cameraYaw;
+    }
     return true;
   }
 
@@ -159,7 +176,27 @@ export class CharacterController {
       // End the impulse, not the resolved velocity. This also handles rapid
       // Dash -> Jump entries before a simulation tick without stacking bursts.
       if (this.groundDash.active) this.groundDash.finish("jumped");
-      if (this.jump.start()) this.movementState = "jump";
+      const airborne = this.jump.airborne,
+        intent = this.jumpIntent.captured ? this.jumpIntent : input,
+        intentYaw = this.jumpIntent.captured
+          ? this.jumpIntent.cameraYaw
+          : cameraYaw;
+      this.jumpIntent.captured = false;
+      if (!airborne)
+        this.jumpReferenceYaw = intendedJumpFacing(
+          intent,
+          intentYaw,
+          this.velocity,
+          this.heading,
+        );
+      if (this.jump.start()) {
+        this.jumpEvent.sequence = this.jump.sequence;
+        this.jumpEvent.kind = airborne
+          ? selectDoubleJumpFlip(intent, intentYaw, this.jumpReferenceYaw)
+          : null;
+        this.jumpEvent.referenceYaw = this.jumpReferenceYaw;
+        this.movementState = "jump";
+      }
     }
     this.facingTarget =
       this.jump.ready &&

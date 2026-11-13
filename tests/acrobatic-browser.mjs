@@ -105,7 +105,7 @@ export async function checkAcrobatics(page, native) {
         "Forceful plant emits a bounded streak burst",
       );
     if (x === 0)
-      await page.screenshot({ path: "test-results/v077-hard-reversal.png" });
+      await page.screenshot({ path: "test-results/v078-hard-reversal.png" });
     await s.enter(action);
     await advance(page, 100);
     a = await read(page);
@@ -160,19 +160,17 @@ export async function checkAcrobatics(page, native) {
   console.log(
     "PASS: moderate reversal recovery, gentle curved steering and ordinary backward air control never trigger attacks",
   );
-  // Prime a deliberate forward→back flick after launch. Never requires a target.
+  await checkDirectionalDoubleJump(page, native);
+  // Directional second-Jump activation reuses the existing rotational presenter.
   async function flip() {
     await fresh(page);
     const s = await stick(page, native);
     await s.move(0, 0);
     await s.tap("jump");
     await advance(page, 115);
-    await s.move(0, 1);
-    await advance(page, 85);
-    await s.move(0, 0);
-    await advance(page, 17);
     await s.move(0, -1);
-    await advance(page, 50);
+    await s.tap("jump");
+    await advance(page, 100);
     assert.equal((await read(page)).acroKind, "backflip");
     return s;
   }
@@ -188,7 +186,7 @@ export async function checkAcrobatics(page, native) {
     assert.equal(during.camera.yaw, before.camera.yaw);
     assert.ok(during.acrobatics.pitchTravel > before.acrobatics.pitchTravel);
   }
-  await page.screenshot({ path: "test-results/v077-backflip-kick.png" });
+  await page.screenshot({ path: "test-results/v078-backflip-kick.png" });
   await s.enter("block");
   await advance(page, 100);
   a = await read(page);
@@ -204,7 +202,7 @@ export async function checkAcrobatics(page, native) {
   assert.equal(a.acroPhase, "idle");
   assert.equal(await page.locator("#jump-status").textContent(), "READY");
   console.log(
-    "PASS: early airborne flick, Kick during continuing rotation/gravity, Block priority and upright landing recovery",
+    "PASS: directional double Jump, Kick during continuing rotation/gravity, Block priority and upright landing recovery",
   );
   // Longer physical jump makes inverted easing and steering easy to inspect;
   // sandbox controls remain the only write path.
@@ -229,12 +227,9 @@ export async function checkAcrobatics(page, native) {
     await s.move(0, 0);
     await s.tap("jump");
     await advance(page, 115);
-    await s.move(0, 1);
-    await advance(page, 85);
-    await s.move(0, 0);
-    await advance(page, 17);
     await s.move(0, -1);
-    await advance(page, 35);
+    await s.tap("jump");
+    await advance(page, 120); // Wait for the throttled HUD, not for jump eligibility.
     assert.equal((await read(page)).acroKind, "backflip");
     await s.move(0, direction);
     let inverted = false,
@@ -246,7 +241,7 @@ export async function checkAcrobatics(page, native) {
       a = await read(page);
       minUp = Math.min(minUp, Number(a.bodyUp));
       if (direction === 0 && !inverted && Number(a.invertedWeight) > 0.4)
-        await page.screenshot({ path: "test-results/v077-air-rotation.png" });
+        await page.screenshot({ path: "test-results/v078-air-rotation.png" });
       inverted ||= Number(a.invertedWeight) > 0.4;
       assert.ok(Number.isFinite(Number(a.angularPitch)));
     }
@@ -301,7 +296,7 @@ export async function checkAcrobatics(page, native) {
     assert.ok(extreme.renderer.calls < 80);
     assert.ok(extreme.recovery.streaks > 0);
   }
-  await page.screenshot({ path: "test-results/v077-extreme-recovery.png" });
+  await page.screenshot({ path: "test-results/v078-extreme-recovery.png" });
   await s.enter("kick");
   await advance(page, 100);
   assert.equal((await read(page)).action, "kick");
@@ -368,11 +363,188 @@ export async function checkPartialAnalogueRecovery(page, native) {
       JSON.stringify(a),
     );
     await page.screenshot({
-      path: `test-results/v077-partial-${extreme ? "100x" : "normal"}.png`,
+      path: `test-results/v078-partial-${extreme ? "100x" : "normal"}.png`,
     });
     await s.stop();
   }
   console.log(
     "PASS: partial analogue reversals remain gentle normally and recover from actual braking at 100x without attacking",
+  );
+}
+
+export async function checkDirectionalDoubleJump(page, native) {
+  const cases = [
+    [[0, 0], [0, 1], "frontflip"],
+    [[0, 0], [0, -1], "backflip"],
+    [[0, 0], [0, 0], null],
+    [[0, 0], [0.707, 0.707], "frontflip"],
+    [[0, 0], [-0.707, -0.707], "backflip"],
+    [[1, 0], [1, 0], "frontflip"],
+    [[1, 0], [-1, 0], "backflip"],
+  ];
+  for (const [takeoff, second, kind] of cases) {
+    await fresh(page);
+    const s = await stick(page, native);
+    await s.move(...takeoff);
+    await s.tap("jump");
+    await advance(page, 150);
+    assert.equal(
+      await page.locator("#jump-button").getAttribute("data-jump-count"),
+      "1",
+    );
+    assert.equal(
+      await page.locator("#jump-button").getAttribute("aria-disabled"),
+      "false",
+    );
+    const launch = Number(
+      await page.locator("#jump-button").getAttribute("data-jump-launch"),
+    );
+    assert.ok(Math.abs(launch - Math.sqrt(2 * 18 * 1.2)) < 1e-8);
+    await s.move(...second);
+    await s.tap("jump");
+    await advance(page, 100);
+    const a = await read(page);
+    assert.equal(a.acroKind, kind ?? "none");
+    assert.equal(
+      await page.locator("#jump-button").getAttribute("data-jump-count"),
+      "2",
+    );
+    assert.equal(
+      await page.locator("#jump-button").getAttribute("data-jump-sequence"),
+      "2",
+    );
+    assert.equal(
+      Number(
+        await page.locator("#jump-button").getAttribute("data-jump-launch"),
+      ),
+      launch,
+    );
+    await s.tap("jump");
+    await advance(page, 100);
+    assert.equal(
+      await page.locator("#jump-button").getAttribute("data-jump-sequence"),
+      "2",
+    );
+    const state = await snap(page);
+    if (state) {
+      assert.notEqual(state.input.joystickPointer, null);
+      assert.equal(state.jump.count, 2);
+      assert.ok(state.position[1] > 0);
+    }
+    if (kind)
+      await page.screenshot({
+        path: `test-results/v078-${kind}-${takeoff[0]}.png`,
+      });
+    await s.stop();
+    if (!kind) {
+      await advance(page, 1800);
+      assert.equal(
+        await page.locator("#jump-button").getAttribute("data-jump-count"),
+        "0",
+      );
+      assert.equal(
+        await page.locator("#jump-button").getAttribute("data-jump-sequence"),
+        "2",
+      );
+      await s.tap("jump");
+      await advance(page, 150);
+      assert.equal(
+        await page.locator("#jump-button").getAttribute("data-jump-sequence"),
+        "3",
+      );
+      await s.stop();
+    }
+  }
+  // A forward/back flick during the first jump is normal steering, never a flip.
+  await fresh(page);
+  let s = await stick(page, native);
+  await s.move(0, 0);
+  await s.tap("jump");
+  await advance(page, 115);
+  await s.move(0, 1);
+  await advance(page, 85);
+  await s.move(0, 0);
+  await advance(page, 17);
+  await s.move(0, -1);
+  await advance(page, 100);
+  assert.equal((await read(page)).acroSequence, "0");
+  assert.equal(
+    await page.locator("#jump-button").getAttribute("data-jump-count"),
+    "1",
+  );
+  await s.stop();
+  console.log(
+    "PASS: native directional double jumps, equal launches, diagonals/take-off-relative directions, neutral bounce, third rejection and no flick activation",
+  );
+  const normal = new URL(page.url());
+  for (const extreme of [false, true]) {
+    await page.goto(
+      new URL("?sandbox=1" + ((await snap(page)) ? "&debug" : ""), page.url())
+        .href,
+      { waitUntil: "networkidle" },
+    );
+    await advance(page, 450);
+    await page.locator("#physics-toggle").click();
+    await page.evaluate((extreme) => {
+      for (const [key, n] of Object.entries({
+        jumpHeight: extreme ? 100 : 1,
+        gravity: extreme ? 100 : 1,
+      })) {
+        const e = document.querySelector(`#physics-${key}`);
+        e.value = Math.log10(n);
+        e.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }, extreme);
+    await page.locator("#physics-close").click();
+    await advance(page, 34);
+    await page.evaluate(() => document.activeElement?.blur());
+    const s = await stick(page, native);
+    await s.move(0, 0);
+    await s.tap("jump");
+    await advance(page, 150);
+    const first = Number(
+      await page.locator("#jump-button").getAttribute("data-jump-launch"),
+    );
+    assert.ok(
+      Math.abs(first - Math.sqrt(2 * 18 * 1.2 * (extreme ? 10000 : 1))) < 1e-8,
+    );
+    await page.locator("#physics-toggle").click();
+    await page.evaluate((extreme) => {
+      const e = document.querySelector("#physics-jumpHeight");
+      e.value = Math.log10(extreme ? 100 : 2);
+      e.dispatchEvent(new Event("input", { bubbles: true }));
+    }, extreme);
+    await page.locator("#physics-close").click();
+    await advance(page, 34);
+    await page.evaluate(() => document.activeElement?.blur());
+    await s.tap("jump");
+    await advance(page, 100);
+    assert.equal(
+      await page.locator("#jump-button").getAttribute("data-jump-count"),
+      "2",
+    );
+    const second = Number(
+      await page.locator("#jump-button").getAttribute("data-jump-launch"),
+    );
+    const appliedHeight =
+        10 ** Number(await page.locator("#physics-jumpHeight").inputValue()),
+      appliedGravity =
+        10 ** Number(await page.locator("#physics-gravity").inputValue());
+    assert.ok(
+      Math.abs(
+        second - Math.sqrt(2 * 18 * 1.2 * appliedHeight * appliedGravity),
+      ) < 1e-8,
+    );
+    await s.stop();
+    await advance(page, 2200);
+    assert.equal(
+      await page.locator("#jump-button").getAttribute("data-jump-count"),
+      "0",
+    );
+  }
+  await page.goto(normal.href, { waitUntil: "networkidle" });
+  await advance(page, 450);
+  console.log(
+    "PASS: mid-flight sandbox changes affect the second launch; both jumps remain stable at 100x height/gravity",
   );
 }

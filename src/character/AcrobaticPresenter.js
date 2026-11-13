@@ -55,7 +55,7 @@ export class AcrobaticPresenter {
       (rotation.phase === "recover" &&
         Math.abs(rotation.angularVelocity.y) > 2);
     this.flipWeight +=
-      ((rotation.phase === "backflip" ? 1 : 0) - this.flipWeight) *
+      ((rotation.flipping ? 1 : 0) - this.flipWeight) *
       (1 - Math.exp(-18 * dt));
     if (this.flipWeight > 0.001) {
       // Tuck around the existing pelvis. Base jump/attack poses remain the source;
@@ -108,7 +108,7 @@ export class AcrobaticPresenter {
         (spinning || t.gesture) &&
         root.position.y <= 0.001 &&
         attack.context?.environment !== "air" &&
-        !rotation.phase.startsWith("backflip")
+        !rotation.flipping
       ) {
         // The supporting leg stays under the pelvis as yaw sweeps over it. Running
         // can continue; its contact is repositioned with the resolved physical root.

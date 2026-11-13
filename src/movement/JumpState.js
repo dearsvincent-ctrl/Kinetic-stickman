@@ -1,5 +1,8 @@
+export const ORIGINAL_JUMP_HEIGHT = 0.8;
+export const DEFAULT_JUMP_HEIGHT_MULTIPLIER = 1.5;
 export const JUMP_CONFIG = Object.freeze({
-  height: 0.8,
+  height: ORIGINAL_JUMP_HEIGHT * DEFAULT_JUMP_HEIGHT_MULTIPLIER,
+  maxJumps: 2,
   gravity: 18,
   airControl: 3.5,
   airDrag: 0.1,
@@ -27,6 +30,7 @@ export class JumpState {
     this.verticalVelocity = 0;
     this.elapsed = 0;
     this.sequence = 0;
+    this.jumpCount = 0;
     this.landingSpeed = 0;
   }
 
@@ -36,6 +40,8 @@ export class JumpState {
         throw new RangeError(`Invalid jump ${key}`);
     if (config.height <= 0 || config.gravity <= 0)
       throw new RangeError("Jump height and gravity must be positive");
+    if (!Number.isInteger(config.maxJumps) || config.maxJumps < 1)
+      throw new RangeError("maxJumps must be a positive integer");
     this.config = Object.freeze({ ...config });
     this.launchVelocity = Math.sqrt(2 * config.gravity * config.height);
     this.flightDuration = (2 * this.launchVelocity) / config.gravity;
@@ -45,6 +51,12 @@ export class JumpState {
 
   get ready() {
     return this.phase === "grounded";
+  }
+
+  get canJump() {
+    return (
+      this.ready || (this.airborne && this.jumpCount < this.config.maxJumps)
+    );
   }
 
   get airborne() {
@@ -87,8 +99,14 @@ export class JumpState {
   }
 
   start() {
-    if (!this.ready) return false;
+    if (!this.canJump) return false;
     this.sequence++;
+    if (this.airborne) {
+      this.jumpCount++;
+      this.launch();
+      return true;
+    }
+    this.jumpCount = 1;
     this.height = 0;
     this.verticalVelocity = 0;
     this.landingSpeed = 0;
@@ -124,6 +142,7 @@ export class JumpState {
         this.launch();
       } else if (this.airborne) {
         this.landingSpeed = Math.abs(this.verticalVelocity);
+        this.jumpCount = 0;
         this.height = 0;
         this.verticalVelocity = 0;
         this.elapsed = 0;

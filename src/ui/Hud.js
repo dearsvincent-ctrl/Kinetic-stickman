@@ -104,8 +104,8 @@ export class Hud {
           : (combat.currentTechnique?.label?.toUpperCase() ?? "ATTACKING")
         : combat?.postureActive
           ? "COMBAT POSTURE"
-          : rotation?.phase === "backflip"
-            ? "BACKFLIP · STEER ROTATION"
+          : rotation?.flipping
+            ? `${rotation.phase.toUpperCase()} · STEER ROTATION`
             : "FREE MOVEMENT";
     this.speedValue.textContent = speed.toFixed(1);
     this.stanceLabel.dataset.technique = combat?.attack.active
@@ -146,6 +146,11 @@ export class Hud {
         contactFeedback > 0 ? "CONTACT" : "PRACTISE YOUR STRIKES";
     }
     if (jump) {
+      this.jumpButton.dataset.jumpCount = String(jump.jumpCount);
+      this.jumpButton.dataset.jumpSequence = String(jump.sequence);
+      this.jumpButton.dataset.jumpLaunch = String(
+        jump.flightLaunchVelocity ?? jump.launchVelocity,
+      );
       this.jumpButton.setAttribute(
         "aria-disabled",
         String(!(movement ? movement.canJump : jump.ready && !dash?.active)),
@@ -155,13 +160,15 @@ export class Hud {
         ? dash?.active && dash.mode === "air"
           ? "DASHING"
           : "READY"
-        : jump.phase === "takeoff"
-          ? "PUSH"
-          : jump.phase === "landing"
-            ? "LAND"
-            : jump.verticalVelocity >= 0
-              ? "UP"
-              : "DOWN";
+        : jump.airborne && jump.canJump
+          ? "JUMP 2"
+          : jump.phase === "takeoff"
+            ? "PUSH"
+            : jump.phase === "landing"
+              ? "LAND"
+              : jump.verticalVelocity >= 0
+                ? "UP"
+                : "DOWN";
     }
   }
 }

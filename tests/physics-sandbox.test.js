@@ -200,7 +200,10 @@ test("jump velocity derives from height and gravity; extreme combinations land f
   for (const h of [0.1, 10, 50, 100])
     for (const g of [0.1, 1, 100]) {
       const c = actor({ jumpHeight: h, gravity: g });
-      close(c.jump.launchVelocity, Math.sqrt(2 * 0.8 * h * 18 * g));
+      close(
+        c.jump.launchVelocity,
+        Math.sqrt(2 * MOVEMENT_DEFAULTS.jump.height * h * 18 * g),
+      );
       c.requestJump();
       let peak = 0;
       for (let n = 0; n < 5000; n++) {
@@ -211,7 +214,7 @@ test("jump velocity derives from height and gravity; extreme combinations land f
         if (c.jump.ready && n > 0) break;
       }
       assert.ok(c.jump.ready);
-      assert.ok(peak <= 0.8 * h + 1e-7);
+      assert.ok(peak <= MOVEMENT_DEFAULTS.jump.height * h + 1e-7);
       close(c.root.position.y, 0);
       close(c.jump.verticalVelocity, 0);
     }

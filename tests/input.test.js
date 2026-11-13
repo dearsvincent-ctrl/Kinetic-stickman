@@ -1674,3 +1674,19 @@ test("buttons relocated while input is disabled use their current hit positions 
   f.pointer(f.window, "pointerup", 2);
   assert.equal(f.input.actions.ownsPointer(2), false);
 });
+
+test("Jump entry captures direction and camera reference before later steering", (t) => {
+  const f = setup(t);
+  let yaw = 0.7;
+  f.input.getCameraYaw = () => yaw;
+  f.key("keydown", "KeyW");
+  f.pointer(f.jumpButton, "pointerdown", 9);
+  f.key("keyup", "KeyW");
+  f.key("keydown", "KeyS");
+  yaw = 2;
+  assert.equal(f.input.move.y, -1);
+  assert.equal(f.input.jumpIntent.move.y, 1);
+  assert.equal(f.input.jumpIntent.cameraYaw, 0.7);
+  assert.equal(f.input.consumeMovementRequest(), "jump");
+  assert.equal(f.input.consumeMovementRequest(), null);
+});

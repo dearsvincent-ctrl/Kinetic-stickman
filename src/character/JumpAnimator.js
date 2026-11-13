@@ -61,7 +61,9 @@ export class JumpAnimator {
       dt,
     );
 
-    if (active && (!this.active || jump.sequence !== this.sequence)) {
+    const entering =
+      active && (!this.active || jump.sequence !== this.sequence);
+    if (entering) {
       this.sequence = jump.sequence;
       this.support = feet[0].planted
         ? 0
@@ -146,7 +148,7 @@ export class JumpAnimator {
         foot.anchor.copy(foot.target);
       }
     } else if (phase === "airborne") {
-      if (previousPhase !== "airborne") {
+      if (previousPhase !== "airborne" || entering) {
         this.flightHipStart = this.character.joints.hips.position.y;
         this.flightArmStart = this.freeArmX;
         this.flightElbowStart = this.freeElbow;

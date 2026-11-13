@@ -15,7 +15,6 @@ import {
   ContextualLimbSelector,
 } from "../combat/AdaptiveTechniques.js";
 import { BodyRotation } from "../movement/BodyRotation.js";
-import { JoystickGestures } from "../movement/JoystickGestures.js";
 import { MomentumRecovery } from "../movement/MomentumRecovery.js";
 import { GroundStreaks } from "../world/GroundStreaks.js";
 import { AcrobaticPresenter } from "../character/AcrobaticPresenter.js";
@@ -62,7 +61,7 @@ export class Game {
       { faceInputWhenBlocked: true },
     );
     this.bodyRotation = new BodyRotation();
-    this.gestures = new JoystickGestures();
+    this.lastRotationJumpSequence = 0;
     this.momentumRecovery = new MomentumRecovery();
     this.recoveryPrevious = new THREE.Vector3();
     this.streaks = new GroundStreaks();
@@ -102,6 +101,7 @@ export class Game {
     this.input = new InputController({
       joystick: document.querySelector("#joystick"),
       joystickKnob: document.querySelector("#joystick-knob"),
+      getCameraYaw: () => this.followCamera.yaw,
       keyboardMagnitude: magnitudeForSpeed(
         this.controller.runSpeed,
         this.controller.config.analogue,
@@ -194,7 +194,6 @@ export class Game {
     this.controller.stop();
     this.combat.reset();
     this.attackScheduler.reset();
-    this.gestures.reset();
     this.momentumRecovery.reset();
     this.streaks.reset();
     this.bodyRotation.reset(this.controller.heading);
@@ -222,23 +221,12 @@ export class Game {
           action;
           action = this.input.consumeMovementRequest()
         ) {
-          if (action === "jump") this.controller.requestJump();
+          if (action === "jump")
+            this.controller.requestJump(
+              this.input.jumpIntent,
+              this.input.jumpIntent.cameraYaw,
+            );
           else if (action === "dash") this.controller.requestDash();
-        }
-        const gesture = this.gestures.update(
-          STEP,
-          this.input,
-          this.controller,
-          this.followCamera.yaw,
-        );
-        if (gesture) {
-          this.bodyRotation.start(
-            gesture.kind,
-            this.controller.heading,
-            gesture.direction,
-            gesture.intensity,
-            gesture.referenceYaw,
-          );
         }
         this.simulationSteps = this.physicsSandbox.enabled
           ? movementSubsteps(
@@ -312,6 +300,21 @@ export class Game {
     if (this.momentumRecovery)
       this.recoveryPrevious.copy(this.controller.velocity);
     this.controller.update(dt, this.input, this.followCamera.yaw);
+    const jumpEvent = this.controller.jumpEvent;
+    if (
+      this.bodyRotation &&
+      jumpEvent.sequence !== this.lastRotationJumpSequence
+    ) {
+      this.lastRotationJumpSequence = jumpEvent.sequence;
+      if (jumpEvent.kind)
+        this.bodyRotation.start(
+          jumpEvent.kind,
+          this.controller.heading,
+          1,
+          1,
+          jumpEvent.referenceYaw,
+        );
+    }
     this.momentumRecovery?.update(
       dt,
       this.recoveryPrevious,
@@ -436,6 +439,10 @@ export class Game {
         elapsed: this.controller.jump.elapsed,
         phaseProgress: this.controller.jump.phaseProgress,
         sequence: this.controller.jump.sequence,
+        count: this.controller.jump.jumpCount,
+        maxJumps: this.controller.jump.config.maxJumps,
+        launchVelocity: this.controller.jump.launchVelocity,
+        referenceYaw: this.controller.jumpReferenceYaw,
         ready: this.controller.jump.ready,
         canJump: this.controller.canJump,
         config: { ...this.controller.jump.config },

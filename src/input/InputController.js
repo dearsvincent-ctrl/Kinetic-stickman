@@ -48,6 +48,7 @@ export class InputController {
     actionRoot = document.documentElement,
     actionBindings = [],
     keyboardMagnitude = 0.7,
+    getCameraYaw = () => 0,
   }) {
     this.joystick = joystick;
     this.joystickKnob = joystickKnob;
@@ -69,6 +70,8 @@ export class InputController {
     this.movementMagnitude = 0;
 
     this.move = { x: 0, y: 0 };
+    this.getCameraYaw = getCameraYaw;
+    this.jumpIntent = { move: { x: 0, y: 0 }, cameraYaw: 0 };
     this.sprinting = false;
     this.blocking = false;
     this.attackRequested = false;
@@ -347,6 +350,11 @@ export class InputController {
   requestJump() {
     // Grounding and jump eligibility belong to the movement controller.
     if (!this.enabled || this.jumpRequested) return;
+    // Preserve direction at entry even if another thumb steers before the
+    // next fixed step. The snapshot never drives horizontal movement.
+    this.jumpIntent.move.x = this.move.x;
+    this.jumpIntent.move.y = this.move.y;
+    this.jumpIntent.cameraYaw = this.getCameraYaw();
     this.jumpRequested = true;
     this.movementRequests.push("jump");
   }
