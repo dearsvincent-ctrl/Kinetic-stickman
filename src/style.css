@@ -1638,3 +1638,29 @@ h1 {
     right: calc(100% + 94px);
   }
 }
+
+.aim-assist-controls {
+  min-inline-size: 0;
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid #68786566;
+  border-radius: 8px;
+}
+.aim-assist-controls legend {
+  padding: 0 6px;
+  color: #dfd8c2;
+  font-size: 12px;
+}
+.aim-debug-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+  font-size: 11px;
+  color: #c7d2c1;
+}
+.aim-debug-label input {
+  accent-color: #ff986d;
+  width: 20px;
+  height: 20px;
+}

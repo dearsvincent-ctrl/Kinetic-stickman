@@ -134,6 +134,9 @@ export class Hud {
     this.stanceLabel.dataset.cancelled = String(
       combat?.attack.cancelled ?? false,
     );
+    const aim = combat?.attack.active ? combat.attack.context?.punchAim : null;
+    this.stanceLabel.dataset.aimTarget = aim?.targetId ?? "none";
+    this.stanceLabel.dataset.aimAngle = String(aim?.angle ?? 0);
     this.speedFill.style.width = `${Math.min(100, (speed / maxSpeed) * 100)}%`;
     this.movementDot.style.background =
       state === "IDLE" ? "#9faa98" : "#ff885e";

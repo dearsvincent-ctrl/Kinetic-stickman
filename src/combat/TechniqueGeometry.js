@@ -1,4 +1,5 @@
 import { Quaternion, Vector3 } from "three";
+import { alignPunchPoint } from "./PunchAlignment.js";
 export const BODY_PIVOT = 0.955;
 const UP = new Vector3(0, 1, 0);
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -61,6 +62,9 @@ export function sampleLocalStrike(out, technique, elapsed, context = {}) {
         (dz * 0.635) / len,
       );
   }
+  // A rigid upper-body correction preserves the authored shoulder-to-fist
+  // length. Contact sensing and presentation sample this same corrected path.
+  alignPunchPoint(out, technique, elapsed, context);
   const entry =
     context.limbs?.[technique.side]?.[
       technique.action === "kick" ? "foot" : "hand"

@@ -59,7 +59,8 @@ export function createAdaptiveTechniques() {
   ];
 }
 export class ContextualLimbSelector {
-  constructor() {
+  constructor({ scorePosition = null } = {}) {
+    this.scorePosition = scorePosition;
     this.readyAt = {
       "punch:left": -10,
       "punch:right": -10,
@@ -116,6 +117,7 @@ export class ContextualLimbSelector {
         sign * rotation * 0.045 +
         support -
         resetting * 0.4 +
+        (this.scorePosition?.(context, technique, side) ?? 0) +
         (side === "right" ? 0.025 : 0)
       );
     };

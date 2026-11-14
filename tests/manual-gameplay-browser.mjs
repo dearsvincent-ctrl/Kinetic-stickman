@@ -391,7 +391,7 @@ export async function checkSandbox(page, native) {
   await page.goto(dev.href, { waitUntil: "networkidle" });
   await advance(page, 450);
   await click(page, "#physics-toggle");
-  assert.equal(await page.locator(".physics-row").count(), 8);
+  assert.equal(await page.locator("#physics-fields .physics-row").count(), 8);
   const original = await page.evaluate(() =>
     localStorage.getItem("kinetic.controls.v1"),
   );

@@ -106,6 +106,7 @@ export class CombatController {
   constructor({
     techniques = DEFAULT_TECHNIQUES,
     selectTechnique,
+    prepareAttackContext = null,
     postureHold = COMBAT_CONFIG.postureHold,
     cancelRecovery = COMBAT_CONFIG.cancelRecovery,
   } = {}) {
@@ -114,6 +115,7 @@ export class CombatController {
       cancelRecovery: duration(cancelRecovery, "cancelRecovery"),
     });
     this.techniques = makeRegistry(techniques);
+    this.prepareAttackContext = prepareAttackContext;
     this.selectTechnique =
       selectTechnique ??
       ((context, eligible) =>
@@ -201,6 +203,12 @@ export class CombatController {
         side: selected.side,
         label: selected.label ?? technique.label,
       });
+    const executionContext = selectionContext.techniqueContexts
+      ? techniqueContext(selectionContext, technique.id)
+      : selectionContext;
+    const preparedContext =
+      this.prepareAttackContext?.(executionContext, technique) ??
+      executionContext;
     this._technique = technique;
     this._phaseElapsed = 0;
     this._recoveryDuration = technique.recovery;
@@ -214,9 +222,10 @@ export class CombatController {
       extension: 0,
       sequence: this.attack.sequence + 1,
       techniqueId: technique.id,
-      context: selectionContext.techniqueContexts
-        ? snapshot(techniqueContext(selectionContext, technique.id))
-        : selectionContext,
+      context:
+        preparedContext === selectionContext
+          ? selectionContext
+          : snapshot(preparedContext),
       cancelled: false,
       exitReason: null,
     });

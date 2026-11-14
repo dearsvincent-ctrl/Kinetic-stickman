@@ -5,6 +5,9 @@ import { ARENA_CONFIG } from "../world/ArenaConfig.js";
 import { BattleWorld } from "../combat/BattleWorld.js";
 import { EnemyViews } from "../character/EnemyViews.js";
 import { BattleHud } from "../ui/BattleHud.js";
+import { PunchAimAssist } from "../combat/PunchAimAssist.js";
+import { AimAssistPanel } from "../ui/AimAssistPanel.js";
+import { PunchAimDebug } from "../character/PunchAimDebug.js";
 import { Stickman } from "../character/Stickman.js";
 import { CharacterAnimator } from "../character/CharacterAnimator.js";
 import { CharacterController } from "../movement/CharacterController.js";
@@ -77,13 +80,19 @@ export class Game {
     this.scene.add(this.streaks.mesh);
     this.streakOrigin = new THREE.Vector3();
     this.lastPlantSequence = 0;
-    this.limbSelector = new ContextualLimbSelector();
+    this.limbSelector = new ContextualLimbSelector({
+      scorePosition: (context, technique, side) =>
+        this.punchAim?.limbPreference(context, technique, side) ?? 0,
+    });
     this.bodyStart = new THREE.Quaternion();
     this.bodyEnd = new THREE.Quaternion();
+    this.punchAim = new PunchAimAssist();
     this.combat = new CombatController({
       techniques: createAdaptiveTechniques(),
       selectTechnique: (context, eligible) =>
         this.limbSelector.choose(context, eligible),
+      prepareAttackContext: (context, technique) =>
+        this.punchAim.prepare(context, technique),
     });
     this.attackScheduler = new AttackScheduler(this.combat);
     this.targets = [];
@@ -95,6 +104,8 @@ export class Game {
       enabled: new URLSearchParams(location.search).get("practice") !== "1",
     });
     this.enemyViews = new EnemyViews(this.scene, this.battle.enemies);
+    this.punchAim.targets = this.battle.enemies;
+    this.punchAimDebug = new PunchAimDebug(this.scene, this.punchAim);
     this.defeated = false;
     this.contactFeedbackRemaining = 0;
     this.hitDetector = new StrikeHitDetector({
@@ -170,6 +181,7 @@ export class Game {
         this.followCamera.maxLag = this.sandboxModified ? 0.65 : Infinity;
       },
     });
+    this.aimAssistPanel = new AimAssistPanel(this.punchAim);
     this.accumulator = 0;
     this.lastTime = null;
     this.resize = this.resize.bind(this);
@@ -327,6 +339,12 @@ export class Game {
       this.contactFeedbackRemaining > 0 &&
         this.hitDetector.lastContact?.targetId === this.dummy.target.id,
     );
+    this.punchAimDebug.update(
+      this.combat,
+      this.character.root.position,
+      this.bodyRotation.orientation,
+      this.bodyRotation.lift,
+    );
     this.battleHud.update(dt, this.battle);
     if (!this.contextLost) this.renderer.render(this.scene, this.camera);
     this.hud.update(
@@ -409,6 +427,21 @@ export class Game {
       Math.cos(this.controller.heading - heading),
     );
     while (elapsed < dt - 1e-9) {
+      if (
+        !this.input.blocking &&
+        this.punchAim?.config.strength > 0 &&
+        this.punchAim.config.maxAngle > 0 &&
+        (this.attackScheduler.pending === "punch" ||
+          (this.combat.ready && this.attackScheduler.held.has("punch")))
+      )
+        this.punchAim.capture(
+          this.controller,
+          this.simulationPrevious,
+          this.bodyRotation,
+          this.bodyStart,
+          elapsed / dt,
+          dt,
+        );
       this.attackScheduler.prepare(context, this.input.blocking);
       const step = Math.min(
         dt - elapsed,
@@ -462,6 +495,15 @@ export class Game {
 
   snapshot() {
     return {
+      aimAssist: this.punchAim
+        ? {
+            ...this.punchAim.config,
+            queries: this.punchAim.queries,
+            current: this.combat.attack.active
+              ? (this.combat.attack.context?.punchAim ?? null)
+              : null,
+          }
+        : null,
       battle: this.battle?.snapshot(),
       recovery: {
         sequence: this.momentumRecovery.sequence,

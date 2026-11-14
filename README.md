@@ -1,10 +1,10 @@
-# Kinetic — Movement Lab v0.7.9
+# Kinetic — Movement Lab v0.7.10
 
-A mobile-first Three.js/Vite stickman prototype. Version 0.7.9 adds a **2,000 × 2,000-unit arena, active enemy waves, health, blocking and physical strike damage**. The v0.7.8 directional double jump, 1.5× original jump-height baseline, manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place.
+A mobile-first Three.js/Vite stickman prototype. Version 0.7.10 adds **subtle manual-punch aim assistance** to the 2,000 × 2,000-unit arena and active combat waves. The v0.7.8 directional double jump, 1.5× original jump-height baseline, manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place.
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.7.9** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.7.9**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.7.10** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.7.10**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -25,6 +25,18 @@ Sliding between **Punch, Kick, Block and Jump** uses the same central action rou
 Combat never reduces movement speed, applies root motion, pulls the character toward a target or automatically turns toward the dummy. Keep using the analogue joystick and Jump while attacking. When collision would leave the fighter facing a tiny tangent slide, facing smoothly retains the last joystick intent; it never reads the opponent to aim. A ground-only strike yields to takeoff; an air-only strike yields to landing. Held input can resume the appropriate technique when the new physical phase permits it. There is no automatic attack merely from standing near the dummy.
 
 **Dash is removed from the normal HUD, keyboard bindings and layout editor.** Its physical ground/aerial implementations remain in the code for future movement abilities. Developer mode retains E and a **Test preserved dash** utility inside the physics panel, so its existing dash sliders remain testable on a phone. Dash still moves continuously, steers, collides, permits ground-dash-to-jump transitions and tracks its aerial allowance independently.
+
+## Subtle punch aim assist (v0.7.10)
+
+An accepted manual Punch (tap, slide entry or held repeat) can select an enemy near its imminent **physical hand trajectory**. It never starts attacks, changes root position/velocity/facing, turns the camera, extends arm length or changes hitbox sizes. Targets are ranked by distance from the predicted hand path rather than distance from the player. Selection includes both actors' motion, jump gravity and the current three-dimensional body rotation. Targets outside the predicted forward cone, original reach/vertical limits or alive enemy pool are rejected. A short forecast covers travel through the active window (up to 0.2 s, with a numerical lead cap); physical melee reach remains unchanged at contact, even at 100× speed.
+
+Defaults are **20% strength**, **12° maximum total 3D correction**, and a **±25° acquisition cone**. Strength scales the requested correction before the angular cap; typical default corrections are only a few degrees. The upper body, shoulder and real two-bone arm blend into the same corrected point sampled by collision detection. The existing contextual limb selector keeps its posture, recovery and rotational-momentum rules; a small trajectory-based tie-break can favor the better-positioned arm. Both arms and same-arm repeats remain possible. Kick is unchanged.
+
+The correction is captured once for the accepted punch and fades through wind-up/recovery; there is **no permanent lock or homing update**. Steering, flips, attack interruption and Block remain responsive. Changing a developer setting affects the next accepted punch, keeping the current pose continuous. At **0%**, acquisition and arm preference bypass entirely and the prior poses, technique choices, physics and unassisted contact-query path are preserved.
+
+In **Settings → Developer tools → Open physics sandbox**, scroll to **Punch aim assist** for strength (0–100%), maximum correction (0–20°), acquisition half-cone (5–40° per side), optional target/trajectory debug, and Reset aim defaults. Blue shows the original path; orange shows the corrected path. Debug is off by default and performs no sampling while hidden. Aim tuning is temporary and resets on refresh; existing physics Save/Load, presets and saved control layouts are separate and unchanged. Normal play always begins at the default 20%.
+
+Inspection found existing relative swept collision and active-time clipping, rather than missing broad hitboxes. Common misses arise from startup, limited natural arm reach and movement/facing carrying the hand past a moving opponent. At 5.2 m/s the player travels 0.416 m during a 0.08 s punch startup; 100× travel magnifies that timing demand. Corrected curves receive bounded extra samples, and a contact interval's closest point is checked if its first sphere entry precedes the unchanged reach guard. Hits still require actual active-window intersection; startup/recovery passes and unreachable or departing targets can still miss. This is assistance, not a guaranteed hit.
 
 ## Active combat and expanded arena (v0.7.9)
 
@@ -80,7 +92,7 @@ Positions are normalized to the playable viewport and saved under `kinetic.contr
 
 ## Developer physics sandbox
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.7.9** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.7.10** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
 
 The original eight sliders still support **0.1×–100×**, with precise stops near 1×, 10×, 20×, 50× and 100×:
 
@@ -102,6 +114,9 @@ Movement speed, gravity and normal air control apply live. Jump height affects t
 Numeric bounds are configurable in `PhysicsSandbox.js`. Defaults allow up to 520 m/s locomotion, 120 m rise per launch, 1,000 m/s average dash speed, 250 m dash distance and 1,800 m/s² gravity. The game bounds catch-up work, uses up to 32 adaptive physical steps and swept world/strike queries, and keeps animation cadence/leg reach bounded. Short bursts receive a readable visual launch; long developer dashes animate a cruise between launch and touchdown. The camera bounds extreme follow lag while preserving its angle, distance, orbit and Reset View. Superhuman travel can still produce some visual foot sliding on a human-sized rig.
 
 ## Combat architecture
+
+- `PunchAimAssist.js`: per-punch short-horizon trajectory ranking, bounded correction and optional contextual limb preference. `PunchAlignment.js` is shared by procedural hand contact and the upper-body presenter.
+- `AimAssistPanel.js`, `PunchAimDebug.js`: temporary live developer controls and optional shared-sampler target/path visualization; saved physics and HUD data remain separate.
 
 - `BattleWorld.js`, `EnemyAgent.js`, `Combatant.js`: bounded wave pool, deterministic attack opportunities, stateful pursuit/positioning, health, timed directional Block and collision-resolved damage impulses.
 - `EnemyViews.js`, `BattleHud.js`: shared rig presentation, distance throttling, health/defeat feedback and reset. `ArenaConfig.js` is the source of truth for the expanded floor, collision dimensions and rendering distance.
@@ -157,6 +172,6 @@ Pages is already enabled for this repository. To inspect or rerun deployment fro
 1. Open [the repository](https://github.com/dearsvincent-ctrl/Kinetic-stickman) and its **Actions** tab.
 2. Choose **Deploy GitHub Pages** and inspect the latest run. To retry, tap **Run workflow**, select `main`, and confirm Run workflow.
 3. If Pages needs enabling, open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Chrome's **Desktop site** mode may help expose GitHub settings on a phone.
-4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.7.9** appears.
+4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.7.10** appears.
 
-No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.7.9 for Android playtesting.
+No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.7.10 for Android playtesting.

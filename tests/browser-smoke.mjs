@@ -3,6 +3,7 @@ import { openBrowser } from "./browser-driver.mjs";
 import { checkGameplay } from "./manual-gameplay-browser.mjs";
 import { checkAcrobatics } from "./acrobatic-browser.mjs";
 import { checkActiveBattle } from "./active-battle-browser.mjs";
+import { checkPunchAim } from "./punch-aim-browser.mjs";
 
 const run = await openBrowser(
   (process.env.TEST_URL || "http://127.0.0.1:5173") + "/?debug",
@@ -24,6 +25,7 @@ const active = await openBrowser(
 );
 try {
   await checkActiveBattle(active.page, active.native);
+  await checkPunchAim(active.page, active.native);
   assert.deepEqual(
     active.errors,
     [],

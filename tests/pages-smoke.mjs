@@ -7,6 +7,7 @@ import { openBrowser } from "./browser-driver.mjs";
 import { checkGameplay } from "./manual-gameplay-browser.mjs";
 import { checkAcrobatics } from "./acrobatic-browser.mjs";
 import { checkActiveBattle } from "./active-battle-browser.mjs";
+import { checkPunchAim } from "./punch-aim-browser.mjs";
 import { resolvePagesBase } from "../build/pagesBase.js";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
@@ -97,6 +98,7 @@ try {
   // Fresh context: the normal game must enable active waves by default.
   run = await openBrowser(`${origin}${base}`);
   await checkActiveBattle(run.page, run.native);
+  await checkPunchAim(run.page, run.native);
   for (const request of run.requests) {
     const url = new URL(request);
     assert.equal(url.origin, origin);

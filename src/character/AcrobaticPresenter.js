@@ -6,6 +6,7 @@ import {
 } from "../combat/TechniqueGeometry.js";
 import { ArmIK } from "./ArmIK.js";
 import { PoseTransitions } from "./PoseTransitions.js";
+import { punchAlignmentQuaternion } from "../combat/PunchAlignment.js";
 const SIDES = ["left", "right"];
 const ENDPOINTS = [
   ["hand", "Hand"],
@@ -34,6 +35,10 @@ export class AcrobaticPresenter {
     this.handIK = new ArmIK(character);
     this.transitions = new PoseTransitions(character);
     this.flipWeight = 0;
+    this.aimCorrection = new Quaternion();
+    this.aimWorld = new Quaternion();
+    this.aimParent = new Quaternion();
+    this.aimInverse = new Quaternion();
   }
   begin(combat) {
     this.pivot.quaternion.identity();
@@ -82,6 +87,30 @@ export class AcrobaticPresenter {
       }
     }
     if (!attack.active || !t?.adaptive) return;
+    if (t.action === "punch" && attack.context?.punchAim) {
+      punchAlignmentQuaternion(
+        this.aimCorrection,
+        t,
+        attack.elapsed,
+        attack.context.punchAim,
+        attack.cancelled ? Math.max(0, 1 - attack.phaseProgress) : 1,
+      );
+      // Convert the body-frame twist into the animated spine parent's frame.
+      // The independent acrobatic quaternion and locomotion root are read only.
+      this.aimInverse.copy(this.body).invert();
+      this.aimWorld
+        .copy(this.body)
+        .multiply(this.aimCorrection)
+        .multiply(this.aimInverse);
+      j.spine.parent.getWorldQuaternion(this.aimParent);
+      this.aimInverse.copy(this.aimParent).invert();
+      this.aimCorrection
+        .copy(this.aimInverse)
+        .multiply(this.aimWorld)
+        .multiply(this.aimParent);
+      j.spine.quaternion.premultiply(this.aimCorrection).normalize();
+      j.spine.updateWorldMatrix(false, true);
+    }
     const side = t.side,
       opposite = side === "left" ? "right" : "left";
     sampleLocalStrike(this.local, t, attack.elapsed, attack.context);

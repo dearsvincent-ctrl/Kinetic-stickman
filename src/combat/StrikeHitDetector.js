@@ -99,7 +99,15 @@ export class StrikeHitDetector {
         : 0;
     const steps = Math.max(
       1,
-      Math.min(32, Math.ceil((bodyTurn + localArc) / 0.055)),
+      Math.min(
+        32,
+        Math.max(
+          Math.ceil((bodyTurn + localArc) / 0.055),
+          attack.context?.punchAim
+            ? Math.ceil((to - from) / Math.max(0.001, technique.extension / 6))
+            : 1,
+        ),
+      ),
     );
     for (let n = 0; n < steps; n++) {
       const f0 = lerp(t0, t1, n / steps),
@@ -200,74 +208,87 @@ export class StrikeHitDetector {
                 : Infinity;
           if (hit < -EPS || hit > 1 + EPS) continue;
           hit = Math.max(0, Math.min(1, hit));
-          const f = lerp(f0, f1, hit),
-            heading = startHeading + turn * f,
-            global = lerp(motionFrom, motionTo, f);
-          let dx =
-            lerp(previous.x, current.x, global) - lerp(start.x, end.x, f);
-          let dz =
-            lerp(previous.z, current.z, global) - lerp(start.z, end.z, f);
-          let dy =
-            lerp(previous.y ?? 0, current.y ?? 0, global) +
-            cy -
-            lerp(start.y, end.y, f) -
-            technique.originHeight;
-          let angle = Math.atan2(-dx, -dz) - heading;
-          if (technique.adaptive) {
-            if (orientationStart && orientationEnd)
-              this.orientation.slerpQuaternions(
-                orientationStart,
-                orientationEnd,
-                global,
-              );
-            else this.orientation.setFromAxisAngle(UP, heading);
-            this.bodyLocal
-              .set(
-                dx,
-                dy +
-                  technique.originHeight -
-                  BODY_PIVOT -
-                  lerp(liftStart, liftEnd, global),
-                dz,
-              )
-              .applyQuaternion(this.orientation.invert());
-            dx = this.bodyLocal.x;
-            dz = this.bodyLocal.z;
-            dy = this.bodyLocal.y - (technique.originHeight - BODY_PIVOT);
-            angle = Math.atan2(-dx, -dz);
+          // A corrected fast sweep can enter the weapon sphere before the
+          // body is within the unchanged reach guard. Also validate its closest
+          // point, which is inside that same physical contact interval.
+          // Unassisted strikes retain their exact original query path.
+          const entryHit = hit;
+          const attempts = attack.context?.punchAim ? 2 : 1;
+          for (let attempt = 0; attempt < attempts; attempt++) {
+            hit =
+              attempt === 0
+                ? entryHit
+                : Math.max(entryHit, Math.min(1, a > EPS ? -b / a : entryHit));
+            const f = lerp(f0, f1, hit),
+              heading = startHeading + turn * f,
+              global = lerp(motionFrom, motionTo, f);
+            let dx =
+              lerp(previous.x, current.x, global) - lerp(start.x, end.x, f);
+            let dz =
+              lerp(previous.z, current.z, global) - lerp(start.z, end.z, f);
+            let dy =
+              lerp(previous.y ?? 0, current.y ?? 0, global) +
+              cy -
+              lerp(start.y, end.y, f) -
+              technique.originHeight;
+            let angle = Math.atan2(-dx, -dz) - heading;
+            if (technique.adaptive) {
+              if (orientationStart && orientationEnd)
+                this.orientation.slerpQuaternions(
+                  orientationStart,
+                  orientationEnd,
+                  global,
+                );
+              else this.orientation.setFromAxisAngle(UP, heading);
+              this.bodyLocal
+                .set(
+                  dx,
+                  dy +
+                    technique.originHeight -
+                    BODY_PIVOT -
+                    lerp(liftStart, liftEnd, global),
+                  dz,
+                )
+                .applyQuaternion(this.orientation.invert());
+              dx = this.bodyLocal.x;
+              dz = this.bodyLocal.z;
+              dy = this.bodyLocal.y - (technique.originHeight - BODY_PIVOT);
+              angle = Math.atan2(-dx, -dz);
+            }
+            if (
+              Math.hypot(dx, dy, dz) > technique.reach + bodyRadius + EPS ||
+              Math.abs(dy) > technique.maxVertical + EPS ||
+              Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) >
+                technique.maxAngle + EPS
+            )
+              continue;
+            this.hitIds.add(target.id);
+            this.count++;
+            this.lastContact = Object.freeze({
+              sequence: attack.sequence,
+              techniqueId: technique.id,
+              targetId: target.id,
+              time: lerp(startElapsed, endElapsed, f),
+              source: Object.freeze({
+                x: lerp(start.x, end.x, f),
+                y: lerp(start.y, end.y, f),
+                z: lerp(start.z, end.z, f),
+              }),
+              heading,
+              targetPosition: Object.freeze({
+                x: lerp(previous.x, current.x, global),
+                y: lerp(previous.y ?? 0, current.y ?? 0, global),
+                z: lerp(previous.z, current.z, global),
+              }),
+              point: Object.freeze({
+                x: lerp(this.a.x, this.b.x, hit),
+                y: lerp(this.a.y, this.b.y, hit),
+                z: lerp(this.a.z, this.b.z, hit),
+              }),
+            });
+            this.onContact(this.lastContact);
+            break;
           }
-          if (
-            Math.hypot(dx, dy, dz) > technique.reach + bodyRadius + EPS ||
-            Math.abs(dy) > technique.maxVertical + EPS ||
-            Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) >
-              technique.maxAngle + EPS
-          )
-            continue;
-          this.hitIds.add(target.id);
-          this.count++;
-          this.lastContact = Object.freeze({
-            sequence: attack.sequence,
-            techniqueId: technique.id,
-            targetId: target.id,
-            time: lerp(startElapsed, endElapsed, f),
-            source: Object.freeze({
-              x: lerp(start.x, end.x, f),
-              y: lerp(start.y, end.y, f),
-              z: lerp(start.z, end.z, f),
-            }),
-            heading,
-            targetPosition: Object.freeze({
-              x: lerp(previous.x, current.x, global),
-              y: lerp(previous.y ?? 0, current.y ?? 0, global),
-              z: lerp(previous.z, current.z, global),
-            }),
-            point: Object.freeze({
-              x: lerp(this.a.x, this.b.x, hit),
-              y: lerp(this.a.y, this.b.y, hit),
-              z: lerp(this.a.z, this.b.z, hit),
-            }),
-          });
-          this.onContact(this.lastContact);
         }
       }
     }
