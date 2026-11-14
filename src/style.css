@@ -1511,3 +1511,130 @@ h1 {
     bottom: 12px;
   }
 }
+
+/* Compact encounter readout stays in the editor's existing reserved heading. */
+.battle-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  max-width: 340px;
+  margin-top: 9px;
+  color: #d2d9cb;
+  font-size: 9px;
+  letter-spacing: 0.7px;
+}
+.health-readout {
+  width: 94px;
+}
+.health-readout > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.health-meter {
+  background: #4b3834;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.health-meter i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #bad4a0;
+  transform-origin: left;
+  transition: transform 0.08s linear;
+}
+.wave-readout {
+  font-size: 8px;
+}
+.battle-reset {
+  pointer-events: auto;
+  border: 1px solid #65766a;
+  border-radius: 4px;
+  padding: 5px 7px;
+  background: #1b2928dc;
+  color: #dce1cf;
+  font: inherit;
+  font-size: 8px;
+  touch-action: none;
+}
+.defeat-panel {
+  position: absolute;
+  z-index: 34;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: min(300px, 85vw);
+  padding: 24px;
+  border: 1px solid #9b7151;
+  border-radius: 12px;
+  background: #152222f5;
+  text-align: center;
+  box-shadow: 0 8px 40px #0008;
+}
+.defeat-panel[hidden] {
+  display: none;
+}
+.defeat-panel h2 {
+  margin: 10px 0;
+  font-size: 32px;
+}
+.defeat-panel p {
+  font-size: 12px;
+  color: #b9c5b9;
+  margin-bottom: 18px;
+}
+.defeat-panel .eyebrow {
+  justify-content: center;
+}
+.damage-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  box-shadow: inset 0 0 70px 14px #d64b36;
+  transition: opacity 0.09s;
+}
+.received-hit .damage-vignette {
+  opacity: 0.65;
+}
+.received-block .damage-vignette {
+  opacity: 0.35;
+  box-shadow: inset 0 0 50px 8px #c6dda1;
+}
+@media (max-height: 430px) {
+  .battle-status {
+    margin-top: 5px;
+    gap: 5px 7px;
+  }
+  .battle-reset {
+    padding: 3px 5px;
+  }
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  .battle-status {
+    max-width: 215px;
+  }
+  .wave-readout {
+    order: 2;
+    flex-basis: 100%;
+  }
+}
+@media (max-height: 430px) and (orientation: landscape) {
+  .battle-status {
+    position: fixed;
+    top: calc(67px + env(safe-area-inset-top));
+    left: max(28px, env(safe-area-inset-left));
+    margin: 0;
+    max-width: calc(100vw - 56px);
+  }
+}
+@media (max-height: 384px) and (orientation: landscape) {
+  /* Keep the shortest default layout below the fixed Reset View utility. */
+  .punch-button {
+    right: calc(100% + 94px);
+  }
+}

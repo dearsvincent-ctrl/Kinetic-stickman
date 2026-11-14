@@ -310,6 +310,7 @@ export class ControlLayoutEditor {
     this.baseExclusions = [
       ".topbar",
       ".arena-heading",
+      "#battle-status",
       ".camera-tools",
       ".movement-readout",
     ]

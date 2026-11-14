@@ -6,6 +6,7 @@ import { extname, resolve, sep } from "node:path";
 import { openBrowser } from "./browser-driver.mjs";
 import { checkGameplay } from "./manual-gameplay-browser.mjs";
 import { checkAcrobatics } from "./acrobatic-browser.mjs";
+import { checkActiveBattle } from "./active-battle-browser.mjs";
 import { resolvePagesBase } from "../build/pagesBase.js";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
@@ -71,7 +72,7 @@ try {
     server.listen(0, "127.0.0.1", ready);
   });
   const origin = `http://127.0.0.1:${server.address().port}`;
-  run = await openBrowser(`${origin}${base}`);
+  run = await openBrowser(`${origin}${base}`, { practice: true });
   assert.equal(
     await run.page.evaluate(() => typeof window.__KINETIC__),
     "undefined",
@@ -92,6 +93,19 @@ try {
       `Loaded ${extension}`,
     );
   assert.deepEqual(run.errors, [], "No production runtime or asset errors");
+  await run.browser.close();
+  // Fresh context: the normal game must enable active waves by default.
+  run = await openBrowser(`${origin}${base}`);
+  await checkActiveBattle(run.page, run.native);
+  for (const request of run.requests) {
+    const url = new URL(request);
+    assert.equal(url.origin, origin);
+    assert.ok(
+      url.pathname.startsWith(base),
+      `Encounter asset stays below ${base}`,
+    );
+  }
+  assert.deepEqual(run.errors, [], "No active-encounter production errors");
   console.log(
     `PASS: production Pages bundle and mobile controls at ${base}. No physical Android device tested.`,
   );

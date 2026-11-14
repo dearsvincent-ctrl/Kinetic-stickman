@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 
-export async function openBrowser(url) {
+export async function openBrowser(url, { practice = false } = {}) {
   const browser = await chromium.launch({
     executablePath:
       process.env.CHROMIUM_PATH ||
@@ -14,6 +14,14 @@ export async function openBrowser(url) {
     hasTouch: true,
     isMobile: true,
   });
+  if (practice)
+    await page.addInitScript(() => {
+      // Explicit isolated stationary-target fixture for historical regressions.
+      // The separate encounter check always runs the normal active-enemy game.
+      const url = new URL(location.href);
+      url.searchParams.set("practice", "1");
+      history.replaceState(null, "", url);
+    });
   const errors = [],
     requests = [],
     responses = [];

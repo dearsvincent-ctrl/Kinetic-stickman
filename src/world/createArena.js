@@ -1,6 +1,8 @@
 import * as THREE from "three";
+import { ARENA_CONFIG } from "./ArenaConfig.js";
 
-const HALF_SIZE = 18;
+const HALF_SIZE = ARENA_CONFIG.halfSize;
+const MARKING_HALF_SIZE = 18;
 const WALL_HEIGHT = 0.55;
 const WALL_THICKNESS = 0.32;
 
@@ -9,7 +11,7 @@ function createFloorTexture() {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 2048;
   const context = canvas.getContext("2d");
-  const scale = canvas.width / (HALF_SIZE * 2);
+  const scale = canvas.width / (MARKING_HALF_SIZE * 2);
   const center = canvas.width / 2;
   const toPixel = (metres) => metres * scale;
 
@@ -29,7 +31,7 @@ function createFloorTexture() {
   context.fillRect(0, 0, canvas.width, canvas.height);
 
   // One-metre grid, with slightly stronger three-metre divisions.
-  for (let metre = 0; metre <= HALF_SIZE * 2; metre += 1) {
+  for (let metre = 0; metre <= MARKING_HALF_SIZE * 2; metre += 1) {
     const pixel = toPixel(metre);
     context.strokeStyle =
       metre % 3 === 0
@@ -145,7 +147,11 @@ export function createArena(scene) {
   group.name = "TrainingArena";
   scene.add(group);
   scene.background = new THREE.Color("#172124");
-  scene.fog = new THREE.Fog("#172124", 28, 85);
+  scene.fog = new THREE.Fog(
+    "#172124",
+    ARENA_CONFIG.fogNear,
+    ARENA_CONFIG.fogFar,
+  );
 
   const hemisphere = new THREE.HemisphereLight("#e4eeeb", "#263a36", 2.25);
   scene.add(hemisphere);
@@ -167,7 +173,7 @@ export function createArena(scene) {
   scene.add(sunlight);
 
   const exterior = new THREE.Mesh(
-    new THREE.PlaneGeometry(240, 240),
+    new THREE.PlaneGeometry(ARENA_CONFIG.size + 40, ARENA_CONFIG.size + 40),
     new THREE.MeshStandardMaterial({ color: "#1c2a2d", roughness: 1 }),
   );
   exterior.rotation.x = -Math.PI / 2;
@@ -175,17 +181,41 @@ export function createArena(scene) {
   group.add(exterior);
 
   const platform = new THREE.Mesh(
-    new THREE.BoxGeometry(36.6, 0.2, 36.6),
+    new THREE.BoxGeometry(
+      ARENA_CONFIG.size + 0.6,
+      0.2,
+      ARENA_CONFIG.size + 0.6,
+    ),
     new THREE.MeshStandardMaterial({ color: "#223335", roughness: 1 }),
   );
   platform.position.y = -0.11;
   group.add(platform);
 
   const floorTexture = createFloorTexture();
+  const gridCanvas = document.createElement("canvas");
+  gridCanvas.width = gridCanvas.height = 256;
+  const gridContext = gridCanvas.getContext("2d");
+  gridContext.fillStyle = "#344747";
+  gridContext.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 10; i++) {
+    gridContext.strokeStyle = i % 5 === 0 ? "#53635e" : "#3e504d";
+    gridContext.lineWidth = i % 5 === 0 ? 1.4 : 0.8;
+    gridContext.beginPath();
+    gridContext.moveTo(i * 25.6, 0);
+    gridContext.lineTo(i * 25.6, 256);
+    gridContext.moveTo(0, i * 25.6);
+    gridContext.lineTo(256, i * 25.6);
+    gridContext.stroke();
+  }
+  const gridTexture = new THREE.CanvasTexture(gridCanvas);
+  gridTexture.colorSpace = THREE.SRGBColorSpace;
+  gridTexture.wrapS = gridTexture.wrapT = THREE.RepeatWrapping;
+  gridTexture.repeat.set(ARENA_CONFIG.size / 10, ARENA_CONFIG.size / 10);
+  gridTexture.anisotropy = 4;
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(HALF_SIZE * 2, HALF_SIZE * 2),
     new THREE.MeshStandardMaterial({
-      map: floorTexture,
+      map: gridTexture,
       roughness: 0.95,
       metalness: 0.02,
     }),
@@ -194,6 +224,14 @@ export function createArena(scene) {
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   group.add(floor);
+  const centreMarkings = new THREE.Mesh(
+    new THREE.PlaneGeometry(36, 36),
+    new THREE.MeshStandardMaterial({ map: floorTexture, roughness: 0.95 }),
+  );
+  centreMarkings.rotation.x = -Math.PI / 2;
+  centreMarkings.position.y = 0.002;
+  centreMarkings.receiveShadow = true;
+  group.add(centreMarkings);
 
   const box = new THREE.BoxGeometry(1, 1, 1);
   const railMaterial = new THREE.MeshStandardMaterial({
@@ -220,16 +258,16 @@ export function createArena(scene) {
     const z = Math.cos(rotationY) * wallDistance;
     wallTransforms.push({
       position: [x, WALL_HEIGHT / 2, z],
-      scale: [36.65, WALL_HEIGHT, WALL_THICKNESS],
+      scale: [ARENA_CONFIG.size + 0.65, WALL_HEIGHT, WALL_THICKNESS],
       rotationY,
     });
     capTransforms.push({
       position: [x, WALL_HEIGHT + 0.015, z],
-      scale: [36.65, 0.03, WALL_THICKNESS + 0.03],
+      scale: [ARENA_CONFIG.size + 0.65, 0.03, WALL_THICKNESS + 0.03],
       rotationY,
     });
     for (let mark = -2; mark <= 2; mark += 1) {
-      const offset = mark * 6;
+      const offset = mark * 400;
       accentTransforms.push({
         position: [
           x + Math.cos(rotationY) * offset,
@@ -275,6 +313,14 @@ export function createArena(scene) {
     wallThickness: WALL_THICKNESS,
     floorHeight: 0,
     sunlight,
+    updateFocus(position) {
+      // One small shadow map follows the fighter, rather than covering 4 km².
+      const x = Math.round(position.x / 2) * 2;
+      const z = Math.round(position.z / 2) * 2;
+      sunlight.position.set(x - 10, 17, z + 9);
+      sunlight.target.position.set(x, 0, z);
+      sunlight.target.updateMatrixWorld();
+    },
     dispose() {
       const geometries = new Set();
       const materials = new Set();
@@ -285,6 +331,7 @@ export function createArena(scene) {
       geometries.forEach((geometry) => geometry.dispose());
       materials.forEach((material) => material.dispose());
       floorTexture.dispose();
+      gridTexture.dispose();
       sunlight.shadow.map?.dispose();
       scene.remove(group, hemisphere, sunlight);
     },

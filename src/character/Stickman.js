@@ -5,7 +5,7 @@ import * as THREE from "three";
  * owns only the joints below it. All dimensions are in metres; forward is -Z.
  */
 export class Stickman {
-  constructor() {
+  constructor({ resources = null } = {}) {
     this.root = new THREE.Group();
     this.root.name = "stickman";
     this.joints = {};
@@ -17,28 +17,47 @@ export class Stickman {
       ankleHeight: 0.1,
     };
 
-    const ivory = new THREE.MeshStandardMaterial({
-      color: 0xede5d4,
-      roughness: 0.62,
-      metalness: 0.1,
-    });
-    const graphite = new THREE.MeshStandardMaterial({
-      color: 0x303c3b,
-      roughness: 0.72,
-      metalness: 0.18,
-    });
-    const orange = new THREE.MeshStandardMaterial({
-      color: 0xf58144,
-      roughness: 0.54,
-      metalness: 0.12,
-    });
-    const visor = new THREE.MeshStandardMaterial({
-      color: 0x202d2c,
-      roughness: 0.33,
-      metalness: 0.3,
-    });
-    const sphereGeometry = new THREE.SphereGeometry(1, 12, 8);
-    const rodGeometry = new THREE.CylinderGeometry(1, 1, 1, 10);
+    const ivory =
+      resources?.ivory ??
+      new THREE.MeshStandardMaterial({
+        color: 0xede5d4,
+        roughness: 0.62,
+        metalness: 0.1,
+      });
+    const graphite =
+      resources?.graphite ??
+      new THREE.MeshStandardMaterial({
+        color: 0x303c3b,
+        roughness: 0.72,
+        metalness: 0.18,
+      });
+    const orange =
+      resources?.orange ??
+      new THREE.MeshStandardMaterial({
+        color: 0xf58144,
+        roughness: 0.54,
+        metalness: 0.12,
+      });
+    const visor =
+      resources?.visor ??
+      new THREE.MeshStandardMaterial({
+        color: 0x202d2c,
+        roughness: 0.33,
+        metalness: 0.3,
+      });
+    const sphereGeometry =
+      resources?.sphereGeometry ?? new THREE.SphereGeometry(1, 12, 8);
+    const rodGeometry =
+      resources?.rodGeometry ?? new THREE.CylinderGeometry(1, 1, 1, 10);
+    this.resources = {
+      ivory,
+      graphite,
+      orange,
+      visor,
+      sphereGeometry,
+      rodGeometry,
+    };
+    this.sharedResources = Boolean(resources);
 
     const mesh = (geometry, material, parent) => {
       const part = new THREE.Mesh(geometry, material);
@@ -164,7 +183,16 @@ export class Stickman {
       geometries.add(part.geometry);
       materials.add(part.material);
     });
-    geometries.forEach((geometry) => geometry.dispose());
-    materials.forEach((material) => material.dispose());
+    geometries.forEach((geometry) => {
+      if (
+        !this.sharedResources ||
+        ![this.resources.sphereGeometry, this.resources.rodGeometry].includes(
+          geometry,
+        )
+      )
+        geometry.dispose();
+    });
+    if (!this.sharedResources)
+      materials.forEach((material) => material.dispose());
   }
 }

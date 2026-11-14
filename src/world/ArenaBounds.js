@@ -2,9 +2,10 @@
  * Positions are metres, Y is up, and input displacement is already time-scaled.
  */
 export class ArenaBounds {
-  constructor(halfSize = 18, obstacles = []) {
+  constructor(halfSize = 18, obstacles = [], ignoredObstacle = null) {
     this.halfSize = halfSize;
     this.obstacles = obstacles;
+    this.ignoredObstacle = ignoredObstacle;
     this.contactNormals = new Float64Array(8);
     this.contactCount = 0;
     this.hasObstacleContact = false;
@@ -43,6 +44,12 @@ export class ArenaBounds {
     // Recovery for an externally placed/loaded actor inside a prop. This is
     // normally unused; a sweep starting outside can never enter the boundary.
     for (const obstacle of this.obstacles) {
+      if (
+        obstacle === this.ignoredObstacle ||
+        (obstacle.height &&
+          Math.abs(position.y - obstacle.position.y) >= obstacle.height)
+      )
+        continue;
       if (obstacle.active === false || !(obstacle.radius > 0)) continue;
       const dx = x - obstacle.position.x;
       const dz = z - obstacle.position.z;
@@ -94,6 +101,12 @@ export class ArenaBounds {
       }
 
       for (const obstacle of this.obstacles) {
+        if (
+          obstacle === this.ignoredObstacle ||
+          (obstacle.height &&
+            Math.abs(position.y - obstacle.position.y) >= obstacle.height)
+        )
+          continue;
         if (obstacle.active === false || !(obstacle.radius > 0)) continue;
         const dx = x - obstacle.position.x;
         const dz = z - obstacle.position.z;

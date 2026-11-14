@@ -26,7 +26,8 @@ function weaponPose(out, root, heading, technique, elapsed) {
 }
 /** Swept weapon-sphere vs body-sphere contacts. Active-time clipping prevents a
  * fast startup/recovery pass from counting as a strike. Hit ids reset per strike,
- * not per frame. Contact events are signals only: no health/damage is implemented.
+ * not per frame. Contact events carry the actual contact-time attacker position;
+ * health and reactions are owned by the encounter rather than this query.
  */
 export class StrikeHitDetector {
   constructor({ targets = [], onContact = () => {} } = {}) {
@@ -249,6 +250,17 @@ export class StrikeHitDetector {
             techniqueId: technique.id,
             targetId: target.id,
             time: lerp(startElapsed, endElapsed, f),
+            source: Object.freeze({
+              x: lerp(start.x, end.x, f),
+              y: lerp(start.y, end.y, f),
+              z: lerp(start.z, end.z, f),
+            }),
+            heading,
+            targetPosition: Object.freeze({
+              x: lerp(previous.x, current.x, global),
+              y: lerp(previous.y ?? 0, current.y ?? 0, global),
+              z: lerp(previous.z, current.z, global),
+            }),
             point: Object.freeze({
               x: lerp(this.a.x, this.b.x, hit),
               y: lerp(this.a.y, this.b.y, hit),

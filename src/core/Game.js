@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import { createArena } from "../world/createArena.js";
 import { ArenaBounds } from "../world/ArenaBounds.js";
+import { ARENA_CONFIG } from "../world/ArenaConfig.js";
+import { BattleWorld } from "../combat/BattleWorld.js";
+import { EnemyViews } from "../character/EnemyViews.js";
+import { BattleHud } from "../ui/BattleHud.js";
 import { Stickman } from "../character/Stickman.js";
 import { CharacterAnimator } from "../character/CharacterAnimator.js";
 import { CharacterController } from "../movement/CharacterController.js";
@@ -49,7 +53,12 @@ export class Game {
     this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 150);
+    this.camera = new THREE.PerspectiveCamera(
+      52,
+      1,
+      0.1,
+      ARENA_CONFIG.cameraFar,
+    );
     this.arena = createArena(this.scene);
     this.dummy = new TrainingDummy();
     this.scene.add(this.dummy.root);
@@ -77,11 +86,22 @@ export class Game {
         this.limbSelector.choose(context, eligible),
     });
     this.attackScheduler = new AttackScheduler(this.combat);
+    this.targets = [];
+    this.battle = new BattleWorld({
+      playerPosition: this.character.root.position,
+      world: this.controller.world,
+      targets: this.targets,
+      dummy: this.dummy.target,
+      enabled: new URLSearchParams(location.search).get("practice") !== "1",
+    });
+    this.enemyViews = new EnemyViews(this.scene, this.battle.enemies);
+    this.defeated = false;
     this.contactFeedbackRemaining = 0;
     this.hitDetector = new StrikeHitDetector({
-      targets: [this.dummy.target],
-      onContact: () => {
+      targets: this.targets,
+      onContact: (hit) => {
         this.contactFeedbackRemaining = 0.18;
+        this.battle.hitEnemy(hit, this.combat.currentTechnique);
       },
     });
     // Reuse live movement context; accepted attacks take their own snapshot.
@@ -123,7 +143,7 @@ export class Game {
       onActiveChange: (active) => {
         if (active) this.physicsSandbox?.setOpen(false);
         this.controlsOpen = active;
-        this.input.setEnabled(!active && !this.helpOpen);
+        this.input.setEnabled(!active && !this.helpOpen && !this.defeated);
         this.clearMotion();
       },
     });
@@ -131,10 +151,11 @@ export class Game {
       onHelpChange: (open) => {
         if (open) this.physicsSandbox?.setOpen(false);
         this.helpOpen = open;
-        this.input.setEnabled(!open && !this.controlsOpen);
+        this.input.setEnabled(!open && !this.controlsOpen && !this.defeated);
         this.clearMotion();
       },
     });
+    this.battleHud = new BattleHud(() => this.respawn());
     this.simulationPrevious = new THREE.Vector3();
     this.combatStartRoot = new THREE.Vector3();
     this.combatEndRoot = new THREE.Vector3();
@@ -201,6 +222,31 @@ export class Game {
     this.lastTime = null;
   }
 
+  respawn() {
+    // Reset only the encounter/life. Saved controls, sandbox multipliers and
+    // camera orbit survive; no reload or replacement scene is needed.
+    this.clearMotion();
+    const config = this.controller.config;
+    const world = this.controller.world;
+    this.character.root.position.set(0, 0, 0);
+    this.character.root.rotation.set(0, 0, 0);
+    this.controller = new CharacterController(this.character.root, world, {
+      faceInputWhenBlocked: true,
+    });
+    this.controller.applyMovementConfig(config);
+    this.lastRotationJumpSequence = 0;
+    this.bodyRotation.reset(0);
+    this.animator.initialized = false;
+    this.animator.previousPosition.copy(this.character.root.position);
+    this.battle.reset();
+    this.defeated = false;
+    this.contactFeedbackRemaining = 0;
+    this.followCamera.target.copy(this.character.root.position);
+    this.followCamera.target.y += 1.02;
+    this.input.setEnabled(!this.controlsOpen && !this.helpOpen);
+    this.battleHud.update(1, this.battle);
+  }
+
   frame(time) {
     this.raf = requestAnimationFrame(this.frame);
     const elapsed =
@@ -250,6 +296,9 @@ export class Game {
           recovery: this.momentumRecovery,
         });
         this.acrobaticPresenter.apply(STEP, this.bodyRotation, this.combat);
+        if (this.battle.player.stagger > 0)
+          this.character.joints.spine.rotation.x -=
+            Math.sin((this.battle.player.stagger / 0.24) * Math.PI) * 0.18;
         const plant = this.animator.recoveryAnimation;
         if (plant.impactSequence !== this.lastPlantSequence) {
           this.lastPlantSequence = plant.impactSequence;
@@ -271,8 +320,14 @@ export class Game {
         this.character.root.position,
         this.input.consumeLookDelta(),
       );
+      this.arena.updateFocus(this.character.root.position);
+      this.enemyViews.update(dt, this.camera, this.character.root.position);
     }
-    this.dummy.setTargeted(this.contactFeedbackRemaining > 0);
+    this.dummy.setTargeted(
+      this.contactFeedbackRemaining > 0 &&
+        this.hitDetector.lastContact?.targetId === this.dummy.target.id,
+    );
+    this.battleHud.update(dt, this.battle);
     if (!this.contextLost) this.renderer.render(this.scene, this.camera);
     this.hud.update(
       Math.max(0.001, elapsed),
@@ -293,6 +348,7 @@ export class Game {
   simulateMovement(dt) {
     // Physics advances exactly once at its own step size, independent of attack
     // speed. Combat samples that resolved path at its own phase boundaries.
+    this.battle?.beginStep(dt, this.input.blocking, this.controller.heading);
     this.simulationPrevious.copy(this.character.root.position);
     const heading = this.controller.heading;
     const startLift = this.bodyRotation?.lift ?? 0;
@@ -300,6 +356,7 @@ export class Game {
     if (this.momentumRecovery)
       this.recoveryPrevious.copy(this.controller.velocity);
     this.controller.update(dt, this.input, this.followCamera.yaw);
+    this.battle?.movePlayerImpulse(dt);
     const jumpEvent = this.controller.jumpEvent;
     if (
       this.bodyRotation &&
@@ -330,6 +387,7 @@ export class Game {
     );
     if (this.bodyRotation) this.bodyEnd.copy(this.bodyRotation.orientation);
     const context = updateCombatContext(this.combatContext, this.controller);
+    if (this.battle && !this.battle.player.active) context.canAttack = false;
     if (this.bodyRotation) {
       context.clock = this.bodyRotation.time;
       context.rotationActive = this.bodyRotation.phase !== "idle";
@@ -392,10 +450,19 @@ export class Game {
       this.combat.update(step);
       elapsed += step;
     }
+    this.battle?.endStep(dt, this.controller.heading);
+    if (this.battle && !this.battle.player.active && !this.defeated) {
+      this.defeated = true;
+      this.input.setEnabled(false);
+      this.controller.stop();
+      this.attackScheduler.reset();
+      this.combat.cancelAttack("defeated");
+    }
   }
 
   snapshot() {
     return {
+      battle: this.battle?.snapshot(),
       recovery: {
         sequence: this.momentumRecovery.sequence,
         kind: this.momentumRecovery.kind,

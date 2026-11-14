@@ -1,10 +1,10 @@
-# Kinetic — Movement Lab v0.7.8
+# Kinetic — Movement Lab v0.7.9
 
-A mobile-first Three.js/Vite stickman prototype. Version 0.7.8 adds **directional double jumping** and makes the previous sandbox 1.5× Jump Height the new baseline. The first Jump is normal; a second airborne Jump can frontflip, backflip or stay upright. Manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place.
+A mobile-first Three.js/Vite stickman prototype. Version 0.7.9 adds a **2,000 × 2,000-unit arena, active enemy waves, health, blocking and physical strike damage**. The v0.7.8 directional double jump, 1.5× original jump-height baseline, manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place.
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.7.8** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.7.8**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.7.9** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.7.9**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -26,7 +26,23 @@ Combat never reduces movement speed, applies root motion, pulls the character to
 
 **Dash is removed from the normal HUD, keyboard bindings and layout editor.** Its physical ground/aerial implementations remain in the code for future movement abilities. Developer mode retains E and a **Test preserved dash** utility inside the physics panel, so its existing dash sliders remain testable on a phone. Dash still moves continuously, steers, collides, permits ground-dash-to-jump transitions and tracks its aerial allowance independently.
 
-## Momentum recovery and aerial control (v0.7.8)
+## Active combat and expanded arena (v0.7.9)
+
+Normal play starts **wave 1 with three red fighters**. Enemies detect within 60 m, pursue after detection, run toward the player, spread around them, and take staggered attack opportunities. Their states are Idle, Approach, Position, Attack, Recover, Stagger and Defeated. Punches have 0.32 s startup; kicks have 0.43 s startup, followed by active contact and recovery. Early waves allow one attacking enemy at a time; later waves allow two, with at least 0.5 s between starts. Escape a telegraphed strike by moving or jumping: proximity alone never causes damage.
+
+The player starts with **120 HP**, enemies with **72 HP**. Confirmed player punches deal 18 and kicks 28; enemy punches deal 10 and kicks 15 before gradual wave scaling. Each strike can contact each opponent only once. The existing active-window, swept weapon/body queries also track moving target positions; attack reach never scales with travel speed. Enemy stagger cancels its current strike. Knockback is a bounded, decaying, collision-resolved impulse; it never changes the joystick's movement parameters. Player hit reactions are visual and do not lock movement or attacks.
+
+**Block** covers the forward 144° arc. A newly raised guard (first 0.16 s) prevents damage; a maintained guard reduces front damage by 85%. Attacks from behind connect normally. Health bars above enemies flash on hits. The compact HUD shows player HP, wave, living enemies and total defeated enemies, with restrained screen-edge damage/block feedback. Defeated enemies fall and stop colliding or attacking. Player defeat disables gameplay input and offers **RESPAWN**. The HUD's small **RESET** button also restores full health and restarts wave 1. Respawn retains saved controls, live sandbox multipliers and camera orbit. New lives have 1.5 s spawn protection.
+
+After clearing a wave, the next spawns after 2.5 s. Every two waves add an enemy, capped at **eight**; enemy health, running speed and damage rise gradually with safe ceilings. Spawn positions form a separated ring roughly 9–15 m from the player, including near arena corners. Reset starts a fresh defeated count; no reload is required.
+
+The floor and swept collision bounds both span ±1,000 m. A repeated 256 px grid, central training markings, four instanced perimeter rails, one local 1,024 px shadow map and distance fog keep geometry/light costs bounded. Camera angle, follow distance, drag and Reset View are unchanged; the far plane supports the expanded field and high jumps. Enemy rigs share limb geometry and materials. Eight preallocated agents are reused between waves; distant rig animation is throttled and presentation is hidden past 220 m while pursuit continues.
+
+The stationary dummy remains as a supplementary contact target and does not count toward waves or kills. Optional **`?practice=1`** retains isolated stationary-target practice without active waves. Historical movement/control browser regressions explicitly use that fixture; separate browser checks exercise the normal active encounter, damage, defeating enemies, wave progression, Block and respawn. Normal game URLs always start active combat.
+
+The encounter uses simple kinematic circular footprints and torso/head/hip strike spheres, not a ragdoll or skeletal hurtbox simulation. Enemies currently fight on the ground; the player retains aerial strikes, steering and flips. No progression, animation overhaul, parkour or multiplayer is added.
+
+## Momentum recovery and aerial control (v0.7.9)
 
 **Sharp ground turns do not attack.** Back, diagonal and lateral reversals produce a short foot plant, knee compression, hip/shoulder counter-rotation and push-off, driven by actual collision-resolved velocity and braking. Detection accepts broad angles (65°–180°), including direct direction changes without a centre-crossing gesture. Gentle turns remain ordinary locomotion. The recovery layer observes movement; it cannot change speed, acceleration, steering, position or ability availability.
 
@@ -64,7 +80,7 @@ Positions are normalized to the playable viewport and saved under `kinetic.contr
 
 ## Developer physics sandbox
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.7.8** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.7.9** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
 
 The original eight sliders still support **0.1×–100×**, with precise stops near 1×, 10×, 20×, 50× and 100×:
 
@@ -87,6 +103,9 @@ Numeric bounds are configurable in `PhysicsSandbox.js`. Defaults allow up to 520
 
 ## Combat architecture
 
+- `BattleWorld.js`, `EnemyAgent.js`, `Combatant.js`: bounded wave pool, deterministic attack opportunities, stateful pursuit/positioning, health, timed directional Block and collision-resolved damage impulses.
+- `EnemyViews.js`, `BattleHud.js`: shared rig presentation, distance throttling, health/defeat feedback and reset. `ArenaConfig.js` is the source of truth for the expanded floor, collision dimensions and rendering distance.
+
 - `ManualTechniques.js`: separate ground/air Punch and Kick definitions. Each declares startup, active duration, recovery, playback speed, reach, hit radius and ground/air eligibility. `createManualTechniques()` resolves them to the existing windup/extension/impact/recovery animation phases. Code-only `punchSpeed`, `kickSpeed` and `recoverySpeed` factors remain available for future tuning; **no new sandbox parameters are added** in this version.
 - `AdaptiveTechniques.js`: seven mirrored procedural families and deterministic pose/momentum-based limb selection. `TechniqueGeometry.js` shares strike targets and captured limb-entry poses between procedural IK and contact queries.
 - `MomentumRecovery.js`: collision-resolved velocity/braking observer with broad-angle recovery classification. `MomentumRecoveryAnimator.js` and `GroundCombatBalance.js` layer bounded foot support and additive body loading over the existing gait. `GroundStreaks.js` owns the fixed instanced effect pool.
@@ -94,7 +113,7 @@ Numeric bounds are configurable in `PhysicsSandbox.js`. Defaults allow up to 520
 - `AcrobaticPresenter.js`, `ArmIK.js`, `LegIK.js`, `PoseTransitions.js`: body-only pelvis pivot, shared strike targets, supporting-leg approximation and current-pose crossfades; the original root and camera remain upright.
 - `AttackScheduler.js`: one bounded entry request plus held intent. It schedules by gameplay recovery boundaries, independently of render/animation loops. It never queries target range or changes movement.
 - `CombatController.js`: technique timing, cancellation, defensive priority and immutable accepted-strike context.
-- `StrikeHitDetector.js`: sweeps a bounded weapon sphere against the dummy's body/post hitboxes only during the technique's active window. It clips startup/recovery time out of movement segments, samples quaternion-oriented hand/ankle trajectories with bounded angular subdivisions, preserves body-local reach limits, and records each target once per strike. The dummy has body and low post hitboxes matching its visible geometry. Optional previous opponent positions support future relative sweeps. Contact callbacks carry sequence, technique, opponent, time and contact point; no damage/health is applied.
+- `StrikeHitDetector.js`: sweeps a bounded weapon sphere against moving enemy/player body spheres and the dummy's body/post hitboxes only during the technique's active window. It clips startup/recovery time out of movement segments, samples quaternion-oriented hand/ankle trajectories with bounded angular subdivisions, preserves body-local reach limits, and records each target once per strike. The dummy has body and low post hitboxes matching its visible geometry. Previous/current opponent positions support relative sweeps. Contact callbacks carry sequence, technique, opponent, time, contact point and contact-time source; the encounter applies damage and reactions.
 - `Game.simulateMovement()`: advances physical movement once at its own step size, then samples the resolved path at combat boundaries. Attack timing cannot change the ground integrator, acceleration, jump gravity, speed or dash state. Physics and visual presentation remain separate.
 - `TouchActionRouter.js`: reusable HOLD, PRESS, TOGGLE and TAP_HOLD behaviors with dynamic DOM hit testing, independent contact ownership, keyboard/accessibility support, capture fallback and cancellation. TAP_HOLD combines one entry request with held-state reporting; the router does not itself repeat attacks.
 - Existing punch and kick animators blend with locomotion and jump/dash poses. Manual punches retain the athletic lower-body gait at running/sprinting speed; the guard remains on the upper body. Deliberate Block retains defensive footwork. Aerial punches retain lower-body flight animation; the grounded kick retains the moving support leg. Animators never translate the physical root.
@@ -138,6 +157,6 @@ Pages is already enabled for this repository. To inspect or rerun deployment fro
 1. Open [the repository](https://github.com/dearsvincent-ctrl/Kinetic-stickman) and its **Actions** tab.
 2. Choose **Deploy GitHub Pages** and inspect the latest run. To retry, tap **Run workflow**, select `main`, and confirm Run workflow.
 3. If Pages needs enabling, open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Chrome's **Desktop site** mode may help expose GitHub settings on a phone.
-4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.7.8** appears.
+4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.7.9** appears.
 
-No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.7.8 for Android playtesting.
+No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.7.9 for Android playtesting.

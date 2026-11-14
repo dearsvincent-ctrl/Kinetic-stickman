@@ -34,7 +34,7 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.7.8</b></span>
+          <span class="version">PROTOTYPE <b>0.7.9</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
@@ -95,11 +95,58 @@
           <span class="orange-line"></span> SANDBOX / 001
         </div>
         <h1>Training ground<span class="title-period">.</span></h1>
-        <p>Find your footing. Make your move.</p>
+        <p>2,000 × 2,000 · Active combat training</p>
         <div class="session-tag">
           <span></span><span id="stance-label">FREE MOVEMENT</span>
         </div>
+        <div
+          id="battle-status"
+          class="battle-status"
+          aria-label="Combat status"
+        >
+          <div class="health-readout">
+            <span>HP <b id="health-value">120 / 120</b></span>
+            <div
+              id="health-meter"
+              class="health-meter"
+              role="meter"
+              aria-label="Player health"
+              aria-valuemin="0"
+              aria-valuemax="120"
+              aria-valuenow="120"
+            >
+              <i id="health-fill"></i>
+            </div>
+          </div>
+          <div class="wave-readout">
+            WAVE <b id="wave-value">1</b> · LEFT <b id="enemies-value">3</b> ·
+            DEFEATED <b id="defeated-value">0</b>
+          </div>
+          <button
+            type="button"
+            class="battle-reset"
+            data-respawn
+            title="Restore health and restart wave 1"
+          >
+            RESET
+          </button>
+        </div>
       </section>
+      <section
+        id="defeat-panel"
+        class="defeat-panel"
+        role="alert"
+        aria-label="Player defeated"
+        hidden
+      >
+        <div class="eyebrow">TRAINING PAUSED</div>
+        <h2>Defeated<span>.</span></h2>
+        <p>Reset to full health and start a fresh wave.</p>
+        <button type="button" class="primary-button" data-respawn>
+          RESPAWN
+        </button>
+      </section>
+      <div class="damage-vignette" aria-hidden="true"></div>
       <div class="camera-tools">
         <div class="camera-hint" aria-hidden="true">
           <svg viewBox="0 0 40 20">
@@ -333,7 +380,7 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.7.8</div>
+        <div class="eyebrow">KINETIC / VERSION 0.7.9</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
           Choose when to strike.<br />Tap for one strike. Hold to repeat after
