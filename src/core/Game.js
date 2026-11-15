@@ -8,6 +8,7 @@ import { EnemyViews } from "../character/EnemyViews.js";
 import { BattleHud } from "../ui/BattleHud.js";
 import { PunchAimAssist } from "../combat/PunchAimAssist.js";
 import { AimAssistPanel } from "../ui/AimAssistPanel.js";
+import { EnemySettingsPanel } from "../ui/EnemySettingsPanel.js";
 import { PunchAimDebug } from "../character/PunchAimDebug.js";
 import { Stickman } from "../character/Stickman.js";
 import { CharacterAnimator } from "../character/CharacterAnimator.js";
@@ -189,6 +190,7 @@ export class Game {
       },
     });
     this.aimAssistPanel = new AimAssistPanel(this.punchAim);
+    this.enemySettingsPanel = new EnemySettingsPanel(this.battle);
     this.accumulator = 0;
     this.lastTime = null;
     this.resize = this.resize.bind(this);
@@ -296,7 +298,7 @@ export class Game {
             );
           else if (action === "dash") this.controller.requestDash();
         }
-        this.simulationSteps = this.physicsSandbox.enabled
+        const playerSteps = this.physicsSandbox.enabled
           ? movementSubsteps(
               this.controller,
               STEP,
@@ -304,6 +306,10 @@ export class Game {
               this.input.movementMagnitude,
             )
           : 1;
+        this.simulationSteps = Math.max(
+          playerSteps,
+          this.battle.recommendedSubsteps(STEP),
+        );
         const step = STEP / this.simulationSteps;
         for (let i = 0; i < this.simulationSteps; i++)
           this.simulateMovement(step);

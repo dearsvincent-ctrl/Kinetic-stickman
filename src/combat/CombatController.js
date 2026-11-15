@@ -147,6 +147,12 @@ export class CombatController {
     return !this.blocking && !this.attack.active;
   }
 
+  setTechniques(definitions) {
+    // An executing strike keeps its immutable timing/contact profile. Live
+    // developer changes affect subsequent attacks, never retime an active hit.
+    this.techniques = makeRegistry(definitions);
+  }
+
   get currentTechnique() {
     return this._technique;
   }

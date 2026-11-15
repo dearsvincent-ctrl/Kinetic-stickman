@@ -1,10 +1,10 @@
-# Kinetic — Movement Lab v0.8.1
+# Kinetic — Movement Lab v0.8.2
 
-A mobile-first Three.js/Vite stickman prototype. Version 0.8.1 adds **automatic superhuman traversal** to a compact test area within the existing 2,000 × 2,000-unit arena. The v0.8.0 coordinated animation, active combat waves and subtle manual-punch aim assistance remain in place. The v0.7.8 directional double jump, 1.5× original jump-height baseline, manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place.
+A mobile-first Three.js/Vite stickman prototype. Version 0.8.2 adds **live developer enemy pursuit settings**, independent of player physics. Version 0.8.1 added **automatic superhuman traversal** to a compact test area within the existing 2,000 × 2,000-unit arena. The v0.8.0 coordinated animation, active combat waves and subtle manual-punch aim assistance remain in place. The v0.7.8 directional double jump, 1.5× original jump-height baseline, manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place.
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.1** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.1**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.2** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.2**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -25,6 +25,39 @@ Sliding between **Punch, Kick, Block and Jump** uses the same central action rou
 Combat never reduces movement speed, applies root motion, pulls the character toward a target or automatically turns toward the dummy. Keep using the analogue joystick and Jump while attacking. When collision would leave the fighter facing a tiny tangent slide, facing smoothly retains the last joystick intent; it never reads the opponent to aim. A ground-only strike yields to takeoff; an air-only strike yields to landing. Held input can resume the appropriate technique when the new physical phase permits it. There is no automatic attack merely from standing near the dummy.
 
 **Dash is removed from the normal HUD, keyboard bindings and layout editor.** Its physical ground/aerial implementations remain in the code for future movement abilities. Developer mode retains E and a **Test preserved dash** utility inside the physics panel, so its existing dash sliders remain testable on a phone. Dash still moves continuously, steers, collides, permits ground-dash-to-jump transitions and tracks its aerial allowance independently.
+
+## Enemy pursuit settings (v0.8.2)
+
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.2**, tap **DEV**, then expand **Enemy Settings**. Ordinary play ignores saved developer enemy settings. No gameplay buttons or saved control positions change.
+
+| Control | Default | Experimental bounds |
+| --- | --- | --- |
+| Movement speed | 1× (3.6 m/s on wave 1) | 0.1×–1000× |
+| Acceleration / braking | 1× | 0.1×–100× |
+| Pursuit aggression | 1× | 0–3× |
+| Attack frequency | 1× | 0–10×; 0 suppresses new enemy attacks |
+| Maximum active enemies | 8; normal waves begin with 3 | 1–64 |
+| Detection distance | 60 m | 2–4000 m |
+| Disengagement distance | 120 m | 4–6000 m, always at least 2 m beyond detection |
+
+Changes apply live. Speed and acceleration are independent of the player sliders; the displayed speed multiplier scales the existing wave-adjusted enemy cruise speed. Acceleration scales velocity response and braking without resetting velocity. Aggression changes arrival/directness, surrounding distance, prediction and pursuit memory: after leaving disengagement range, alertness expires in 0.25–2.5 seconds. Detection is three-dimensional; ground-only navigation pursues the player's horizontal position. A close approach does not inflict damage: existing swept strike contacts, windup/recovery, range, Block and stagger still decide hits. Timing changes apply to the next enemy strike, preserving an executing strike's contact window. At superhuman enemy settings, attacks retain pursuit movement and velocity matching; their start gate remains bounded by the technique's original physical reach. A substep travel margin avoids repeatedly colliding with the player's older footprint while both are moving together. Enemies never automatically trigger player attacks.
+
+Changing the population limit fills the current active wave to the chosen count. Survivors keep health and attack state; removing surplus enemies awards no defeat credit. Subsequent waves and respawn retain the chosen population, with health/difficulty still increasing. **Normal** / **Reset enemies** restores the original three-to-eight wave growth. A completed wave retains its normal delay. Spawns reject occupied/solid space; a completely obstructed area may have fewer than the chosen count.
+
+**Normal**, **Slow** and **Relentless** presets are provided. **Save enemies**, **Load enemies** and **Reset enemies** are independent of the existing physics Save/Load. Saved enemy tuning reloads only in the opted-in developer sandbox. Invalid/outdated stored settings fall back safely. Closing DEV does not pause the encounter; other fingers retain joystick, camera and action ownership.
+
+Pursuit retains the established close-range footwork at ordinary speeds. Superhuman pursuit uses collision-resolved velocity, bounded prediction, target-velocity matching and arrival braking. Larger/faster groups cache local separation; all groups share explicit attack slots. The steering module is separate from physical travel and accepts a future navigation redirector. Current enemies remain ground-based: no building pathfinding, roof chasing or enemy parkour is implemented. They can stop against a blocking building; that is a navigation limitation, not permission to pass through it. Existing player traversal, double jumps, flips and attacks remain available.
+
+Start with 3–8 enemies on Android. Counts above 16 are experimental and visibly warned in DEV. The twelve nearest fighters retain detailed rigs; the rest use four instanced draws with basic limb motion, hit flashes and health indicators. All enemies retain full collision, health and attack simulation. Neighborhood searches are cached, population is bounded at 64, and adaptive movement substeps are finite with swept collision/contact fallback. Crowds at extreme speed can still be CPU-heavy; lower population if FPS drops. No physical Android performance claim is made.
+
+### v0.8.2 Android playtest
+
+1. Try Slow and Normal; chase, reverse, stop and let enemies settle into attack range. Check health, Block and respawn.
+2. Set player speed to 20×, enemy speed to 50×–200×, detection to 2000 m and disengagement to 3000 m. Sprint, double-jump and reverse; compare low/high acceleration and aggression.
+3. Set enemy attack frequency to 0 for a pure chase. Passing nearby must not cause damage. Restore 1× and check that visible enemy strikes and player Punch/Kick still connect.
+4. Increase the population to 16, then experimentally 24–64. Check separation, the crowd warning and FPS. Defeat a wave and confirm progression.
+5. Save, refresh, alter then Load enemies; use Reset enemies and check the original wave population. Player physics and HUD layouts must be retained. Repeat in portrait and landscape while using MOVE and the action buttons.
+6. Climb, run and jump off the gold-marked structures. Enemies remain on the ground and cannot interfere with the player's traversal inputs.
 
 ## Automatic traversal (v0.8.1)
 
@@ -148,7 +181,7 @@ Positions are normalized to the playable viewport and saved under `kinetic.contr
 
 ## Developer physics sandbox
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.1** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.2** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
 
 The original eight sliders still support **0.1×–100×**, with precise stops near 1×, 10×, 20×, 50× and 100×:
 
@@ -215,6 +248,8 @@ GITHUB_REPOSITORY=dearsvincent-ctrl/Kinetic-stickman npm run test:pages
 
 For a normal local build use `npm run build` and `npm run preview`. For a Pages-specific preview use the same `GITHUB_PAGES`/`GITHUB_REPOSITORY` variables with `npm run preview`, then open `http://localhost:4173/Kinetic-stickman/`.
 
+The v0.8.2 tests cover live and saved enemy tuning, independent speed/acceleration, high-speed moving-target pursuit, reversal/arrival recovery, detection hysteresis/persistence, separation, bounded adaptive steps, actual attack contacts/Block, population changes without fake deaths or replenishing defeated enemies, wave/respawn compatibility, crowded corner spawns and shared/instanced crowd presentation. Native browser checks exercise Enemy Settings alongside held joystick input, Save/Load/Reset/presets, orientation changes and a 64-enemy extreme chase with directional double jumps and Punch/Block/Kick slides.
+
 The v0.8.1 tests cover deliberate versus glancing attachment, unlimited climbs, wall running/descent/jumps, ledge interruptions, continuous vaults, poles/perches, rooftop gaps, elevated double jumps, high-speed side/roof/ceiling collision, camera clearance, contact poses and manual aerial combat. They also compare the open-ground adapter paths exactly at 1×/100× and reject enemy spawns inside structures. Native browser routes reach the area using the actual joystick and developer panel, then exercise vault/climb/mantle, roof attacks/double jumps, pole perching and directed jumps.
 
 The v0.8.0 tests add contact-driven gait comparisons, acceleration banking, immediate touchdown actions, exact active wrist/ankle agreement with the contact sampler, rapid attack/flip continuity, vertical 100× takeoff capture, support contacts and pause/reset handling. Browser checks capture walk/run/sprint at the same camera angle and exercise sprint → reversal → Punch → double-jump backflip → Kick → Block → running landing.
@@ -232,6 +267,6 @@ Pages is already enabled for this repository. To inspect or rerun deployment fro
 1. Open [the repository](https://github.com/dearsvincent-ctrl/Kinetic-stickman) and its **Actions** tab.
 2. Choose **Deploy GitHub Pages** and inspect the latest run. To retry, tap **Run workflow**, select `main`, and confirm Run workflow.
 3. If Pages needs enabling, open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Chrome's **Desktop site** mode may help expose GitHub settings on a phone.
-4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.1** appears.
+4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.2** appears.
 
-No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.1 for Android playtesting.
+No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.2 for Android playtesting.

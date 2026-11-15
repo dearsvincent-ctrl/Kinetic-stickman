@@ -6,6 +6,7 @@ import { checkActiveBattle } from "./active-battle-browser.mjs";
 import { checkPunchAim } from "./punch-aim-browser.mjs";
 import { checkAnimationFluidity } from "./animation-fluidity-browser.mjs";
 import { checkParkour } from "./parkour-browser.mjs";
+import { checkEnemySettings } from "./enemy-settings-browser.mjs";
 
 const run = await openBrowser(
   (process.env.TEST_URL || "http://127.0.0.1:5173") + "/?debug",
@@ -30,6 +31,7 @@ const active = await openBrowser(
 try {
   await checkActiveBattle(active.page, active.native);
   await checkPunchAim(active.page, active.native);
+  await checkEnemySettings(active.page, active.native);
   assert.deepEqual(
     active.errors,
     [],

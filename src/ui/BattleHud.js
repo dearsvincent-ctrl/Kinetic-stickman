@@ -31,6 +31,8 @@ export class BattleHud {
     this.root.dataset.blockEvents = battle.blockEvents;
     this.root.dataset.position = JSON.stringify(p.position.toArray());
     this.root.dataset.heading = p.heading;
+    this.root.dataset.enemySettings = JSON.stringify(battle.enemySettings);
+    this.root.dataset.enemySettingsRevision = battle.settingsRevision;
     this.root.dataset.enemies = JSON.stringify(
       battle.enemies
         .filter((e) => e.spawned)
@@ -40,6 +42,8 @@ export class BattleHud {
           state: e.state,
           position: e.root.position.toArray(),
           phase: e.combat.attack.phase,
+          velocity: e.controller.velocity.toArray(),
+          alerted: e.alerted,
         })),
     );
     this.defeatPanel.hidden = p.active;

@@ -5,6 +5,8 @@ import { CombatController } from "./CombatController.js";
 import { Combatant } from "./Combatant.js";
 import { createManualTechniques } from "./ManualTechniques.js";
 import { StrikeHitDetector } from "./StrikeHitDetector.js";
+import { PursuitSteering } from "./PursuitSteering.js";
+import { DEFAULT_ENEMY_SETTINGS } from "../sandbox/EnemySettings.js";
 import { resolveMovementConfig } from "../movement/MovementConfig.js";
 
 export const ENEMY_CONFIG = Object.freeze({
@@ -16,6 +18,7 @@ export const ENEMY_CONFIG = Object.freeze({
   punchStartup: 0.32,
   kickStartup: 0.43,
 });
+const NEUTRAL_VELOCITY = new Vector3();
 const NEUTRAL = { move: { x: 0, y: 0 }, movementMagnitude: 0, blocking: false };
 
 /** Small deterministic state machine. Steering runs every physical step;
@@ -55,6 +58,9 @@ export class EnemyAgent {
     this.attackEnd = new Vector3();
     this.state = "Idle";
     this.spawned = false;
+    this.wave = 1;
+    this.settings = DEFAULT_ENEMY_SETTINGS;
+    this.steering = new PursuitSteering();
   }
   spawn(position, wave, generation) {
     this.spawned = true;
@@ -65,25 +71,92 @@ export class EnemyAgent {
     this.controller.velocity.set(0, 0, 0);
     this.combat.cancelAttack("spawn");
     this.combat.update(1);
-    this.cooldown = 0.55 + this.index * 0.22;
+    this.cooldown =
+      (0.55 + (this.index % 8) * 0.22) / (this.settings.attackFrequency || 1);
     this.damageScale = Math.min(1.6, 1 + (wave - 1) * 0.04);
-    this.runSpeed = Math.min(4.8, ENEMY_CONFIG.runSpeed + (wave - 1) * 0.08);
-    this.controller.applyMovementConfig(
-      resolveMovementConfig({ walkSpeed: 2.1, sprintSpeed: this.runSpeed }),
-    );
     this.wave = wave;
+    this.configure(this.settings);
+    this.steering.reset();
+    this.lostTime = 0;
     this.state = "Idle";
     this.alerted = false;
     this.defeatTime = 0;
     this.attackCount = 0;
   }
-  move(dt, player, peers, mayAttack) {
+  configure(settings) {
+    const prior = this.settings.attackFrequency;
+    this.settings = settings;
+    this.runSpeed =
+      Math.min(4.8, ENEMY_CONFIG.runSpeed + (this.wave - 1) * 0.08) *
+      settings.speed;
+    this.controller.applyMovementConfig(
+      resolveMovementConfig({
+        walkSpeed: 2.1 * settings.speed,
+        sprintSpeed: this.runSpeed,
+        movementConfig: {
+          analogue: {
+            accelerationResponse: 11 * settings.acceleration,
+            decelerationResponse: 15 * settings.acceleration,
+          },
+        },
+      }),
+    );
+    this.controller.facingTurnRate = Math.min(
+      20,
+      6 + Math.log2(Math.max(1, settings.speed)) * 1.4,
+    );
+    if (
+      prior !== settings.attackFrequency &&
+      prior > 0 &&
+      settings.attackFrequency > 0
+    )
+      this.cooldown *= prior / settings.attackFrequency;
+    if (prior === 0 && settings.attackFrequency > 0)
+      this.cooldown = Math.min(
+        this.cooldown ?? 0,
+        0.25 / settings.attackFrequency,
+      );
+    const frequency = Math.max(0.1, settings.attackFrequency);
+    this.combat.setTechniques(
+      createManualTechniques(
+        {
+          punchSpeed: frequency,
+          kickSpeed: frequency,
+          recoverySpeed: frequency,
+        },
+        {
+          "basic-punch": { startup: ENEMY_CONFIG.punchStartup, recovery: 0.42 },
+          "front-kick": { startup: ENEMY_CONFIG.kickStartup, recovery: 0.5 },
+        },
+      ),
+    );
+    this.steering.neighborTime = 0;
+  }
+  steer(dt, player, playerVelocity, peers, mayAttack) {
+    const velocity = this.steering.update(
+      dt,
+      this,
+      player,
+      playerVelocity,
+      peers,
+      mayAttack,
+    );
+    const speed = velocity.length();
+    if (speed > 1e-6) {
+      this.input.move.x = velocity.x / speed;
+      this.input.move.y = -velocity.z / speed;
+      this.input.movementMagnitude = Math.min(1, speed / this.runSpeed);
+      this.input.locomotionSpeed = speed;
+    }
+  }
+  move(dt, player, peers, mayAttack, playerVelocity = NEUTRAL_VELOCITY) {
     this.start.copy(this.root.position);
     this.body.previousPosition.copy(this.root.position);
     this.startHeading = this.controller.heading;
     this.body.update(dt, false, this.controller.heading);
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.input.move.x = this.input.move.y = this.input.movementMagnitude = 0;
+    this.input.locomotionSpeed = 0;
     if (!this.body.active) {
       this.state = "Defeated";
       this.defeatTime += dt;
@@ -98,89 +171,69 @@ export class EnemyAgent {
       const dz = player.position.z - this.root.position.z;
       const distance = Math.hypot(dx, dz);
       const facing = Math.atan2(-dx, -dz);
-      this.alerted ||= distance <= ENEMY_CONFIG.detectRange;
+      const detectionDistance = Math.hypot(
+        distance,
+        player.position.y - this.root.position.y,
+      );
+      if (detectionDistance <= this.settings.detection) {
+        this.alerted = true;
+        this.lostTime = 0;
+      } else if (detectionDistance > this.settings.disengagement) {
+        this.lostTime = (this.lostTime || 0) + dt;
+        if (this.lostTime > 0.25 + this.settings.aggression * 0.75)
+          this.alerted = false;
+      } else this.lostTime = 0;
       if (!this.alerted) this.state = "Idle";
       else if (this.combat.attack.active) {
         this.state =
           this.combat.attack.phase === "recovery" ? "Recover" : "Attack";
+        if (this.settings.speed > 2)
+          this.steer(dt, player, playerVelocity, peers, true);
       } else {
         this.state = distance > 3 ? "Approach" : "Position";
-        const angle = this.index * 2.39996 + this.wave * 0.35;
-        const radius = mayAttack ? 0 : 1.9;
-        let tx = dx + Math.cos(angle) * radius;
-        let tz = dz + Math.sin(angle) * radius;
-        if (mayAttack && distance < 0.82) tx = tz = 0;
-        const forwardLength = Math.hypot(tx, tz);
-        if (forwardLength > 0.01) {
-          const fx = tx / forwardLength,
-            fz = tz / forwardLength;
-          for (const obstacle of this.world.obstacles) {
-            if (
-              obstacle.dynamic ||
-              obstacle.active === false ||
-              !(obstacle.radius > 0)
-            )
-              continue;
-            const ox = obstacle.position.x - this.root.position.x;
-            const oz = obstacle.position.z - this.root.position.z;
-            const ahead = ox * fx + oz * fz;
-            const lateral = ox * fz - oz * fx;
-            const clearance = this.body.radius + obstacle.radius + 0.25;
-            if (ahead <= 0 || ahead > 1.8 || Math.abs(lateral) >= clearance)
-              continue;
-            const side =
-              Math.abs(lateral) > 0.01
-                ? Math.sign(lateral)
-                : this.index % 2
-                  ? -1
-                  : 1;
-            const force =
-              (1 - Math.abs(lateral) / clearance) *
-              Math.max(1, forwardLength) *
-              1.8;
-            tx -= fz * side * force;
-            tz += fx * side * force;
-          }
-        }
-        for (const peer of peers) {
-          if (peer === this || !peer.spawned || !peer.body.active) continue;
-          const sx = this.root.position.x - peer.root.position.x;
-          const sz = this.root.position.z - peer.root.position.z;
-          const d = Math.hypot(sx, sz);
-          if (d > 0.001 && d < 1.15) {
-            tx += (sx / d) * (1.15 - d) * 3;
-            tz += (sz / d) * (1.15 - d) * 3;
-          }
-        }
-        const length = Math.hypot(tx, tz);
-        if (length > 0.08) {
-          const strength = Math.min(1, length / 1.8);
-          this.input.move.x = (tx / length) * strength;
-          this.input.move.y = (-tz / length) * strength;
-          this.input.movementMagnitude = strength;
-        }
+        this.steer(dt, player, playerVelocity, peers, mayAttack);
+        const action = this.attackCount % 3 === 2 ? "kick" : "punch";
+        const technique = this.combat.techniques.get(
+          action === "kick" ? "front-kick" : "basic-punch",
+        );
+        const travelBuffer =
+          this.settings.speed > 2 && distance > 1e-6
+            ? Math.max(
+                0,
+                (playerVelocity.x * dx + playerVelocity.z * dz) / distance,
+              ) * dt
+            : 0;
+        // Start only within the technique's unchanged physical contact envelope.
+        // A small step-buffer avoids requiring contact with an older footprint.
+        const attackDistance = Math.min(
+          ENEMY_CONFIG.attackDistance + travelBuffer,
+          technique.reach + player.strikeRadius,
+        );
         const error = Math.atan2(
           Math.sin(facing - this.controller.heading),
           Math.cos(facing - this.controller.heading),
         );
         if (
           mayAttack &&
+          this.settings.attackFrequency > 0 &&
           this.cooldown === 0 &&
-          distance <= ENEMY_CONFIG.attackDistance &&
-          player.position.y < 0.55 &&
+          distance <= attackDistance &&
+          Math.abs(player.position.y - this.root.position.y) < 0.55 &&
           Math.abs(error) < ENEMY_CONFIG.attackAngle
         ) {
-          const action = this.attackCount++ % 3 === 2 ? "kick" : "punch";
           if (this.combat.requestAttack({ action, environment: "ground" })) {
+            this.attackCount++;
             this.state = "Attack";
-            this.cooldown = Math.max(
-              0.65,
-              ENEMY_CONFIG.cooldown - (this.wave - 1) * 0.025,
-            );
-            this.input.move.x =
-              this.input.move.y =
-              this.input.movementMagnitude =
-                0;
+            this.cooldown =
+              Math.max(0.65, ENEMY_CONFIG.cooldown - (this.wave - 1) * 0.025) /
+              this.settings.attackFrequency;
+            if (this.settings.speed <= 2) {
+              this.input.move.x =
+                this.input.move.y =
+                this.input.movementMagnitude =
+                  0;
+              this.input.locomotionSpeed = 0;
+            }
           }
         }
       }

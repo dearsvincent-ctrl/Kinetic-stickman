@@ -10,6 +10,7 @@ import { checkActiveBattle } from "./active-battle-browser.mjs";
 import { checkPunchAim } from "./punch-aim-browser.mjs";
 import { checkAnimationFluidity } from "./animation-fluidity-browser.mjs";
 import { checkParkour } from "./parkour-browser.mjs";
+import { checkEnemySettings } from "./enemy-settings-browser.mjs";
 import { resolvePagesBase } from "../build/pagesBase.js";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
@@ -103,6 +104,7 @@ try {
   run = await openBrowser(`${origin}${base}`);
   await checkActiveBattle(run.page, run.native);
   await checkPunchAim(run.page, run.native);
+  await checkEnemySettings(run.page, run.native);
   for (const request of run.requests) {
     const url = new URL(request);
     assert.equal(url.origin, origin);

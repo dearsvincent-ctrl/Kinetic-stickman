@@ -150,7 +150,10 @@ export class CharacterController {
     const y = input.move.y;
     const magnitude = Math.min(1, Math.hypot(x, y));
     const extension = input.movementMagnitude ?? magnitude;
-    const maximum = speedForMagnitude(extension, this.config.analogue);
+    // Optional AI velocity intent; human analogue input follows its original path.
+    const maximum = Number.isFinite(input.locomotionSpeed)
+      ? Math.max(0, Math.min(this.sprintSpeed, input.locomotionSpeed))
+      : speedForMagnitude(extension, this.config.analogue);
     const sin = Math.sin(cameraYaw),
       cos = Math.cos(cameraYaw);
     // Forward points away from the camera; right is screen-right on the floor.

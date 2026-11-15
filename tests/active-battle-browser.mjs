@@ -14,7 +14,7 @@ const point = async (p, s) => {
 const touch = (id, p) => ({ id, ...p, radiusX: 7, radiusY: 7, force: 1 });
 export async function checkWaveCombat(page, native) {
   await advance(page, 450);
-  assert.equal(await page.locator(".version b").textContent(), "0.8.1");
+  assert.equal(await page.locator(".version b").textContent(), "0.8.2");
   let state = await read(page);
   assert.equal(state.wave, "1");
   assert.equal(state.alive, "3");
