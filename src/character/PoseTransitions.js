@@ -26,7 +26,13 @@ export class PoseTransitions {
     this.sequence = 0;
     this.elapsed = 1;
     this.duration = 0.085;
-    this.movementSequence = { jump: -1, phase: null, dash: -1, active: false };
+    this.movementSequence = {
+      jump: -1,
+      phase: null,
+      dash: -1,
+      active: false,
+      parkour: 0,
+    };
     this.attackActive = false;
   }
   begin(combat, movement) {
@@ -38,13 +44,15 @@ export class PoseTransitions {
         (movement.jump.sequence !== previous.jump ||
           movement.jump.phase !== previous.phase ||
           movement.dash.sequence !== previous.dash ||
-          movement.dash.active !== previous.active),
+          movement.dash.active !== previous.active ||
+          (movement.parkour?.sequence ?? 0) !== previous.parkour),
     );
     if (movement) {
       previous.jump = movement.jump.sequence;
       previous.phase = movement.jump.phase;
       previous.dash = movement.dash.sequence;
       previous.active = movement.dash.active;
+      previous.parkour = movement.parkour?.sequence ?? 0;
     }
     const enteringAttack = attack?.active && attack.sequence !== this.sequence;
     const exitingAttack = this.attackActive && !attack?.active;

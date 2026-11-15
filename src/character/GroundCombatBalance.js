@@ -15,6 +15,7 @@ export class GroundCombatBalance {
     this.drive = 0;
   }
   plan(dt, combat, jump, speed, feet) {
+    const floor = (jump?.floorHeight ?? 0) + 0.1;
     const a = combat?.attack,
       t = combat?.currentTechnique,
       ground =
@@ -44,14 +45,14 @@ export class GroundCombatBalance {
       this.character.joints[`${this.side}Ankle`].getWorldPosition(
         this.plantStart,
       );
-      this.plantStart.y = Math.max(0.1, this.plantStart.y);
-      this.anchor.copy(this.plantStart).setY(0.1);
+      this.plantStart.y = Math.max(floor, this.plantStart.y);
+      this.anchor.copy(this.plantStart).setY(floor);
       this.delta.subVectors(this.anchor, this.character.root.position).setY(0);
       if (this.delta.length() > 0.42)
         this.anchor
           .copy(this.character.root.position)
           .add(this.delta.setLength(0.42))
-          .setY(0.1);
+          .setY(floor);
       this.plantElapsed = 0;
     }
     const support = feet[this.side];
@@ -74,7 +75,10 @@ export class GroundCombatBalance {
       foot = feet[this.side];
     this.delta.subVectors(this.anchor, root.position).setY(0);
     if (this.delta.length() > 0.42)
-      this.anchor.copy(root.position).add(this.delta.setLength(0.42)).setY(0.1);
+      this.anchor
+        .copy(root.position)
+        .add(this.delta.setLength(0.42))
+        .setY(floor);
     // A stationary kick has a firm support. A running kick keeps a yielding
     // moving contact instead of pinning a foot while the body travels away.
     const stationary = 1 - Math.min(1, speed / 3.5),

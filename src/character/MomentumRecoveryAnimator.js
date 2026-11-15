@@ -18,6 +18,7 @@ export class MomentumRecoveryAnimator {
     this.impactSequence = 0;
   }
   plan(dt, state, feet, jump, dash, combat) {
+    const floor = (jump?.floorHeight ?? 0) + 0.1;
     const root = this.character.root,
       ground = (!jump || jump.ready) && !dash?.active;
     this.weight +=
@@ -60,19 +61,19 @@ export class MomentumRecoveryAnimator {
             ? "right"
             : "left";
       this.character.joints[`${this.side}Ankle`].getWorldPosition(this.anchor);
-      this.anchor.y = 0.1;
+      this.anchor.y = floor;
     }
     if (kick === this.side) {
       this.side = kick === "left" ? "right" : "left";
       this.character.joints[`${this.side}Ankle`].getWorldPosition(this.anchor);
-      this.anchor.y = 0.1;
+      this.anchor.y = floor;
     }
     // Human leg reach is bounded even at 100x. Carry excess root travel rather
     // than stretching a planted limb across many metres.
     this.goal.subVectors(this.anchor, root.position).setY(0);
     if (this.goal.length() > 0.48) {
       this.goal.setLength(0.48);
-      this.anchor.copy(root.position).add(this.goal).setY(0.1);
+      this.anchor.copy(root.position).add(this.goal).setY(floor);
     }
     const foot = feet[this.side],
       plant = this.weight * (0.45 + 0.55 * (state.compression ?? 0));

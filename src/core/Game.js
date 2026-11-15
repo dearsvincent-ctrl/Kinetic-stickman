@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { createArena } from "../world/createArena.js";
-import { ArenaBounds } from "../world/ArenaBounds.js";
+import { TraversalWorld } from "../world/TraversalWorld.js";
+import { createTraversalArea } from "../world/createTraversalArea.js";
 import { ARENA_CONFIG } from "../world/ArenaConfig.js";
 import { BattleWorld } from "../combat/BattleWorld.js";
 import { EnemyViews } from "../character/EnemyViews.js";
@@ -63,13 +64,18 @@ export class Game {
       ARENA_CONFIG.cameraFar,
     );
     this.arena = createArena(this.scene);
+    this.traversalArea = createTraversalArea(this.scene);
     this.dummy = new TrainingDummy();
     this.scene.add(this.dummy.root);
     this.character = new Stickman();
     this.scene.add(this.character.root);
     this.controller = new CharacterController(
       this.character.root,
-      new ArenaBounds(this.arena.halfSize, [this.dummy.target]),
+      new TraversalWorld(
+        this.arena.halfSize,
+        [this.dummy.target],
+        this.traversalArea.structures,
+      ),
       { faceInputWhenBlocked: true },
     );
     this.bodyRotation = new BodyRotation();
@@ -126,6 +132,7 @@ export class Game {
       this.camera,
       this.character.root.position,
     );
+    this.followCamera.world = this.controller.world;
     this.helpOpen = false;
     this.controlsOpen = false;
     this.contextLost = false;
@@ -309,6 +316,7 @@ export class Game {
           jump: this.controller.jump,
           sandbox: this.physicsSandbox.enabled && this.sandboxModified,
           recovery: this.momentumRecovery,
+          parkour: this.controller.parkour,
         });
         this.acrobaticPresenter.apply(
           STEP,
@@ -383,6 +391,7 @@ export class Game {
       this.recoveryPrevious.copy(this.controller.velocity);
     this.controller.update(dt, this.input, this.followCamera.yaw);
     this.battle?.movePlayerImpulse(dt);
+    this.controller.syncSupport?.();
     const jumpEvent = this.controller.jumpEvent;
     if (
       this.bodyRotation &&
@@ -547,11 +556,22 @@ export class Game {
       velocity: this.controller.velocity.toArray(),
       speed: this.controller.speed,
       movementState: this.controller.movementState,
+      parkour: this.controller.parkour
+        ? {
+            mode: this.controller.parkour.mode,
+            sequence: this.controller.parkour.sequence,
+            surface: this.controller.parkour.surface?.id ?? null,
+            normal: this.controller.parkour.normal.toArray(),
+            velocity: this.controller.parkour.velocity.toArray(),
+            lastExit: this.controller.parkour.lastExit,
+          }
+        : null,
       jump: {
         phase: this.controller.jump.phase,
         grounded: this.controller.jump.grounded,
         airborne: this.controller.jump.airborne,
         height: this.controller.jump.height,
+        floorHeight: this.controller.jump.floorHeight,
         verticalVelocity: this.controller.jump.verticalVelocity,
         elapsed: this.controller.jump.elapsed,
         phaseProgress: this.controller.jump.phaseProgress,
@@ -639,6 +659,8 @@ export class Game {
         ),
         flipTuck: this.acrobaticPresenter.tuck,
         landingAnticipation: this.animator.jumpAnimation.anticipation,
+        traversalWeight: this.acrobaticPresenter.parkour.weight,
+        traversalPhase: this.acrobaticPresenter.parkour.phase,
         combatWeight: this.animator.combatWeight,
         phase: this.animator.locomotion.phase,
         cadence: this.animator.locomotion.cadence,

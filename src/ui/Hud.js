@@ -73,8 +73,10 @@ export class Hud {
     }
     if (this.hudTime < 0.08) return;
     this.hudTime = 0;
-    const state =
-      dash?.active && dash.mode === "air"
+    const parkour = movement?.parkour;
+    const state = parkour?.attached
+      ? parkour.mode.toUpperCase().replaceAll("-", " ")
+      : dash?.active && dash.mode === "air"
         ? "AIR DASH"
         : jump && !jump.ready
           ? jump.phase === "takeoff"
@@ -108,6 +110,13 @@ export class Hud {
             ? `${rotation.phase.toUpperCase()} · STEER ROTATION`
             : "FREE MOVEMENT";
     this.speedValue.textContent = speed.toFixed(1);
+    this.stanceLabel.dataset.parkour = parkour?.mode ?? "free";
+    this.stanceLabel.dataset.surface = parkour?.surface?.id ?? "none";
+    this.stanceLabel.dataset.elevation = String(
+      movement?.root?.position.y ?? 0,
+    );
+    this.stanceLabel.dataset.traversalSequence = String(parkour?.sequence ?? 0);
+    this.stanceLabel.dataset.parkourExit = parkour?.lastExit ?? "none";
     this.stanceLabel.dataset.technique = combat?.attack.active
       ? combat.attack.techniqueId
       : "none";

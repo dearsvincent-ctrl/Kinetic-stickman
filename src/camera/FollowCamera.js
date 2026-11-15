@@ -16,6 +16,7 @@ export class FollowCamera {
     this.target = position.clone().add(new Vector3(0, 1.02, 0));
     this.desiredTarget = new Vector3();
     this.offset = new Vector3();
+    this.collisionTarget = new Vector3();
     this.update(1, position, { x: 0, y: 0 });
   }
 
@@ -43,6 +44,15 @@ export class FollowCamera {
       this.target
         .copy(this.desiredTarget)
         .addScaledVector(this.lag, this.maxLag / lag);
+    if (this.world && !this.world.isSpaceFree(this.target, 0.2, 0.2)) {
+      // Project lag to a clear focus rather than resetting it at every corner.
+      this.world.clipCamera(
+        this.desiredTarget,
+        this.target,
+        this.collisionTarget,
+      );
+      this.target.copy(this.collisionTarget);
+    }
     const horizontal = Math.cos(this.pitch) * this.distance;
     this.offset.set(
       Math.sin(this.yaw) * horizontal,
@@ -51,6 +61,14 @@ export class FollowCamera {
     );
     this.camera.position.copy(this.target).add(this.offset);
     this.camera.position.y = Math.max(0.3, this.camera.position.y);
+    if (this.world) {
+      this.world.clipCamera(
+        this.target,
+        this.camera.position,
+        this.collisionTarget,
+      );
+      this.camera.position.copy(this.collisionTarget);
+    }
     this.camera.lookAt(this.target);
   }
 

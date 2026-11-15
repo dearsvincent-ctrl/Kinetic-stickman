@@ -24,9 +24,19 @@ export function updateCombatContext(context, movement) {
   context.movementDirection[2] = length > 0.001 ? velocity.z / length : 0;
   context.facing = movement.heading;
   context.dashActive = movement.dash.active;
-  context.environment = jump.airborne ? "air" : "ground";
+  context.environment =
+    movement.parkour?.attached && movement.parkour.mode !== "perch"
+      ? "air"
+      : jump.airborne
+        ? "air"
+        : "ground";
   context.phase = jump.phase;
-  context.canAttack = jump.airborne || jump.canActOnGround || jump.ready;
+  context.canAttack = Boolean(
+    movement.parkour?.attached ||
+      jump.airborne ||
+      jump.canActOnGround ||
+      jump.ready,
+  );
   context.height = jump.height;
   context.airTimeRemaining = jump.airborne ? jump.timeToBoundary : 0;
   return context;

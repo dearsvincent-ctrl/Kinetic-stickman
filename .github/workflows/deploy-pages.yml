@@ -18,8 +18,8 @@ jobs:
   build:
     name: Test and build game
     runs-on: ubuntu-latest
-    # Production touch/layout, sandbox and acrobatic checks use software WebGL.
-    timeout-minutes: 25
+    # Production traversal, touch/layout, sandbox and combat use software WebGL.
+    timeout-minutes: 35
     env:
       # GITHUB_REPOSITORY is supplied by Actions (owner/repository).
       GITHUB_PAGES: "true"

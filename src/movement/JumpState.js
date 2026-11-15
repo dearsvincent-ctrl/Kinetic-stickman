@@ -27,6 +27,8 @@ export class JumpState {
     this.configure(config);
     this.phase = "grounded";
     this.height = 0;
+    this.floorHeight = 0;
+    this.landingFloor = null;
     this.verticalVelocity = 0;
     this.elapsed = 0;
     this.sequence = 0;
@@ -95,11 +97,27 @@ export class JumpState {
     if (!this.airborne) return Infinity;
     const speed = this.verticalVelocity;
     const root = Math.sqrt(
-      speed * speed + 2 * this.config.gravity * this.height,
+      speed * speed +
+        2 * this.config.gravity * Math.max(0, this.height - this.floorHeight),
     );
     // The descending form avoids cancellation close to the floor.
     return speed < 0
-      ? (2 * this.height) / (root - speed)
+      ? (2 * Math.max(0, this.height - this.floorHeight)) / (root - speed)
+      : (speed + root) / this.config.gravity;
+  }
+
+  /** Visual anticipation may use a roof underfoot without allowing its height
+   * to reset jumps before a swept collision confirms actual touchdown. */
+  get timeToLanding() {
+    if (!this.airborne) return this.timeToBoundary;
+    const distance = Math.max(
+      0,
+      this.height - (this.landingFloor ?? this.floorHeight),
+    );
+    const speed = this.verticalVelocity;
+    const root = Math.sqrt(speed * speed + 2 * this.config.gravity * distance);
+    return speed < 0
+      ? (2 * distance) / (root - speed)
       : (speed + root) / this.config.gravity;
   }
 
@@ -112,7 +130,8 @@ export class JumpState {
       return true;
     }
     this.jumpCount = 1;
-    this.height = 0;
+    this.landingFloor = this.floorHeight;
+    this.height = this.floorHeight;
     this.verticalVelocity = 0;
     this.landingSpeed = 0;
     this.elapsed = 0;
@@ -126,6 +145,17 @@ export class JumpState {
     this.elapsed = 0;
     this.verticalVelocity = this.launchVelocity;
     this.flightLaunchVelocity = this.launchVelocity;
+  }
+
+  land(height = this.floorHeight, speed = Math.abs(this.verticalVelocity)) {
+    this.floorHeight = height;
+    this.landingFloor = height;
+    this.height = height;
+    this.verticalVelocity = 0;
+    this.landingSpeed = speed;
+    this.jumpCount = 0;
+    this.elapsed = 0;
+    this.phase = this.config.landingDuration > 0 ? "landing" : "grounded";
   }
 
   advance(dt) {
@@ -146,12 +176,7 @@ export class JumpState {
       if (this.phase === "takeoff") {
         this.launch();
       } else if (this.airborne) {
-        this.landingSpeed = Math.abs(this.verticalVelocity);
-        this.jumpCount = 0;
-        this.height = 0;
-        this.verticalVelocity = 0;
-        this.elapsed = 0;
-        this.phase = this.config.landingDuration > 0 ? "landing" : "grounded";
+        this.land(this.floorHeight, Math.abs(this.verticalVelocity));
       } else {
         this.phase = "grounded";
         this.elapsed = 0;

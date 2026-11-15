@@ -133,7 +133,10 @@ export class AerialAttackAnimator {
     const landing =
       !groundedKick && jump.verticalVelocity < 0
         ? smooth(
-            clamp01((jump.timeToBoundary ?? Infinity) / s.landingBlendTime),
+            clamp01(
+              (jump.timeToLanding ?? jump.timeToBoundary ?? Infinity) /
+                s.landingBlendTime,
+            ),
           )
         : 1;
     const blend = this.weight * landing;

@@ -4,6 +4,7 @@ import {
   sampleLocalStrike,
   worldStrike,
 } from "../combat/TechniqueGeometry.js";
+import { ParkourPresenter } from "./ParkourPresenter.js";
 import { ArmIK } from "./ArmIK.js";
 import { PoseTransitions } from "./PoseTransitions.js";
 import { punchAlignmentQuaternion } from "../combat/PunchAlignment.js";
@@ -33,6 +34,7 @@ export class AcrobaticPresenter {
     this.inverse = new Quaternion();
     this.body = new Quaternion();
     this.handIK = new ArmIK(character);
+    this.parkour = new ParkourPresenter(character, animator);
     this.transitions = new PoseTransitions(character);
     this.flipWeight = 0;
     this.aimCorrection = new Quaternion();
@@ -97,7 +99,14 @@ export class AcrobaticPresenter {
     }
     const landing =
       movement?.jump?.airborne && movement.jump.verticalVelocity < 0
-        ? Math.max(0, Math.min(1, movement.jump.timeToBoundary / 0.22))
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              (movement.jump.timeToLanding ?? movement.jump.timeToBoundary) /
+                0.22,
+            ),
+          )
         : this.animator.jumpAnimation.phase === "landing"
           ? 0
           : 1;
@@ -149,6 +158,7 @@ export class AcrobaticPresenter {
           j[`${side}Elbow`].rotateX(0.18 * this.tuck);
         }
     }
+    this.parkour.apply(dt, movement?.parkour, this.body, combat);
     if (!attack.active || !t?.adaptive) return;
     if (t.action === "punch" && attack.context?.punchAim) {
       punchAlignmentQuaternion(
@@ -222,6 +232,7 @@ export class AcrobaticPresenter {
     }
   }
   reset() {
+    this.parkour.reset();
     this.flipWeight = this.tuck = 0;
     this.flipSequence = -1;
     this.pivot.quaternion.identity();

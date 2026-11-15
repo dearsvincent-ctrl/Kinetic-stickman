@@ -25,7 +25,9 @@ export class EnemyAgent {
     this.index = index;
     this.root = new Group();
     this.body = new Combatant(`enemy-${index}`, this.root.position);
-    this.world = new ArenaBounds(world.halfSize, world.obstacles, this.body);
+    this.world =
+      world.fork?.(this.body) ??
+      new ArenaBounds(world.halfSize, world.obstacles, this.body);
     this.controller = new CharacterController(this.root, this.world, {
       sprintSpeed: ENEMY_CONFIG.runSpeed,
       radius: this.body.radius,

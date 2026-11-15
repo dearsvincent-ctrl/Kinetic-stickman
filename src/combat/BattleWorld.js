@@ -83,11 +83,16 @@ export class BattleWorld {
       enemy.spawned = i < count;
       enemy.body.active = false;
       if (i >= count) continue;
+      let spawnReady = false;
       // Rotate a spaced ring each wave. Rejection also works in arena corners.
       for (let attempt = 0; attempt < 48; attempt++) {
         const angle =
           (i / count) * Math.PI * 2 + this.wave * 0.67 + attempt * 2.39996;
-        const radius = WAVE_CONFIG.spawnMin + (i % 3) * 2 + (attempt % 3);
+        const radius =
+          WAVE_CONFIG.spawnMin +
+          (i % 3) * 2 +
+          (attempt % 3) +
+          Math.max(0, attempt - 23) * 0.75;
         const limit = this.world.halfSize - 2;
         this.spawnPoint.set(
           Math.max(
@@ -109,13 +114,23 @@ export class BattleWorld {
         )
           continue;
         if (
+          this.world.isSpaceFree &&
+          !this.world.isSpaceFree(this.spawnPoint, 0.4, 1.8)
+        )
+          continue;
+        if (
           this.world.obstacles.some(
             (b) =>
               b !== this.player && this.spawnPoint.distanceTo(b.position) < 2,
           )
         )
           continue;
+        spawnReady = true;
         break;
+      }
+      if (!spawnReady) {
+        enemy.spawned = false;
+        continue;
       }
       enemy.spawn(this.spawnPoint, this.wave, this.generation);
       this.world.obstacles.push(enemy.body);

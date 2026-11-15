@@ -1,10 +1,10 @@
-# Kinetic — Movement Lab v0.8.0
+# Kinetic — Movement Lab v0.8.1
 
-A mobile-first Three.js/Vite stickman prototype. Version 0.8.0 refines **coordinated, contact-driven procedural animation** over the existing 2,000 × 2,000-unit arena, active combat waves and subtle manual-punch aim assistance. The v0.7.8 directional double jump, 1.5× original jump-height baseline, manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place.
+A mobile-first Three.js/Vite stickman prototype. Version 0.8.1 adds **automatic superhuman traversal** to a compact test area within the existing 2,000 × 2,000-unit arena. The v0.8.0 coordinated animation, active combat waves and subtle manual-punch aim assistance remain in place. The v0.7.8 directional double jump, 1.5× original jump-height baseline, manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place.
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.0** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.0**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.1** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.1**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -25,6 +25,39 @@ Sliding between **Punch, Kick, Block and Jump** uses the same central action rou
 Combat never reduces movement speed, applies root motion, pulls the character toward a target or automatically turns toward the dummy. Keep using the analogue joystick and Jump while attacking. When collision would leave the fighter facing a tiny tangent slide, facing smoothly retains the last joystick intent; it never reads the opponent to aim. A ground-only strike yields to takeoff; an air-only strike yields to landing. Held input can resume the appropriate technique when the new physical phase permits it. There is no automatic attack merely from standing near the dummy.
 
 **Dash is removed from the normal HUD, keyboard bindings and layout editor.** Its physical ground/aerial implementations remain in the code for future movement abilities. Developer mode retains E and a **Test preserved dash** utility inside the physics panel, so its existing dash sliders remain testable on a phone. Dash still moves continuously, steers, collides, permits ground-dash-to-jump transitions and tracks its aerial allowance independently.
+
+## Automatic traversal (v0.8.1)
+
+Look to the right of spawn for the gold-marked structures and **TRAVERSAL / 01** sign. The small cluster occupies approximately **x = 42–77, z = −44–−16** (metres), leaving the central combat field and the rest of the 2 km arena open. It contains a long wall, 6/12/20 m buildings, two 6 m rooftops separated by a 3 m gap, two low barriers and 8/12 m poles. Collision dimensions and instanced render geometry come from the same `TraversalGeometry` definitions.
+
+No additional action button is needed:
+
+| Context | MOVE / Jump |
+| --- | --- |
+| Wall approach | Intentionally move into a nearby face; parallel passes and released-stick inertia do not attach. |
+| Wall climb / run | Continue toward the wall to ascend; steer along its face to run sideways. Combine both directions for diagonal travel. |
+| Hold / descend / detach | Centre MOVE to hold a reachable contact. Extend moderately away to descend; a strong away input detaches. |
+| Wall / ledge Jump | Press Jump to launch outward, with lateral steering from MOVE. This starts a fresh first jump; one ordinary directional second jump remains. Repeated free-air presses cannot refill it. A new wall interaction requires leaving and contacting a surface again. |
+| Ledge | Approach within hand reach to catch it. MOVE sideways to shimmy, toward the wall to pull up, or Jump away. Above an unsupported rim, interrupting the pull-up returns to gravity. |
+| Roof | Continue onto the roof and immediately walk/run/jump/attack. Leaving a roof starts a fall; roof or ground contact restores both jumps. |
+| Low barrier | Moving into a gold-marked low barrier automatically vaults it. Keep steering, interrupt away or press Jump. |
+| Pole | Approach deliberately, then climb using the approach direction. Left/right relative to the initial contact plane circles the pole; the control direction stays consistent around the shaft. Continue to the top to perch. Neutral/continued approach holds the perch; steer sideways to step off, or Jump with MOVE aimed at the next structure. |
+
+Climbing and wall running have **no stamina or duration limit**. Very fast upward runs carry momentum over a crest into ballistic flight; brake before the rim to settle into a normal ledge catch/perch. Punch/Kick still use the manual scheduler and existing active contact paths; wall contacts use the existing aerial techniques, while roofs/perches support grounded techniques. Block retains priority. No damage, attack-rate or hit-range tuning is changed.
+
+`TraversalWorld` extends the circular target adapter with swept box/cylinder sides, roof caps, ceilings, elevated support and camera obstruction queries. Structures live separately from the mutable enemy list, so waves/reset cannot erase them. Enemy adapters share structure collision and spawn rejection, while remaining ground-based. `ParkourState` owns contact abilities and velocities; `JumpState` retains launch/gravity/double-jump ownership using an explicit support height. `ParkourPresenter` layers reachable hand/foot IK, sole orientation, hips/shoulders and recovery over the current rig; final strike IK retains priority. None of the animation code moves the player root.
+
+Code-only `PARKOUR_DEFAULTS` prepare climb speed, descent, acceleration response, mantle/vault rates, wall-jump impulse and contact thresholds for future attributes. Current movement/jump sandbox values apply live; there are no new progression or enemy-speed menus. Traversal uses bounded collision iterations, a broad phase, the existing adaptive step budget, bounded animation cadence and a pole orbit cap to keep extreme settings numerically stable. Visual landing anticipation queries the roof beneath the player separately from the collision-confirmed landing state. Camera distance/orbit/reset stay unchanged in free space; obstruction shortens the camera offset rather than placing it inside a building.
+
+This foundation supports the authored vertical boxes, ledges and poles, not arbitrary mesh climbing or a ragdoll. Wall ends release into the air; automatic corner wrapping, enemy parkour/pathfinding and a larger obstacle playground are deferred. Close obstructions can pull the camera in; orbit to a clear side. Human-sized limb contacts can still slide at extreme sandbox speeds.
+
+### v0.8.1 Android playtest
+
+1. Run toward the gold-marked wall. Climb, steer sideways, reverse along it, hold neutral, descend with a partial away input and detach with a stronger one. Running past it should not grab it.
+2. Jump away from a wall, use the directional second Jump and Punch/Kick/Block while steering. Return to a wall deliberately, then repeat; free-air Jump spam must stop at the normal allowance.
+3. Hold toward a building until the roof transition completes; continue sprinting or immediately jump/attack. Cross the gap between the two 6 m roofs with jumping/double jumping.
+4. Vault a low barrier, interrupt a pull-up, shimmy a ledge and climb/perch on both poles. Jump toward another reachable structure. Use right-thumb look and Reset View near each surface.
+5. Repeat with Enhanced/Extreme sandbox settings. Check continuous contact, solid roofs/walls, stable rotations, camera tracking and independent controls. Return to the open area to check enemy attacks, damage, Block, waves, defeat/respawn and saved HUD positions.
 
 ## Coordinated procedural animation (v0.8.0)
 
@@ -115,7 +148,7 @@ Positions are normalized to the playable viewport and saved under `kinetic.contr
 
 ## Developer physics sandbox
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.0** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.1** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
 
 The original eight sliders still support **0.1×–100×**, with precise stops near 1×, 10×, 20×, 50× and 100×:
 
@@ -182,6 +215,8 @@ GITHUB_REPOSITORY=dearsvincent-ctrl/Kinetic-stickman npm run test:pages
 
 For a normal local build use `npm run build` and `npm run preview`. For a Pages-specific preview use the same `GITHUB_PAGES`/`GITHUB_REPOSITORY` variables with `npm run preview`, then open `http://localhost:4173/Kinetic-stickman/`.
 
+The v0.8.1 tests cover deliberate versus glancing attachment, unlimited climbs, wall running/descent/jumps, ledge interruptions, continuous vaults, poles/perches, rooftop gaps, elevated double jumps, high-speed side/roof/ceiling collision, camera clearance, contact poses and manual aerial combat. They also compare the open-ground adapter paths exactly at 1×/100× and reject enemy spawns inside structures. Native browser routes reach the area using the actual joystick and developer panel, then exercise vault/climb/mantle, roof attacks/double jumps, pole perching and directed jumps.
+
 The v0.8.0 tests add contact-driven gait comparisons, acceleration banking, immediate touchdown actions, exact active wrist/ankle agreement with the contact sampler, rapid attack/flip continuity, vertical 100× takeoff capture, support contacts and pause/reset handling. Browser checks capture walk/run/sprint at the same camera angle and exercise sprint → reversal → Punch → double-jump backflip → Kick → Block → running landing.
 
 Logic tests additionally cover broad-angle recovery, exact movement independence at normal/100× settings, bounded effects, grounded support, manual attacks during recovery, directional double jumping versus ordinary air steering, three-axis normalization, counter-rotation/inverted easing, upright recovery, contextual and repeated same-limb selection, kick-to-backhand continuation, pose continuity and rotational swept contacts. They cover scheduling, tap/hold switching, cancellation, numerical stability, swept active-window contacts/misses, one contact per target, moving-target preparation, root ownership, exact movement independence during attacks, animation blending and layout migration. Existing underlying dash, jump, movement, camera, input and sandbox regressions remain. Browser checks exercise real Chromium touch/pointer events, multitouch, action slides, moved controls, Save/Cancel/Reset, portrait/landscape sizes, manual ground/air strikes, Block, misses, extreme physics and production asset routing. Native browser checks cover ground reversals without automatic attacks, manual strikes during recovery, restrained curved turns, attacks during directional double-jump flips, Block, rotational steering, inversion and landing. Screenshots are written to `test-results/`.
@@ -197,6 +232,6 @@ Pages is already enabled for this repository. To inspect or rerun deployment fro
 1. Open [the repository](https://github.com/dearsvincent-ctrl/Kinetic-stickman) and its **Actions** tab.
 2. Choose **Deploy GitHub Pages** and inspect the latest run. To retry, tap **Run workflow**, select `main`, and confirm Run workflow.
 3. If Pages needs enabling, open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Chrome's **Desktop site** mode may help expose GitHub settings on a phone.
-4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.0** appears.
+4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.1** appears.
 
-No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.0 for Android playtesting.
+No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.1 for Android playtesting.

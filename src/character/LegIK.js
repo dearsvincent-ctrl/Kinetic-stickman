@@ -39,7 +39,7 @@ export class LegIK {
 
     this.actualTargetWorld.copy(targetWorld);
     this.actualTargetWorld.y = Math.max(
-      d.ankleHeight,
+      d.ankleHeight + (this.character.floorHeight ?? 0),
       this.actualTargetWorld.y,
     );
     this.direction.subVectors(this.actualTargetWorld, this.hipWorld);

@@ -117,6 +117,11 @@ export class CharacterAnimator {
     if (!this.initialized) this.continuity.reset();
     if (sandbox) dash = this.dashPresentation.sample(dt, dash);
     const root = this.character.root;
+    this.groundHeight =
+      jump && (jump.canActOnGround || jump.phase === "takeoff")
+        ? (jump.floorHeight ?? 0)
+        : 0;
+    this.character.floorHeight = this.groundHeight;
     // At superhuman speed a human-length rig cannot plant feet for 100× the
     // distance. Carry contacts with excess travel instead of stretching the IK
     // or resetting the gait every frame. The physical root is never changed.
@@ -383,7 +388,8 @@ export class CharacterAnimator {
     j.hips.position.y = Math.max(0.68, j.hips.position.y - lowerBy);
     for (const foot of this.footList) {
       if (
-        foot.target.y > this.character.dimensions.ankleHeight + 0.001 &&
+        foot.target.y >
+          this.groundHeight + this.character.dimensions.ankleHeight + 0.001 &&
         gait.runBlend > 0.001
       ) {
         // Keep the sprint's heel recovery inside a human knee range even
@@ -424,7 +430,7 @@ export class CharacterAnimator {
       foot.deferSwing = false;
       foot.duty = gait.duty;
       foot.anchor.copy(foot.target);
-      foot.anchor.y = this.character.dimensions.ankleHeight;
+      foot.anchor.y = this.groundHeight + this.character.dimensions.ankleHeight;
       foot.yaw.copy(this.footOrientation);
       if (deferred) {
         // Resume only the support travel still available behind this landing,
@@ -462,6 +468,7 @@ export class CharacterAnimator {
       this.landing.addScaledVector(this.travelDirection, gait.stride * 0.5);
       foot.target.lerpVectors(foot.swingStart, this.landing, smooth(t));
       foot.target.y =
+        this.groundHeight +
         this.character.dimensions.ankleHeight +
         Math.sin(Math.PI * t) *
           MathUtils.lerp(

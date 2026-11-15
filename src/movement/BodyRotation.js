@@ -79,7 +79,7 @@ export class BodyRotation {
   advance(dt, movement, input, cameraYaw) {
     this.time += dt;
     const c = this.config,
-      air = movement.jump.airborne;
+      air = movement.jump.airborne && !movement.parkour?.attached;
     if (this.phase === "idle") {
       this.orientation.setFromAxisAngle(UP, movement.heading);
       this.angularVelocity.set(0, 0, 0);
@@ -146,7 +146,7 @@ export class BodyRotation {
     const landingSoon =
       air &&
       movement.jump.verticalVelocity < 0 &&
-      movement.jump.timeToBoundary < 0.16;
+      (movement.jump.timeToLanding ?? movement.jump.timeToBoundary) < 0.16;
     const recovering = this.phase === "recover" || (!air && this.flipping);
     if (recovering || landingSoon) {
       if (!air) this.phase = "recover";
@@ -199,7 +199,10 @@ export class BodyRotation {
     // physical height or gravity and eases away as the body returns upright.
     const pivot = 0.955,
       headMinimum = movement.root.position.y + pivot + this.up.y * 1.04 - 0.2;
-    const clearance = Math.max(0, Math.min(0.3, 0.025 - headMinimum));
+    const support = movement.parkour?.attached
+      ? 0
+      : (movement.jump.landingFloor ?? movement.jump.floorHeight ?? 0);
+    const clearance = Math.max(0, Math.min(0.3, support + 0.025 - headMinimum));
     this.lift += (clearance - this.lift) * (1 - Math.exp(-35 * dt));
   }
   reset(heading = 0) {

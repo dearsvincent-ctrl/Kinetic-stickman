@@ -50,7 +50,8 @@ export class DashAnimator {
   ) {
     const active = Boolean(dash?.active);
     const root = this.character.root;
-    const ankleY = this.character.dimensions.ankleHeight;
+    const ankleY =
+      this.character.dimensions.ankleHeight + (this.character.floorHeight ?? 0);
     let completed = false;
     if (active && (!this.active || dash.sequence !== this.sequence)) {
       this.entryTime = entryTime;

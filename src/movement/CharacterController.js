@@ -5,6 +5,7 @@ import {
 } from "./JoystickGestures.js";
 import { dampAngle, dampFactor } from "../core/math.js";
 import { DashState } from "./DashState.js";
+import { ParkourState } from "../traversal/ParkourState.js";
 import { JumpState } from "./JumpState.js";
 import { resolveMovementConfig } from "./MovementConfig.js";
 import { speedForMagnitude } from "./AnalogueLocomotion.js";
@@ -52,6 +53,14 @@ export class CharacterController {
     this.dash = this.groundDash;
     this.dashSequence = 0;
     this.jump = new JumpState(this.config.jump);
+    this.parkour =
+      world.querySurface &&
+      world.parkourEnabled !== false &&
+      options.parkour !== false
+        ? new ParkourState(world, options.parkourConfig)
+        : null;
+    this.verticalStart = new Vector3();
+    this.elevationResult = new Vector3();
     this.airDashesUsed = 0;
     this.movementState = "locomotion";
     this.dashRequested = false;
@@ -85,7 +94,12 @@ export class CharacterController {
   }
 
   get canDash() {
-    if (this.dashRequested || this.dash.active || this.jumpRequested)
+    if (
+      this.parkour?.attached ||
+      this.dashRequested ||
+      this.dash.active ||
+      this.jumpRequested
+    )
       return false;
     return this.jump.airborne
       ? this.airDashesRemaining > 0 && this.airDash.ready
@@ -98,6 +112,7 @@ export class CharacterController {
   }
 
   get canJump() {
+    if (this.parkour?.attached) return !this.jumpRequested;
     // Ground dash is interruptible. Vertical eligibility and the aerial dash
     // remain independent. Physical touchdown restores ground actions while
     // the visual landing compression may still be recovering.
@@ -141,6 +156,24 @@ export class CharacterController {
     // Forward points away from the camera; right is screen-right on the floor.
     this.desired.set(x * cos - y * sin, 0, -x * sin - y * cos);
     if (this.desired.lengthSq() > 0) this.desired.setLength(maximum);
+    this.parkour?.begin(dt);
+    if (this.jumpRequested && this.parkour?.attached) {
+      this.jumpRequested = false;
+      const intent = this.jumpIntent.captured ? this.jumpIntent : input;
+      this.parkour.jumpOff(
+        this,
+        intent,
+        this.jumpIntent.captured ? this.jumpIntent.cameraYaw : cameraYaw,
+      );
+      this.jumpIntent.captured = false;
+    }
+    if (this.parkour?.update(dt, this, extension)) {
+      const unused = this.parkour.unusedTime;
+      this.tickDashCooldowns(dt - unused);
+      if (unused < 1e-10) return;
+      dt = unused;
+    }
+    this.syncSupport();
     this.dashDirection.copy(this.desired);
     if (this.dashRequested) {
       this.dashRequested = false;
@@ -213,6 +246,7 @@ export class CharacterController {
     if (!this.jump.ready) {
       this.updateJump(dt, maximum);
       this.tickDashCooldowns(dt);
+      this.parkour?.tryAttach(this, extension);
       return;
     }
     let remaining = dt;
@@ -239,11 +273,29 @@ export class CharacterController {
     }
     if (remaining > 1e-10) this.updateLocomotion(remaining, maximum);
     this.tickDashCooldowns(dt);
+    this.syncSupport();
+    this.parkour?.tryAttach(this, extension);
+  }
+
+  syncSupport() {
+    if (!this.world.supportHeight || this.jump.airborne) return;
+    const floor = this.world.supportHeight(this.root.position, this.radius);
+    if (this.root.position.y > floor + 0.02) {
+      this.jump.phase = "airborne";
+      this.jump.floorHeight = 0;
+      this.jump.height = this.root.position.y;
+      this.jump.verticalVelocity = 0;
+      this.jump.jumpCount = Math.max(1, this.jump.jumpCount);
+      this.jump.elapsed = 0;
+    } else this.jump.floorHeight = floor;
   }
 
   updateJump(dt, maximum) {
     let remaining = dt;
     while (remaining > 1e-10) {
+      if (this.world.resolveElevation && this.jump.airborne)
+        this.jump.floorHeight = 0;
+      this.verticalStart.copy(this.root.position);
       const step = Math.min(
         remaining,
         Math.max(1e-8, this.jump.timeToBoundary),
@@ -272,6 +324,45 @@ export class CharacterController {
       this.jump.advance(step);
       if (wasAirborne && !this.jump.airborne) this.airDashesUsed = 0;
       this.root.position.y = this.jump.height;
+      if (this.world.resolveElevation && wasAirborne) {
+        const impact = Math.abs(this.jump.verticalVelocity);
+        this.world.resolveElevation(
+          this.verticalStart,
+          this.root.position,
+          this.radius,
+          this.elevationResult,
+        );
+        this.root.position.copy(this.elevationResult);
+        this.jump.height = this.root.position.y;
+        this.world.resolveVelocity(this.velocity);
+        if (this.world.ceilingHit)
+          this.jump.verticalVelocity = Math.min(0, this.jump.verticalVelocity);
+        if (this.world.floorHit) {
+          const support = this.world.supportHeight(
+            this.root.position,
+            this.radius,
+          );
+          if (support >= this.root.position.y - 0.015)
+            this.jump.land(support, impact);
+          else {
+            // A fast actor may touch a roof and leave its far edge in the same
+            // step. Absorb downward impact, then fall; do not carry the old
+            // falling velocity through a real contact or grant free air jumps.
+            this.jump.phase = "airborne";
+            this.jump.floorHeight = 0;
+            this.jump.verticalVelocity = 0;
+            this.jump.jumpCount = 1;
+            this.jump.elapsed = 0;
+          }
+          this.airDashesUsed = 0;
+        }
+      }
+      this.syncSupport();
+      if (this.world.supportHeight && this.jump.airborne)
+        this.jump.landingFloor = this.world.supportHeight(
+          this.root.position,
+          this.radius,
+        );
       remaining -= step;
     }
     this.movementState = this.dash.active
@@ -317,6 +408,7 @@ export class CharacterController {
 
   move(dt) {
     this.previous.copy(this.root.position);
+    this.parkour?.observe(this.velocity);
     this.world.move(this.previous, this.displacement, this.radius, this.next);
     // The flat world adapter resolves XZ collisions; JumpState owns elevation.
     this.next.y = this.previous.y;
@@ -382,6 +474,7 @@ export class CharacterController {
   }
 
   stop() {
+    this.parkour?.cancel(this);
     this.blockedInputHeading = null;
     this.velocity.set(0, 0, 0);
     this.speed = 0;

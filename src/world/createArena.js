@@ -317,8 +317,8 @@ export function createArena(scene) {
       // One small shadow map follows the fighter, rather than covering 4 km².
       const x = Math.round(position.x / 2) * 2;
       const z = Math.round(position.z / 2) * 2;
-      sunlight.position.set(x - 10, 17, z + 9);
-      sunlight.target.position.set(x, 0, z);
+      sunlight.position.set(x - 10, position.y + 17, z + 9);
+      sunlight.target.position.set(x, position.y, z);
       sunlight.target.updateMatrixWorld();
     },
     dispose() {

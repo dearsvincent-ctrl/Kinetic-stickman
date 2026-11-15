@@ -54,7 +54,8 @@ export class JumpAnimator {
     const phase = jump?.phase ?? "grounded";
     const active = phase !== "grounded";
     const root = this.character.root;
-    const ankleY = this.character.dimensions.ankleHeight;
+    const ankleY =
+      this.character.dimensions.ankleHeight + (this.character.floorHeight ?? 0);
     const previousPhase = this.phase;
     this.guardWeight = MathUtils.damp(
       this.guardWeight,
@@ -103,7 +104,7 @@ export class JumpAnimator {
     this.runningLanding = MathUtils.smoothstep(horizontalSpeed, 1.8, 4.5);
     this.anticipation =
       phase === "airborne" && jump.verticalVelocity < 0
-        ? 1 - smooth(clamp01(jump.timeToBoundary / 0.2))
+        ? 1 - smooth(clamp01((jump.timeToLanding ?? jump.timeToBoundary) / 0.2))
         : 0;
 
     if (phase === "takeoff") {
