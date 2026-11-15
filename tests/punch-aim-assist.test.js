@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { Group, Quaternion, Vector3 } from "three";
 import {
   PunchAimAssist,
@@ -10,6 +11,9 @@ import {
 import {
   punchAlignmentQuaternion,
   UPPER_BODY_PIVOT,
+  strikeAlignmentQuaternion,
+  strikeAlignmentPivot,
+  strikeAim,
 } from "../src/combat/PunchAlignment.js";
 import {
   createAdaptiveTechniques,
@@ -69,20 +73,28 @@ function contacts(
   d.sweep(t, attack, from, to, root, end, 0, 0, orientation, orientation);
   return d;
 }
-test("default assistance is 20%, max correction 12 degrees and a narrow 25-degree half-cone with safe independent bounds", () => {
+test("default assistance is 100%, max correction 20 degrees and a 25-degree half-cone with expanded independent bounds", () => {
   assert.deepEqual(sanitizeAimAssist(), AIM_ASSIST_DEFAULTS);
+  assert.deepEqual(AIM_ASSIST_DEFAULTS, {
+    strength: 1,
+    maxAngle: 20,
+    cone: 25,
+    debug: false,
+  });
   const c = sanitizeAimAssist({
     strength: Infinity,
     maxAngle: 300,
     cone: -100,
     debug: "true",
   });
-  assert.equal(c.strength, 0.2);
-  assert.equal(c.maxAngle, 20);
+  assert.equal(c.strength, 1);
+  assert.equal(c.maxAngle, 45);
   assert.equal(c.cone, 5);
   assert.equal(c.debug, false);
   assert.equal(sanitizeAimAssist({ strength: -10 }).strength, 0);
-  assert.equal(sanitizeAimAssist({ strength: 200 }).strength, 1);
+  assert.equal(sanitizeAimAssist({ strength: 200 }).strength, 2);
+  assert.equal(sanitizeAimAssist({ cone: 100 }).cone, 60);
+  assert.equal(sanitizeAimAssist({ strength: 1.6 }).strength, 1.6);
 });
 test("0% bypasses acquisition and returns the exact unmodified execution context and trajectories", () => {
   const a = aim([enemy("near", 0.32, -0.91)], { strength: 0 }),
@@ -96,7 +108,7 @@ test("0% bypasses acquisition and returns the exact unmodified execution context
       sampleLocalStrike(new Vector3(), punch(), time, a.prepare(ctx, punch())),
     );
 });
-test("acquisition requires an accepted manual punch, not walking, nearby enemies, Kick or held Block", () => {
+test("acquisition requires an accepted manual Punch/Kick, never walking, nearby enemies or held Block", () => {
   const a = aim([enemy("near", 0.32, -0.91)]),
     c = new CombatController({
       techniques,
@@ -110,17 +122,17 @@ test("acquisition requires an accepted manual punch, not walking, nearby enemies
   assert.equal(a.queries, 0);
   s.press("kick");
   s.prepare({ environment: "ground", canAttack: true });
-  assert.equal(a.queries, 0);
+  assert.equal(a.queries, 1);
   c.update(2);
   s.press("punch");
   s.prepare({ environment: "ground", canAttack: true }, true);
-  assert.equal(a.queries, 0);
+  assert.equal(a.queries, 1);
   assert.ok(c.blocking);
   s.prepare({ environment: "ground", canAttack: true }, false);
-  assert.equal(a.queries, 0);
+  assert.equal(a.queries, 1);
   s.press("punch");
   assert.ok(s.prepare({ environment: "ground", canAttack: true }));
-  assert.equal(a.queries, 1);
+  assert.equal(a.queries, 2);
 });
 test("target priority follows the actual hand trajectory instead of the nearest root", () => {
   const nearer = enemy("nearer", 0.25, -0.6),
@@ -147,20 +159,20 @@ test("behind, far, defeated, lateral and vertically unreachable opponents cannot
     assert.equal(contacts(punch(), ctx, [e]).count, 0);
   }
 });
-test("a grazing stationary punch misses at 0% and physically connects with the default subtle correction", () => {
+test("a grazing stationary punch misses at 0% and physically connects with the new default correction", () => {
   const e = enemy("edge", 0.32, -0.91),
     t = punch(),
     none = aim([e], { strength: 0 }).prepare({}, t),
     assisted = aim([e]).prepare({}, t);
   assert.equal(contacts(t, none, [e]).count, 0);
   assert.equal(contacts(t, assisted, [e]).count, 1);
-  assert.ok(assisted.punchAim.angle > 0 && assisted.punchAim.angle < 4 * RAD);
+  assert.ok(assisted.punchAim.angle > 0 && assisted.punchAim.angle <= 20 * RAD);
 });
 test("a correction is not a free hit and never changes reach, hit radius or active timing", () => {
   const e = enemy("left-edge", -0.32, -0.91),
     t = punch("right"),
     saved = { ...t };
-  const ctx = aim([e], { strength: 1 }).prepare({}, t);
+  const ctx = aim([e], { strength: 1, maxAngle: 12 }).prepare({}, t);
   assert.ok(ctx.punchAim);
   assert.equal(
     contacts(t, ctx, [e]).count,
@@ -253,6 +265,41 @@ test("config changes affect subsequent punches, without snapping an existing imm
   c.requestAttack({ action: "punch" });
   assert.equal(c.attack.context.punchAim, undefined);
 });
+
+test("enhanced Punch/Kick predictions are immutable per manual entry; live tuning, escaping targets and Block never retarget a strike", () => {
+  for (const action of ["punch", "kick"]) {
+    const e = enemy("moving", 0.3, -0.7, new Vector3(-2, 0, 0)),
+      a = aim([e], { strength: 2, maxAngle: 45, cone: 60 });
+    const c = new CombatController({
+      techniques,
+      prepareAttackContext: (ctx, t) => a.prepare(ctx, t),
+    });
+    assert.ok(c.requestAttack({ action, environment: "ground" }));
+    const captured = strikeAim(c.attack.context, c.currentTechnique);
+    assert.ok(captured.profile.length > 1);
+    assert.ok(
+      Object.isFrozen(captured.profile) &&
+        captured.profile.every(Object.isFrozen),
+    );
+    const snapshot = JSON.stringify(captured);
+    a.configure({ strength: 0 });
+    e.body.position.set(8, 4, 8);
+    e.body.previousPosition.copy(e.body.position);
+    c.update(0.15);
+    assert.equal(
+      JSON.stringify(strikeAim(c.attack.context, c.currentTechnique)),
+      snapshot,
+    );
+    assert.equal(contacts(c.currentTechnique, c.attack.context, [e]).count, 0);
+    c.setBlocking(true);
+    assert.equal(c.requestAttack({ action }), false);
+    c.update(1);
+    c.setBlocking(false);
+    assert.ok(c.requestAttack({ action }));
+    assert.equal(strikeAim(c.attack.context, c.currentTechnique), undefined);
+    assert.equal(a.queries, 1);
+  }
+});
 test("positional arm preference supplements posture and momentum, uses both limbs, and permits same-limb repeats", () => {
   const target = enemy("left", -0.32, -0.91),
     a = aim([target]),
@@ -342,14 +389,14 @@ test("high-speed startup passes still miss, while continuous active-window passe
     0,
   );
 });
-function rig(strength = null, values = {}) {
+function rig(strength = null, values = {}, config = {}) {
   const character = new Stickman(),
     controller = new CharacterController(character.root, new ArenaBounds(1000));
   controller.applyMovementConfig(sandboxMovementConfig(values));
   const a =
       strength === null
         ? null
-        : aim([enemy("edge", 0.32, -0.91)], { strength }),
+        : aim([enemy("edge", 0.32, -0.91)], { ...config, strength }),
     selector = new ContextualLimbSelector({
       scorePosition: a
         ? (ctx, t, side) => a.limbPreference(ctx, t, side)
@@ -424,54 +471,321 @@ test("0% reproduces original technique choices, full rig poses and physics bit-f
   zero.character.dispose();
 });
 test("assistance never writes locomotion velocity, facing, jump/dash state, acrobatic orientation or camera input", () => {
-  for (const scale of [1, 100]) {
-    const plain = rig(0, {
-        movement: scale,
-        jumpHeight: scale,
-        gravity: scale,
-      }),
-      assisted = rig(1, { movement: scale, jumpHeight: scale, gravity: scale });
-    let corrections = 0;
-    for (let n = 0; n < 240; n++) {
-      for (const g of [plain, assisted]) {
-        g.input.move.x = n > 45 ? Math.sin(n * 0.08) * 0.6 : 0;
-        g.input.move.y = n > 45 ? 0.8 : 0;
-        g.input.movementMagnitude = Math.min(
-          1,
-          Math.hypot(g.input.move.x, g.input.move.y),
+  for (const scale of [1, 100])
+    for (const strength of [1, 2]) {
+      const plain = rig(0, {
+          movement: scale,
+          jumpHeight: scale,
+          gravity: scale,
+        }),
+        assisted = rig(
+          strength,
+          { movement: scale, jumpHeight: scale, gravity: scale },
+          { maxAngle: 45, cone: 60 },
         );
-        if (n % 28 === 0) g.attackScheduler.press("punch");
-        if (n === 60 || n === 75) g.controller.requestJump(g.input, 0);
-        if (n === 62) g.controller.requestDash();
-        if (n === 120) g.input.blocking = true;
-        if (n === 145) g.input.blocking = false;
-        tick(g);
+      let corrections = 0;
+      for (let n = 0; n < 240; n++) {
+        for (const g of [plain, assisted]) {
+          g.input.move.x = n > 45 ? Math.sin(n * 0.08) * 0.6 : 0;
+          g.input.move.y = n > 45 ? 0.8 : 0;
+          g.input.movementMagnitude = Math.min(
+            1,
+            Math.hypot(g.input.move.x, g.input.move.y),
+          );
+          if (n % 28 === 0) g.attackScheduler.press(n % 56 ? "punch" : "kick");
+          if (n === 60 || n === 75) g.controller.requestJump(g.input, 0);
+          if (n === 62) g.controller.requestDash();
+          if (n === 120) g.input.blocking = true;
+          if (n === 145) g.input.blocking = false;
+          tick(g);
+        }
+        if (
+          assisted.combat.attack.context?.punchAim ||
+          assisted.combat.attack.context?.kickAim
+        )
+          corrections++;
+        assert.deepEqual(
+          assisted.character.root.position,
+          plain.character.root.position,
+        );
+        assert.deepEqual(
+          assisted.controller.velocity,
+          plain.controller.velocity,
+        );
+        assert.equal(assisted.controller.heading, plain.controller.heading);
+        assert.equal(
+          assisted.controller.jump.verticalVelocity,
+          plain.controller.jump.verticalVelocity,
+        );
+        assert.equal(
+          assisted.controller.airDashesUsed,
+          plain.controller.airDashesUsed,
+        );
+        assert.deepEqual(
+          assisted.bodyRotation.orientation,
+          plain.bodyRotation.orientation,
+        );
+        assert.deepEqual(assisted.input, plain.input);
       }
-      if (assisted.combat.attack.context?.punchAim) corrections++;
-      assert.deepEqual(
-        assisted.character.root.position,
-        plain.character.root.position,
-      );
-      assert.deepEqual(assisted.controller.velocity, plain.controller.velocity);
-      assert.equal(assisted.controller.heading, plain.controller.heading);
-      assert.equal(
-        assisted.controller.jump.verticalVelocity,
-        plain.controller.jump.verticalVelocity,
-      );
-      assert.equal(
-        assisted.controller.airDashesUsed,
-        plain.controller.airDashesUsed,
-      );
-      assert.deepEqual(
-        assisted.bodyRotation.orientation,
-        plain.bodyRotation.orientation,
-      );
-      assert.deepEqual(assisted.input, plain.input);
+      assert.ok(corrections > 0);
+      plain.character.dispose();
+      assisted.character.dispose();
     }
-    assert.ok(corrections > 0);
-    plain.character.dispose();
-    assisted.character.dispose();
+});
+
+test("100% / 20 degrees preserves recorded pre-refinement punch acquisition exactly", () => {
+  const baseline = JSON.parse(
+    readFileSync(new URL("./aim-assist-baseline.json", import.meta.url)),
+  );
+  for (const f of baseline.fixtures) {
+    const e = enemy(
+      f.name,
+      f.target[0],
+      f.target[2],
+      new Vector3().fromArray(f.velocity ?? [0, 0, 0]),
+    );
+    e.body.position.fromArray(f.target);
+    e.body.previousPosition.copy(e.body.position);
+    const a = aim([e], baseline.settings, {
+      position: new Vector3().fromArray(f.root ?? [0, 0, 0]),
+      velocity: new Vector3().fromArray(f.playerVelocity ?? [0, 0, 0]),
+      orientation: new Quaternion().fromArray(f.orientation ?? [0, 0, 0, 1]),
+    });
+    const t = {
+      ...techniques.find((t) => t.id === (f.id ?? "basic-punch")),
+      side: f.side,
+    };
+    assert.deepEqual(a.prepare({}, t).punchAim, f.expected, f.name);
   }
+});
+
+test("200% improves real crossing-target contacts for ground punches, ground kicks and flying kicks at 30/60/144Hz and superhuman travel", () => {
+  for (const fps of [30, 60, 144])
+    for (const playerSpeed of [0, 520])
+      for (const [id, x, z, vx, vz] of [
+        ["basic-punch", 0.64, -0.73, -6, -2],
+        ["front-kick", 0.64, -0.65, -6, 0],
+        ["flying-kick", 0.24, -0.49, -6, -2],
+      ]) {
+        const counts = [];
+        for (const strength of [1, 2]) {
+          const e = enemy(
+            "crossing",
+            x,
+            z,
+            new Vector3(vx + playerSpeed, 0, vz),
+          );
+          const t = { ...techniques.find((t) => t.id === id), side: "right" };
+          const a = aim(
+            [e],
+            { strength, maxAngle: 20 },
+            { velocity: new Vector3(playerSpeed, 0, 0) },
+          );
+          const ctx = a.prepare({}, t),
+            captured = strikeAim(ctx, t);
+          assert.ok(captured);
+          assert.equal(Boolean(captured.profile), strength > 1);
+          const d = new StrikeHitDetector({ targets: [e.body] });
+          for (let time = 0; time < 0.3 - 1e-9; time += 1 / fps) {
+            const end = Math.min(0.3, time + 1 / fps);
+            e.body.previousPosition.set(
+              x + (vx + playerSpeed) * time,
+              0,
+              z + vz * time,
+            );
+            e.body.position.set(x + (vx + playerSpeed) * end, 0, z + vz * end);
+            d.sweep(
+              t,
+              { sequence: 1, active: true, cancelled: false, context: ctx },
+              time,
+              end,
+              new Vector3(playerSpeed * time, 0, 0),
+              new Vector3(playerSpeed * end, 0, 0),
+              0,
+              0,
+            );
+          }
+          counts.push(d.count);
+          assert.equal(
+            a.queries,
+            1,
+            "No homing/target refresh during a strike",
+          );
+        }
+        assert.deepEqual(
+          counts,
+          [0, 1],
+          `${id}, ${fps}Hz, travel ${playerSpeed}`,
+        );
+      }
+});
+
+test("100–200% continuously improves alignment instead of over-rotating, and respects the 3D cap and anatomical pivot", () => {
+  const e = enemy("crossing", 0.64, -0.73, new Vector3(-6, 0, -2));
+  for (const id of ["basic-punch", "front-kick", "flying-kick"]) {
+    const t = { ...techniques.find((t) => t.id === id), side: "right" };
+    const configs = [1, 1.5, 2].map((strength) =>
+      aim([e], { strength, maxAngle: 45, cone: 60 }).prepare({}, t),
+    );
+    for (let time = 0; time < 0.45; time += 0.001) {
+      const qs = configs.map((ctx) =>
+        strikeAlignmentQuaternion(new Quaternion(), t, time, strikeAim(ctx, t)),
+      );
+      assert.ok(qs[1].angleTo(qs[2]) <= qs[0].angleTo(qs[2]) + 1e-7);
+      const pivot = strikeAlignmentPivot(new Vector3(), t),
+        base = sampleLocalStrike(new Vector3(), t, time, {});
+      for (const [i, ctx] of configs.entries()) {
+        assert.ok(qs[i].angleTo(new Quaternion()) <= 45 * RAD + 1e-8);
+        close(qs[i].length(), 1);
+        close(
+          sampleLocalStrike(new Vector3(), t, time, ctx).distanceTo(pivot),
+          base.distanceTo(pivot),
+        );
+      }
+    }
+  }
+});
+
+test("angles above 20 degrees yield additional physical contacts without expanding reach, radius or timing", () => {
+  for (const [id, x, z] of [
+    ["basic-punch", -0.725, -0.725],
+    ["front-kick", -0.675, -0.675],
+  ]) {
+    const t = { ...techniques.find((t) => t.id === id), side: "right" },
+      saved = { ...t };
+    const e = enemy("flank", x, z);
+    const counts = [20, 45].map((maxAngle) => {
+      const ctx = aim([e], { strength: 1, maxAngle, cone: 60 }).prepare({}, t);
+      assert.ok(strikeAim(ctx, t));
+      return contacts(t, ctx, [e]).count;
+    });
+    assert.deepEqual(counts, [0, 1]);
+    assert.deepEqual(t, saved);
+    e.body.position.multiplyScalar(4);
+    e.body.previousPosition.copy(e.body.position);
+    const ctx = aim([e], { strength: 2, maxAngle: 45, cone: 60 }).prepare(
+      {},
+      t,
+    );
+    assert.equal(contacts(t, ctx, [e]).count, 0);
+  }
+});
+
+test("5–60 degree half-cones use body-space direction, exclude behind targets and preserve trajectory-based multi-target priority", () => {
+  for (const cone of [5, 25, 60])
+    for (const offset of [-1, 1]) {
+      const angle = (cone + offset) * RAD,
+        distance = 0.7;
+      const e = enemy(
+        "edge",
+        Math.sin(angle) * distance,
+        -Math.cos(angle) * distance,
+      );
+      e.body.hitboxes = [{ height: punch().originHeight, radius: 0.15 }];
+      const ctx = aim([e], { strength: 2, maxAngle: 45, cone }).prepare(
+        {},
+        punch(),
+      );
+      assert.equal(Boolean(ctx.punchAim), offset < 0);
+    }
+  const behind = enemy("behind", 0, 0.65);
+  assert.equal(
+    aim([behind], { strength: 2, cone: 60 }).prepare({}, punch()).punchAim,
+    undefined,
+  );
+  const near = enemy("nearer", 0.25, -0.6),
+    path = enemy("on-path", 0.08, -0.74);
+  assert.equal(
+    aim([near, behind, path], { strength: 2, cone: 60 }).prepare({}, punch())
+      .punchAim.targetId,
+    "on-path",
+  );
+});
+
+test("wide-angle physical contacts use the corrected strike direction for facing validation, without enlarging reach or hitboxes", () => {
+  for (const id of ["basic-punch", "front-kick"]) {
+    const t = { ...techniques.find((t) => t.id === id), side: "right" };
+    const e = enemy("flank-contact", 0.57, -0.4);
+    assert.ok(Math.atan2(e.body.position.x, -e.body.position.z) > t.maxAngle);
+    const a = aim([e], { strength: 1, maxAngle: 45, cone: 60 });
+    const ctx = a.prepare({}, t);
+    assert.equal(contacts(t, {}, [e]).count, 0);
+    const detected = contacts(t, ctx, [e]);
+    assert.equal(detected.count, 1);
+    const actual = new StrikePoseSampler().sample(
+      new Vector3(),
+      new Vector3(),
+      0,
+      t,
+      detected.lastContact.time,
+      ctx,
+    );
+    const body = new Vector3(
+      e.body.position.x,
+      detected.lastContact.point.y > 1.1 ? 1.36 : 0.9,
+      e.body.position.z,
+    );
+    assert.ok(actual.distanceTo(body) <= 0.27 + t.hitRadius + 0.003);
+    e.body.position.multiplyScalar(4);
+    e.body.previousPosition.copy(e.body.position);
+    assert.equal(contacts(t, ctx, [e]).count, 0);
+  }
+});
+
+test("maximum assistance keeps visible ground/air fists and feet on their shared contact trajectories", () => {
+  for (const action of ["punch", "kick"])
+    for (const airborne of [false, true])
+      for (const side of ["left", "right"]) {
+        const g = rig(2, {}, { maxAngle: 45, cone: 60 });
+        if (airborne) {
+          g.controller.requestJump();
+          for (let n = 0; n < 12; n++) tick(g);
+        }
+        const id = airborne
+          ? action === "punch"
+            ? "aerial-punch"
+            : "flying-kick"
+          : action === "punch"
+            ? "basic-punch"
+            : "front-kick";
+        g.combat.selectTechnique = () => ({ id, side });
+        const e = enemy("aligned", side === "left" ? -0.45 : 0.45, -0.6);
+        e.body.position.y =
+          g.character.root.position.y +
+          (airborne && action === "kick" ? -0.3 : 0);
+        e.body.previousPosition.copy(e.body.position);
+        g.punchAim.targets = [e];
+        g.attackScheduler.press(action);
+        let measured = 0;
+        for (let n = 0; n < 20; n++) {
+          tick(g);
+          const t = g.combat.currentTechnique,
+            attack = g.combat.attack;
+          if (!attack.active || !["extension", "impact"].includes(attack.phase))
+            continue;
+          assert.ok(strikeAim(attack.context, t));
+          const goal = new StrikePoseSampler().sample(
+            new Vector3(),
+            g.character.root.position,
+            g.controller.heading,
+            t,
+            attack.elapsed,
+            attack.context,
+            g.bodyRotation.orientation,
+            g.bodyRotation.lift,
+          );
+          const actual = g.character.joints[
+            `${side}${action === "punch" ? "Hand" : "Ankle"}`
+          ].getWorldPosition(new Vector3());
+          assert.ok(
+            actual.distanceTo(goal) < 0.025,
+            `${id}/${side}: ${actual.distanceTo(goal)} visible/contact mismatch`,
+          );
+          measured++;
+        }
+        assert.ok(measured > 0);
+        g.character.dispose();
+      }
 });
 test("the corrected visible wrist follows the same sampler without changing root orientation or arm segment lengths", () => {
   const g = rig(1);

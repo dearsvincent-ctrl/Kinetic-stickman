@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { StrikePoseSampler } from "../combat/TechniqueGeometry.js";
+import { strikeAim } from "../combat/PunchAlignment.js";
 
 /** Optional shared-sampler visualization. Hidden mode performs no pose work. */
 export class PunchAimDebug {
@@ -44,7 +45,7 @@ export class PunchAimDebug {
       this.assist.config.debug &&
       attack.active &&
       !attack.cancelled &&
-      t?.action === "punch";
+      (t?.action === "punch" || t?.action === "kick");
     if (!this.group.visible) return;
     this.baselineContext.limbs = attack.context?.limbs;
     this.baselineContext.transition = attack.context?.transition;
@@ -65,7 +66,7 @@ export class PunchAimDebug {
       }
       attribute.needsUpdate = true;
     }
-    const aim = attack.context?.punchAim;
+    const aim = strikeAim(attack.context, t);
     const candidate =
       aim && this.assist.targets.find((e) => (e.body ?? e).id === aim.targetId);
     const body = candidate?.body ?? candidate;

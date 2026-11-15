@@ -456,7 +456,10 @@ export class Game {
         this.punchAim?.config.strength > 0 &&
         this.punchAim.config.maxAngle > 0 &&
         (this.attackScheduler.pending === "punch" ||
-          (this.combat.ready && this.attackScheduler.held.has("punch")))
+          this.attackScheduler.pending === "kick" ||
+          (this.combat.ready &&
+            (this.attackScheduler.held.has("punch") ||
+              this.attackScheduler.held.has("kick"))))
       )
         this.punchAim.capture(
           this.controller,
@@ -524,7 +527,9 @@ export class Game {
             ...this.punchAim.config,
             queries: this.punchAim.queries,
             current: this.combat.attack.active
-              ? (this.combat.attack.context?.punchAim ?? null)
+              ? (this.combat.attack.context?.punchAim ??
+                this.combat.attack.context?.kickAim ??
+                null)
               : null,
           }
         : null,

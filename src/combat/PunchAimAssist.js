@@ -4,49 +4,19 @@ import {
   worldStrike,
   BODY_PIVOT,
 } from "./TechniqueGeometry.js";
-import { UPPER_BODY_PIVOT } from "./PunchAlignment.js";
+import { strikeAlignmentPivot } from "./PunchAlignment.js";
+import {
+  AIM_ASSIST_DEFAULTS,
+  AIM_ASSIST_LIMITS,
+  sanitizeAimAssist,
+} from "../sandbox/AimAssistSettings.js";
+export { AIM_ASSIST_DEFAULTS, AIM_ASSIST_LIMITS, sanitizeAimAssist };
 
 const RAD = Math.PI / 180;
 const UP = new Vector3(0, 1, 0);
 const ZERO = new Vector3();
 const SAMPLES = 7;
-export const AIM_ASSIST_DEFAULTS = Object.freeze({
-  strength: 0.2,
-  maxAngle: 12,
-  cone: 25,
-  debug: false,
-});
-export const AIM_ASSIST_LIMITS = Object.freeze({
-  maxAngle: 20,
-  coneMin: 5,
-  coneMax: 40,
-  acquireDistance: 2.5,
-  predictionHorizon: 0.2,
-  maxTravelLead: 120,
-});
-const finite = (v, fallback, lo, hi) =>
-  Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fallback;
-
-export function sanitizeAimAssist(values = {}) {
-  return Object.freeze({
-    strength: finite(values.strength, AIM_ASSIST_DEFAULTS.strength, 0, 1),
-    maxAngle: finite(
-      values.maxAngle,
-      AIM_ASSIST_DEFAULTS.maxAngle,
-      0,
-      AIM_ASSIST_LIMITS.maxAngle,
-    ),
-    cone: finite(
-      values.cone,
-      AIM_ASSIST_DEFAULTS.cone,
-      AIM_ASSIST_LIMITS.coneMin,
-      AIM_ASSIST_LIMITS.coneMax,
-    ),
-    debug: values.debug === true,
-  });
-}
-
-/** Selection occurs once per accepted manual punch, including held repeats.
+/** Selection occurs once per accepted manual strike, including held repeats.
  * Short-horizon predictions rank actual hand paths, never apply root motion,
  * extend reach, track a lock or turn contact into an automatic hit. */
 export class PunchAimAssist {
@@ -68,6 +38,7 @@ export class PunchAimAssist {
     this.fromDirection = new Vector3();
     this.toDirection = new Vector3();
     this.rotation = new Quaternion();
+    this.pivot = new Vector3();
     this.times = new Float64Array(SAMPLES);
     this.points = Array.from({ length: SAMPLES }, () => new Vector3());
     this.hasMotion = false;
@@ -81,7 +52,7 @@ export class PunchAimAssist {
   }
   limbPreference(context, technique, side) {
     if (
-      technique.action !== "punch" ||
+      (technique.action !== "punch" && technique.action !== "kick") ||
       !technique.adaptive ||
       !this.hasMotion ||
       this.config.strength === 0 ||
@@ -103,7 +74,7 @@ export class PunchAimAssist {
     return (
       Math.max(-1, Math.min(1, (other - own) / 0.08)) *
       0.1 *
-      this.config.strength
+      Math.min(1, this.config.strength)
     );
   }
   capture(controller, previous, rotation, orientationStart, fraction, dt) {
@@ -166,7 +137,8 @@ export class PunchAimAssist {
     }
   }
   prepare(context, technique) {
-    if (technique.action !== "punch") return context;
+    if (technique.action !== "punch" && technique.action !== "kick")
+      return context;
     this.last = null;
     if (
       !technique.adaptive ||
@@ -181,7 +153,27 @@ export class PunchAimAssist {
         ? this.cache[technique.side]
         : this.evaluate(context, technique);
     this.last = selected;
-    return selected ? { ...context, punchAim: selected } : context;
+    if (!selected) return context;
+    // Up to 100% keeps the original single captured correction. Beyond 100%,
+    // blend toward an immutable predicted active-window path, never past the
+    // target. No live tracking or additional target queries during execution.
+    if (this.config.strength > 1) {
+      selected.profile = this.alignmentProfile(context, technique, selected);
+      selected.profileRate = 0;
+      for (let i = 1; i < (selected.profile?.length ?? 0); i++) {
+        this.rotation.fromArray(selected.profile[i - 1]);
+        this.delta.fromArray(selected.profile[i]);
+        selected.profileRate = Math.max(
+          selected.profileRate,
+          (this.rotation.angleTo(this.delta) * (SAMPLES - 1)) /
+            (technique.extension + technique.impact),
+        );
+      }
+    }
+    return {
+      ...context,
+      [technique.action === "punch" ? "punchAim" : "kickAim"]: selected,
+    };
   }
   evaluate(context, technique) {
     const config = this.config;
@@ -322,10 +314,9 @@ export class PunchAimAssist {
           )
             continue;
           sampleLocalStrike(this.local, technique, time, context);
-          this.fromDirection.copy(this.local);
-          this.fromDirection.y -= UPPER_BODY_PIVOT;
-          this.toDirection.copy(this.targetPoint);
-          this.toDirection.y -= UPPER_BODY_PIVOT;
+          strikeAlignmentPivot(this.pivot, technique);
+          this.fromDirection.copy(this.local).sub(this.pivot);
+          this.toDirection.copy(this.targetPoint).sub(this.pivot);
           const angle = this.fromDirection.angleTo(this.toDirection);
           const score = trajectoryDistance + cone * 0.005 + time * 0.0001;
           if (score >= best || !Number.isFinite(angle) || angle < 1e-6)
@@ -341,7 +332,7 @@ export class PunchAimAssist {
             .normalize();
           const correction = Math.min(
             config.maxAngle * RAD,
-            angle * config.strength,
+            angle * Math.min(1, config.strength),
           );
           best = score;
           selected = {
@@ -359,5 +350,55 @@ export class PunchAimAssist {
       }
     }
     return selected;
+  }
+  alignmentProfile(context, technique, selected) {
+    const candidate = this.targets.find(
+      (e) => (e.body ?? e).id === selected.targetId,
+    );
+    const body = candidate?.body ?? candidate;
+    if (!body) return null;
+    const previous = body.previousPosition;
+    if (previous && [previous.x, previous.y, previous.z].every(Number.isFinite))
+      this.targetOrigin.lerpVectors(
+        previous,
+        body.position,
+        this.targetFraction,
+      );
+    else this.targetOrigin.copy(body.position);
+    const velocity = candidate.controller?.velocity ?? body.velocity ?? ZERO;
+    const impulse = body.impulse ?? ZERO;
+    const profile = [];
+    strikeAlignmentPivot(this.pivot, technique);
+    for (let i = 0; i < SAMPLES; i++) {
+      const time =
+        technique.windup +
+        ((technique.extension + technique.impact) * i) / (SAMPLES - 1);
+      this.predictPose(time);
+      this.targetPoint.copy(this.targetOrigin).addScaledVector(velocity, time);
+      const impulseTime = (1 - Math.exp(-8 * time)) / 8;
+      this.targetPoint.x += impulse.x * impulseTime;
+      this.targetPoint.z += impulse.z * impulseTime;
+      this.targetPoint.y += selected.targetHeight;
+      this.targetPoint.sub(this.root);
+      this.targetPoint.y -= BODY_PIVOT + this.lift;
+      this.targetPoint.applyQuaternion(
+        this.inverse.copy(this.predictedOrientation).invert(),
+      );
+      this.targetPoint.y += BODY_PIVOT;
+      sampleLocalStrike(this.local, technique, time, context);
+      this.fromDirection.copy(this.local).sub(this.pivot).normalize();
+      this.toDirection.copy(this.targetPoint).sub(this.pivot).normalize();
+      const angle = this.fromDirection.angleTo(this.toDirection);
+      this.rotation.setFromUnitVectors(this.fromDirection, this.toDirection);
+      this.axis.set(this.rotation.x, this.rotation.y, this.rotation.z);
+      if (this.axis.lengthSq() > 1e-12 && Number.isFinite(angle))
+        this.rotation.setFromAxisAngle(
+          this.axis.normalize(),
+          Math.min(this.config.maxAngle * RAD, angle),
+        );
+      else this.rotation.identity();
+      profile.push(this.rotation.toArray());
+    }
+    return profile;
   }
 }

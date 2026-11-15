@@ -1,0 +1,97 @@
+{
+  "sourceCommit": "32d9132d96c5b17f12b033f704891c01c9932215",
+  "settings": {
+    "strength": 1,
+    "maxAngle": 20,
+    "cone": 25
+  },
+  "fixtures": [
+    {
+      "name": "right edge",
+      "target": [0.32, 0, -0.91],
+      "side": "right",
+      "expected": {
+        "targetId": "right edge",
+        "targetHeight": 1.36,
+        "axis": [-0.6640720411225208, -0.6009382502708271, -0.4448387837866719],
+        "angle": 0.2804402753639261,
+        "requestedAngle": 0.2804402753639261,
+        "score": 0.38544329941563465,
+        "time": 0.16333333333333333,
+        "side": "right",
+        "strength": 1
+      }
+    },
+    {
+      "name": "left crossing",
+      "target": [-0.32, 0, -0.91],
+      "side": "left",
+      "expected": {
+        "targetId": "left crossing",
+        "targetHeight": 1.36,
+        "axis": [-0.6640720411225208, 0.6009382502708271, 0.4448387837866719],
+        "angle": 0.2804402753639261,
+        "requestedAngle": 0.2804402753639261,
+        "score": 0.38544329941563465,
+        "time": 0.16333333333333333,
+        "side": "left",
+        "strength": 1
+      }
+    },
+    {
+      "name": "moving opponent",
+      "target": [0.3, 0, -0.85],
+      "velocity": [-2, 0, 0],
+      "side": "right",
+      "expected": {
+        "targetId": "moving opponent",
+        "targetHeight": 1.36,
+        "axis": [-0.8585611937060503, 0.4820181159631199, 0.17473183037273493],
+        "angle": 0.20211550610984189,
+        "requestedAngle": 0.20211550610984189,
+        "score": 0.2534841438446885,
+        "time": 0.14666666666666667,
+        "side": "right",
+        "strength": 1
+      }
+    },
+    {
+      "name": "100x passing corridor",
+      "target": [83.2, 0, -0.99],
+      "playerVelocity": [520, 0, 0],
+      "side": "right",
+      "expected": {
+        "targetId": "100x passing corridor",
+        "targetHeight": 1.36,
+        "axis": [-0.9814928135067029, 0.1905419994186062, -0.01912076076562464],
+        "angle": 0.22374302905665638,
+        "requestedAngle": 0.22374302905665638,
+        "score": 0.3812105995421994,
+        "time": 0.15984344296794178,
+        "side": "right",
+        "strength": 1
+      }
+    },
+    {
+      "name": "inverted aerial punch",
+      "target": [0.32, 0, 0.91],
+      "root": [0, 0.81, 0],
+      "orientation": [1, 0, 0, 6.123233995736766e-17],
+      "side": "left",
+      "id": "aerial-punch",
+      "expected": {
+        "targetId": "inverted aerial punch",
+        "targetHeight": 1.36,
+        "axis": [
+          -0.40438371505115495, -0.8089651979452922, -0.42667214522951974
+        ],
+        "angle": 0.3490658503988659,
+        "requestedAngle": 0.47213498727776443,
+        "score": 0.5018706379490605,
+        "time": 0.14666666666666667,
+        "side": "left",
+        "strength": 1
+      }
+    }
+  ]
+}

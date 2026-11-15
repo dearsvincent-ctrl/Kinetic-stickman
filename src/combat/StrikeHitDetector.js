@@ -1,5 +1,10 @@
 import { Quaternion, Vector3 } from "three";
 import { StrikePoseSampler, BODY_PIVOT } from "./TechniqueGeometry.js";
+import {
+  strikeAim,
+  strikeAlignmentQuaternion,
+  strikeAlignmentPivot,
+} from "./PunchAlignment.js";
 const EPS = 1e-9;
 const UP = new Vector3(0, 1, 0);
 const DEFAULT_BOXES = [null];
@@ -42,6 +47,9 @@ export class StrikeHitDetector {
     this.poseSampler = new StrikePoseSampler();
     this.orientation = new Quaternion();
     this.bodyLocal = new Vector3();
+    this.alignedLocal = new Vector3();
+    this.alignmentPivot = new Vector3();
+    this.alignment = new Quaternion();
     this.rootA = point();
     this.rootB = point();
   }
@@ -97,14 +105,24 @@ export class StrikeHitDetector {
             Math.max(0.001, technique.extension + technique.impact)) *
           1.85
         : 0;
+    const aim = strikeAim(attack.context, technique);
+    const assistArc = aim?.profileRate
+      ? (to - from) * aim.profileRate * Math.min(1, aim.strength - 1) * 2
+      : 0;
     const steps = Math.max(
       1,
       Math.min(
         32,
         Math.max(
-          Math.ceil((bodyTurn + localArc) / 0.055),
-          attack.context?.punchAim
-            ? Math.ceil((to - from) / Math.max(0.001, technique.extension / 6))
+          Math.ceil((bodyTurn + localArc + assistArc) / 0.055),
+          aim
+            ? // A natural arm-length clamp introduces a bend in the curved hand
+              // path near full extension. Sample that curve finely enough that
+              // a 30 Hz frame does not skip real short crossing contacts.
+              Math.ceil(
+                (to - from) /
+                  Math.max(0.0001, Math.min(1 / 480, technique.extension / 12)),
+              )
             : 1,
         ),
       ),
@@ -210,15 +228,29 @@ export class StrikeHitDetector {
           hit = Math.max(0, Math.min(1, hit));
           // A corrected fast sweep can enter the weapon sphere before the
           // body is within the unchanged reach guard. Also validate its closest
-          // point, which is inside that same physical contact interval.
+          // point and exit, inside that same physical contact interval. At
+          // low frame rates a crossing target can enter the unchanged facing
+          // guard after closest approach, while the weapon still overlaps it.
           // Unassisted strikes retain their exact original query path.
           const entryHit = hit;
-          const attempts = attack.context?.punchAim ? 2 : 1;
+          const exitHit =
+            a > EPS
+              ? Math.max(
+                  entryHit,
+                  Math.min(1, (-b + Math.sqrt(Math.max(0, b * b - a * c))) / a),
+                )
+              : 1;
+          const attempts = aim ? 3 : 1;
           for (let attempt = 0; attempt < attempts; attempt++) {
             hit =
               attempt === 0
                 ? entryHit
-                : Math.max(entryHit, Math.min(1, a > EPS ? -b / a : entryHit));
+                : attempt === 1
+                  ? Math.max(
+                      entryHit,
+                      Math.min(exitHit, a > EPS ? -b / a : entryHit),
+                    )
+                  : exitHit;
             const f = lerp(f0, f1, hit),
               heading = startHeading + turn * f,
               global = lerp(motionFrom, motionTo, f);
@@ -254,6 +286,24 @@ export class StrikeHitDetector {
               dz = this.bodyLocal.z;
               dy = this.bodyLocal.y - (technique.originHeight - BODY_PIVOT);
               angle = Math.atan2(-dx, -dz);
+            }
+            if (aim && technique.adaptive) {
+              // The strike direction and its facing guard share the same
+              // captured correction/time as the visible limb. Keep radial
+              // reach and physical height limits in the original body frame.
+              strikeAlignmentQuaternion(
+                this.alignment,
+                technique,
+                lerp(startElapsed, endElapsed, f),
+                aim,
+              );
+              strikeAlignmentPivot(this.alignmentPivot, technique);
+              this.alignedLocal
+                .set(dx, dy + technique.originHeight, dz)
+                .sub(this.alignmentPivot)
+                .applyQuaternion(this.alignment.invert())
+                .add(this.alignmentPivot);
+              angle = Math.atan2(-this.alignedLocal.x, -this.alignedLocal.z);
             }
             if (
               Math.hypot(dx, dy, dz) > technique.reach + bodyRadius + EPS ||

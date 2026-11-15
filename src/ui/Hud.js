@@ -1,3 +1,4 @@
+import { strikeAlignmentAngle } from "../combat/PunchAlignment.js";
 export class Hud {
   constructor({ onHelpChange }) {
     this.fpsValue = document.querySelector("#fps-value");
@@ -153,9 +154,21 @@ export class Hud {
     this.stanceLabel.dataset.cancelled = String(
       combat?.attack.cancelled ?? false,
     );
-    const aim = combat?.attack.active ? combat.attack.context?.punchAim : null;
+    const aim = combat?.attack.active
+      ? (combat.attack.context?.punchAim ?? combat.attack.context?.kickAim)
+      : null;
     this.stanceLabel.dataset.aimTarget = aim?.targetId ?? "none";
-    this.stanceLabel.dataset.aimAngle = String(aim?.angle ?? 0);
+    this.stanceLabel.dataset.aimAngle = String(
+      aim
+        ? strikeAlignmentAngle(
+            combat.currentTechnique,
+            combat.attack.elapsed,
+            aim,
+          )
+        : 0,
+    );
+    this.stanceLabel.dataset.aimStrength = String(aim?.strength ?? 0);
+    this.stanceLabel.dataset.aimProfile = String(aim?.profile?.length ?? 0);
     this.speedFill.style.width = `${Math.min(100, (speed / maxSpeed) * 100)}%`;
     this.movementDot.style.background =
       state === "IDLE" ? "#9faa98" : "#ff885e";
