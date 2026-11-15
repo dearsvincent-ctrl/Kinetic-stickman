@@ -224,7 +224,7 @@ test("stationary grounded kicks keep the supporting foot near the floor and bala
     assert.ok((support === "left" ? -1 : 1) * rig.joints.hips.position.x > 0);
   }
 });
-test("inverted coast is noticeable, continuously advances and responds to counter-pressure without changing gravity", () => {
+test("automatic inversion is noticeable and independent of steering pressure without changing gravity", () => {
   const rotations = [];
   for (const y of [-1, 0, 1]) {
     const f = fixture();
@@ -234,8 +234,7 @@ test("inverted coast is noticeable, continuously advances and responds to counte
     f.m.jump.verticalVelocity = 0;
     const r = new BodyRotation();
     r.start("backflip", 0);
-    r.orientation.setFromAxisAngle(new Vector3(1, 0, 0), Math.PI);
-    r.angularVelocity.x = 8;
+    for (let n = 0; n < 36; n++) r.update(1 / 120, f.m, input(), 0);
     const start = r.orientation.clone();
     for (let n = 0; n < 24; n++) r.update(1 / 120, f.m, input(0, y), 0);
     assert.ok(start.angleTo(r.orientation) > 0.05);
@@ -243,13 +242,14 @@ test("inverted coast is noticeable, continuously advances and responds to counte
     assert.equal(f.m.jump.config.gravity, 18);
     rotations.push(r.angularVelocity.x);
   }
-  assert.ok(rotations[0] > rotations[1] + 2);
-  assert.ok(rotations[1] > rotations[2] + 2);
+  assert.ok(Math.abs(rotations[0] - rotations[1]) < 1e-8);
+  assert.ok(Math.abs(rotations[1] - rotations[2]) < 1e-8);
 });
 
 test("defensive cancellation releases ground weight transfer smoothly without delaying Block", async () => {
-  const { GroundCombatBalance } =
-      await import("../src/character/GroundCombatBalance.js"),
+  const { GroundCombatBalance } = await import(
+      "../src/character/GroundCombatBalance.js"
+    ),
     rig = new Stickman(),
     anim = new CharacterAnimator(rig),
     balance = new GroundCombatBalance(rig),
@@ -269,8 +269,9 @@ test("defensive cancellation releases ground weight transfer smoothly without de
 });
 
 test("rapid recovery redirection retains compression instead of resetting the visual pose", async () => {
-  const { MomentumRecoveryAnimator } =
-      await import("../src/character/MomentumRecoveryAnimator.js"),
+  const { MomentumRecoveryAnimator } = await import(
+      "../src/character/MomentumRecoveryAnimator.js"
+    ),
     rig = new Stickman(),
     animator = new CharacterAnimator(rig),
     layer = new MomentumRecoveryAnimator(rig);

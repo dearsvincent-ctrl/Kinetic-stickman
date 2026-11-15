@@ -245,7 +245,11 @@ export async function checkAcrobatics(page, native) {
       inverted ||= Number(a.invertedWeight) > 0.4;
       assert.ok(Number.isFinite(Number(a.angularPitch)));
     }
-    results.push(Number(a.angularPitch));
+    await advance(page, 250);
+    a = await read(page);
+    results.push(Number(a.rotationTravel));
+    assert.equal(a.completedFlips, "1");
+    assert.equal(a.acroKind, "backflip");
     if (direction === 0) {
       assert.ok(
         inverted && minUp < -0.7,
@@ -257,11 +261,11 @@ export async function checkAcrobatics(page, native) {
     assert.equal((await read(page)).acroPhase, "idle");
   }
   assert.ok(
-    results[0] > results[1] + 3 && results[1] > results[2] + 1.5,
-    `Back / neutral / forward rates: ${results}`,
+    results.every((n) => Math.abs(n - Math.PI * 2) < 1e-6),
+    `One turn with back / neutral / forward steering: ${results}`,
   );
   console.log(
-    "PASS: backwards pressure accelerates, forward pressure brakes, neutral inverted easing continues, configurable jump remains physical",
+    "PASS: one automatic turn remains independent of held air steering, returns upright, and preserves configurable jump physics",
   );
   // Reverse before a 100x fighter can reach the first arena wall.
   await page.goto(
@@ -376,7 +380,9 @@ export async function checkDirectionalDoubleJump(page, native) {
   const cases = [
     [[0, 0], [0, 1], "frontflip"],
     [[0, 0], [0, -1], "backflip"],
-    [[0, 0], [0, 0], null],
+    [[0, 0], [0, 0], "backflip"],
+    [[0, 0], [-1, 0], "leftflip"],
+    [[0, 0], [1, 0], "rightflip"],
     [[0, 0], [0.707, 0.707], "frontflip"],
     [[0, 0], [-0.707, -0.707], "backflip"],
     [[1, 0], [1, 0], "frontflip"],
@@ -436,7 +442,7 @@ export async function checkDirectionalDoubleJump(page, native) {
         path: `test-results/v078-${kind}-${takeoff[0]}.png`,
       });
     await s.stop();
-    if (!kind) {
+    if (second[0] === 0 && second[1] === 0) {
       await advance(page, 1800);
       assert.equal(
         await page.locator("#jump-button").getAttribute("data-jump-count"),
@@ -474,7 +480,7 @@ export async function checkDirectionalDoubleJump(page, native) {
   );
   await s.stop();
   console.log(
-    "PASS: native directional double jumps, equal launches, diagonals/take-off-relative directions, neutral bounce, third rejection and no flick activation",
+    "PASS: native directional double jumps, equal launches, dominant facing-relative directions, neutral backflip, third rejection and no flick activation",
   );
   const normal = new URL(page.url());
   for (const extreme of [false, true]) {

@@ -51,6 +51,9 @@ export async function checkAnimationFluidity(page, native) {
   await advance(page, 100);
   assert.equal((await state(page)).action, "punch");
   await s.move(0, 1);
+  // Flip direction now uses facing at the second press, rather than the first
+  // take-off intent. Finish the preceding reversal before testing back input.
+  await advance(page, 300);
   await s.tap("jump");
   await advance(page, 180);
   await s.move(0, -1);

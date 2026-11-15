@@ -411,6 +411,7 @@ export class Game {
           1,
           1,
           jumpEvent.referenceYaw,
+          this.controller.jump.timeToLanding,
         );
     }
     this.momentumRecovery?.update(
@@ -552,6 +553,11 @@ export class Game {
         quaternion: this.bodyRotation.orientation.toArray(),
         angularVelocity: this.bodyRotation.angularVelocity.toArray(),
         pitchTravel: this.bodyRotation.pitchTravel,
+        rollTravel: this.bodyRotation.rollTravel,
+        rotationTravel: this.bodyRotation.rotationTravel,
+        flipProgress: this.bodyRotation.automatic.progress,
+        flipStage: this.bodyRotation.automatic.stage,
+        completedFlips: this.bodyRotation.completedFlips,
         invertedWeight: this.bodyRotation.invertedWeight,
         referenceYaw: this.bodyRotation.referenceYaw,
         lift: this.bodyRotation.lift,

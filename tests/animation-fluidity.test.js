@@ -197,6 +197,8 @@ test("rapid recovery, strike interruption and directional flips retain pose cont
     run(g, 0.5, dt);
     let previousFoot = local(g, "rightAnkle"),
       largestFoot = 0;
+    let previousKnee = local(g, "leftKnee"),
+      largestKnee = 0;
     let previous = local(g, "rightHand"),
       largest = 0,
       contacts = 0,
@@ -215,6 +217,9 @@ test("rapid recovery, strike interruption and directional flips retain pose cont
       const foot = local(g, "rightAnkle");
       largestFoot = Math.max(largestFoot, foot.distanceTo(previousFoot));
       previousFoot = foot;
+      const knee = local(g, "leftKnee");
+      largestKnee = Math.max(largestKnee, knee.distanceTo(previousKnee));
+      previousKnee = knee;
       const hand = local(g, "rightHand");
       largest = Math.max(largest, hand.distanceTo(previous));
       previous = hand;
@@ -254,6 +259,12 @@ test("rapid recovery, strike interruption and directional flips retain pose cont
     assert.ok(
       largestFoot < 32 * dt + 0.04,
       `${rate}Hz ankle motion ${largestFoot}`,
+    );
+    assert.ok(
+      // A knee combines the bounded body turn with the authored explosive
+      // strike extension (~14 m/s). Ankle/hand continuity keeps its old limit.
+      largestKnee < (g.bodyRotation.config.maxAngularSpeed + 14) * dt + 0.04,
+      `${rate}Hz knee motion ${largestKnee}`,
     );
     assert.ok(g.combat.attack.sequence > 4);
     assert.ok(g.controller.jump.grounded);

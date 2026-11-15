@@ -6,6 +6,7 @@ const DOWN = new Vector3(0, -1, 0);
  * Two-bone positional IK for the existing rigid, hierarchical legs. The knee
  * pole points forward in character space; the ankle cancels parent rotation
  * so a planted foot remains level while the pelvis breathes and turns.
+ * Airborne posing may supply a body-frame knee pole for compact chest tucks.
  * All scratch objects are reused. This solver never changes the actor root.
  */
 export class LegIK {
@@ -26,7 +27,13 @@ export class LegIK {
     this.rootQuaternionWorld = new Quaternion();
   }
 
-  solve(side, targetWorld, footYawQuaternionWorld, bodyOrientation) {
+  solve(
+    side,
+    targetWorld,
+    footYawQuaternionWorld,
+    bodyOrientation,
+    kneePoleLocal = null,
+  ) {
     const { joints: j, dimensions: d, root } = this.character;
     const hip = j[`${side}Hip`];
     const knee = j[`${side}Knee`];
@@ -57,7 +64,9 @@ export class LegIK {
       .addScaledVector(this.direction, reach);
 
     // Project the forward pole perpendicular to the hip-to-foot direction.
-    this.pole.set(0, 0, -1).applyQuaternion(this.rootQuaternionWorld);
+    if (kneePoleLocal) this.pole.copy(kneePoleLocal);
+    else this.pole.set(0, 0, -1);
+    this.pole.applyQuaternion(this.rootQuaternionWorld);
     this.pole.addScaledVector(this.direction, -this.pole.dot(this.direction));
     if (this.pole.lengthSq() < 0.000001) {
       this.pole.set(1, 0, 0).applyQuaternion(this.rootQuaternionWorld);

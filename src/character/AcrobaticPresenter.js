@@ -29,6 +29,7 @@ export class AcrobaticPresenter {
     character.root.add(this.pivot);
     this.inner.add(character.joints.hips);
     this.local = new Vector3();
+    this.flipKneePole = new Vector3();
     this.target = new Vector3();
     this.support = new Vector3();
     this.inverse = new Quaternion();
@@ -111,21 +112,67 @@ export class AcrobaticPresenter {
           ? 0
           : 1;
     const inversion = Math.max(0, Math.min(1, (0.2 - rotation.up.y) / 1.2));
-    const targetTuck = this.flipWeight * (0.35 + 0.65 * inversion) * landing;
+    const automatic = rotation.automatic;
+    const authored =
+      rotation.sequence > 0 && automatic && automatic.kind !== "none";
+    const targetTuck =
+      this.flipWeight *
+      (authored ? automatic.tuck : 0.35 + 0.65 * inversion) *
+      landing;
     this.tuck += (targetTuck - this.tuck) * (1 - Math.exp(-22 * dt));
     if (this.flipWeight > 0.001) {
+      const sideways =
+        rotation.lastKind === "leftflip" || rotation.lastKind === "rightflip";
+      const sideDirection = rotation.lastKind === "leftflip" ? -1 : 1;
+      const launch = authored ? automatic.launch : 0;
+      const poseWeight = authored ? automatic.poseWeight : 1;
+      if (!attack.active) {
+        j.hips.position.y +=
+          (launch * 0.018 - this.tuck * 0.025) * this.flipWeight;
+        j.hips.rotateX(
+          (-this.tuck * 0.07 +
+            (rotation.lastKind === "backflip" ? 0.1 : -0.1) * launch) *
+            this.flipWeight,
+        );
+        if (sideways) {
+          j.hips.rotateZ(sideDirection * 0.11 * this.tuck);
+          j.spine.rotateZ(-sideDirection * 0.07 * this.tuck);
+        }
+      }
       // Tuck around the existing pelvis. Base jump/attack poses remain the source;
       // local knee targets are controlled rather than a baked flip timeline.
       for (let i = 0; i < SIDES.length; i++) {
         const side = SIDES[i];
         if (attack.active && t.action === "kick" && t.side === side) continue;
+        if (
+          movement?.jump?.canActOnGround &&
+          this.animator.footList[i].planted &&
+          !rotation.flipping
+        )
+          continue;
         const lead = this.animator.jumpAnimation.lead;
+        const sideLead = sideDirection < 0 ? 0 : 1;
+        const tuckHeight = sideways
+          ? i === sideLead
+            ? 1.08
+            : 0.98
+          : i === lead
+            ? 1.1
+            : 1.02;
+        const tuckForward = sideways
+          ? i === 0
+            ? 0.23
+            : 0.14
+          : rotation.lastKind === "frontflip"
+            ? 0.18
+            : 0.25;
         this.local.set(
-          i === 0 ? -0.16 : 0.16,
-          0.1 + this.tuck * (i === lead ? 0.4 : 0.33),
-          (i === lead ? -0.1 : 0.15) * this.tuck,
+          (i === 0 ? -0.16 : 0.16) +
+            (sideways ? sideDirection * 0.075 * this.tuck : 0),
+          0.1 + this.tuck * tuckHeight - 0.012 * launch,
+          tuckForward * this.tuck,
         );
-        const entry = Math.min(1, rotation.elapsed / 0.12);
+        const entry = Math.min(1, rotation.elapsed / 0.1);
         this.local.lerpVectors(
           this.flipStarts[i],
           this.local,
@@ -138,24 +185,66 @@ export class AcrobaticPresenter {
           this.body,
           rotation.lift,
         );
+        const footEntry = this.animator.footList[i];
         j[`${side}Ankle`].getWorldPosition(this.support);
+        // A new strike must start from the rendered support foot, with a
+        // continuous handoff to the base pose as its crossfade completes.
+        if (this.transitions.blend < 1 && footEntry.presentedValid)
+          this.support.lerpVectors(
+            footEntry.presented,
+            this.support,
+            this.transitions.blend,
+          );
         this.target.lerpVectors(
           this.support,
           this.target,
-          entry * entry * (3 - 2 * entry) * this.flipWeight,
+          entry *
+            entry *
+            (3 - 2 * entry) *
+            this.flipWeight *
+            this.transitions.blend,
         );
-        this.animator.ik.solve(side, this.target, this.body, this.body);
+        // Upward/outward knee bias avoids a pole singularity as ankles fold
+        // behind the pelvis. Both knees draw toward the chest, rather than
+        // merely bending below the hips in an inverted straight-leg silhouette.
+        this.animator.ik.solve(
+          side,
+          this.target,
+          this.body,
+          this.body,
+          this.flipPole(side),
+        );
       }
-      j.spine.rotateX(-0.1 * this.tuck);
-      j.head.rotateX(0.065 * this.tuck);
+      j.spine.rotateX(-(attack.active ? 0.04 : 0.14) * this.tuck);
+      j.head.rotateX(-0.08 * this.tuck);
       if (!combat.blocking)
         for (const side of SIDES) {
           if (attack.active && t?.action === "punch" && t.side === side)
             continue;
-          j[`${side}Shoulder`].rotateZ(
-            (side === "left" ? 1 : -1) * 0.11 * this.tuck,
-          );
-          j[`${side}Elbow`].rotateX(0.18 * this.tuck);
+          const shoulder = j[`${side}Shoulder`],
+            elbow = j[`${side}Elbow`];
+          const armBlend =
+            this.flipWeight *
+            poseWeight *
+            (attack.active ? 0.45 : 1) *
+            this.transitions.blend;
+          const leadArm = side === (sideDirection < 0 ? "left" : "right");
+          const swing = sideways
+            ? leadArm
+              ? 1.9
+              : 0.8
+            : rotation.lastKind === "backflip"
+              ? -2.1
+              : 1.9;
+          shoulder.rotation.x +=
+            (swing * launch + 0.85 * this.tuck - shoulder.rotation.x) *
+            armBlend;
+          const spread =
+            (side === "left" ? -1 : 1) *
+            (0.18 + 0.35 * launch + (sideways ? 0.12 : 0));
+          shoulder.rotation.z += (spread - shoulder.rotation.z) * armBlend;
+          elbow.rotation.x +=
+            (0.35 * launch + 1.7 * this.tuck - elbow.rotation.x) * armBlend;
         }
     }
     this.parkour.apply(dt, movement?.parkour, this.body, combat);
@@ -205,7 +294,13 @@ export class AcrobaticPresenter {
       const ankle = j[`${side}Ankle`];
       ankle.getWorldPosition(this.support);
       this.target.lerpVectors(this.support, this.target, recovery);
-      this.animator.ik.solve(side, this.target, this.body, this.body);
+      this.animator.ik.solve(
+        side,
+        this.target,
+        this.body,
+        this.body,
+        this.flipWeight > 0.001 ? this.flipPole(side) : null,
+      );
       if (
         (spinning || t.gesture) &&
         root.position.y <= 0.001 &&
@@ -242,6 +337,13 @@ export class AcrobaticPresenter {
     this.transitions.movementSequence.phase = null;
     for (const foot of this.animator.footList) foot.presentedValid = false;
   }
+  flipPole(side) {
+    return this.flipKneePole.set(
+      (side === "left" ? -1 : 1) * 0.45 * this.tuck,
+      0.8 * this.tuck,
+      -1,
+    );
+  }
   fillLimbContext(context, rotation) {
     const j = this.character.joints;
     const root = this.character.root;
@@ -249,7 +351,16 @@ export class AcrobaticPresenter {
     for (const side of SIDES) {
       const limb = context.limbs[side];
       limb.elbow = Math.abs(j[`${side}Elbow`].rotation.x);
-      limb.legExtension = Math.max(0, Math.cos(j[`${side}Knee`].rotation.x));
+      const knee = j[`${side}Knee`];
+      // A compact fold can bend in both local X/Z. Keep ordinary selection
+      // unchanged, but report the geometric bend while the flip layer owns it.
+      limb.legExtension =
+        this.flipWeight > 0.001
+          ? Math.max(
+              0,
+              1 - 2 * (knee.quaternion.x ** 2 + knee.quaternion.z ** 2),
+            )
+          : Math.max(0, Math.cos(knee.rotation.x));
       limb.planted = this.animator.feet[side].planted;
       // Captured only for an input/repeat opportunity. Shared local entry
       // positions keep contact sweeps on the same path as the visual transition.

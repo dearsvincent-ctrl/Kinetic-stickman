@@ -68,7 +68,12 @@ export class CharacterController {
     this.jumpRequested = false;
     this.jumpReferenceYaw = 0;
     this.jumpEvent = { sequence: 0, kind: null, referenceYaw: 0 };
-    this.jumpIntent = { move: { x: 0, y: 0 }, cameraYaw: 0, captured: false };
+    this.jumpIntent = {
+      move: { x: 0, y: 0 },
+      cameraYaw: 0,
+      referenceYaw: 0,
+      captured: false,
+    };
   }
 
   applyMovementConfig(config) {
@@ -140,6 +145,7 @@ export class CharacterController {
       this.jumpIntent.move.x = input.move.x;
       this.jumpIntent.move.y = input.move.y;
       this.jumpIntent.cameraYaw = cameraYaw;
+      this.jumpIntent.referenceYaw = this.heading;
     }
     return true;
   }
@@ -222,6 +228,9 @@ export class CharacterController {
         intentYaw = this.jumpIntent.captured
           ? this.jumpIntent.cameraYaw
           : cameraYaw;
+      const flipReference = this.jumpIntent.captured
+        ? this.jumpIntent.referenceYaw
+        : this.heading;
       this.jumpIntent.captured = false;
       if (!airborne)
         this.jumpReferenceYaw = intendedJumpFacing(
@@ -233,9 +242,11 @@ export class CharacterController {
       if (this.jump.start()) {
         this.jumpEvent.sequence = this.jump.sequence;
         this.jumpEvent.kind = airborne
-          ? selectDoubleJumpFlip(intent, intentYaw, this.jumpReferenceYaw)
+          ? selectDoubleJumpFlip(intent, intentYaw, flipReference)
           : null;
-        this.jumpEvent.referenceYaw = this.jumpReferenceYaw;
+        this.jumpEvent.referenceYaw = airborne
+          ? flipReference
+          : this.jumpReferenceYaw;
         this.movementState = "jump";
       }
     }

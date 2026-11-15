@@ -37,48 +37,48 @@ function rotate(input, duration = 0.25) {
     r.update(1 / 120, m, input, 0);
   return r;
 }
-test("back pressure accelerates a flip, forward pressure slows and can reverse it, release retains momentum", () => {
+test("automatic flips are identical under backward, neutral and forward pressure", () => {
   const back = rotate(stick(0, -1)),
     free = rotate(stick()),
     forward = rotate(stick(0, 1));
-  assert.ok(back.angularVelocity.x > free.angularVelocity.x);
-  assert.ok(free.angularVelocity.x > forward.angularVelocity.x);
-  assert.ok(free.angularVelocity.x > 5);
-  assert.ok(rotate(stick(0, 1), 0.6).angularVelocity.x < 0);
+  for (const r of [back, forward]) {
+    close(r.orientation.angleTo(free.orientation), 0);
+    close(r.pitchTravel, free.pitchTravel);
+    assert.deepEqual(r.angularVelocity, free.angularVelocity);
+  }
+  assert.ok(free.pitchTravel > 0);
+  assert.ok(free.pitchTravel < Math.PI * 2);
 });
-test("inverted easing is soft, responds to pressure and does not alter translation or gravity", () => {
+test("the authored inverted phase continues without changing translation, gravity or angular direction", () => {
   const m = airMovement(),
-    a = new BodyRotation(),
-    b = new BodyRotation();
-  a.start("backflip", 0);
-  b.start("backflip", 0);
-  a.orientation.setFromAxisAngle(new Vector3(1, 0, 0), Math.PI);
-  b.orientation.copy(a.orientation);
-  a.angularVelocity.x = b.angularVelocity.x = 8;
+    r = new BodyRotation();
+  r.start("backflip", 0);
   const before = m.root.position.clone(),
     velocity = m.velocity.clone(),
     gravity = m.jump.config.gravity;
-  a.update(0.04, m, stick(), 0);
-  b.update(0.04, m, stick(0, -1), 0);
-  assert.ok(a.invertedWeight > 0.8);
-  assert.ok(a.angularVelocity.x > 0);
-  assert.ok(b.angularVelocity.x > a.angularVelocity.x);
+  r.update(r.automatic.duration / 2, m, stick(0, 1), 0);
+  // update() bounds long deltas, so finish the remaining sample in normal steps.
+  while (r.automatic.progress < 0.5) r.update(1 / 240, m, stick(0, 1), 0);
+  assert.ok(r.invertedWeight > 0.9);
+  assert.ok(r.angularVelocity.x > 0);
   assert.deepEqual(m.root.position, before);
   assert.deepEqual(m.velocity, velocity);
   assert.equal(m.jump.config.gravity, gravity);
 });
-test("yaw, pitch and roll retain finite normalized quaternions across varied frame rates", () => {
-  for (const fps of [30, 60, 144]) {
-    const m = airMovement(),
-      r = new BodyRotation();
-    r.start("backflip", 0.7);
-    for (let n = 0; n < fps * 3; n++)
-      r.update(1 / fps, m, stick(0.6, -0.8), 0.2);
-    assert.ok(Math.abs(r.angularVelocity.z) > 0.1);
-    assert.ok(Math.abs(r.angularVelocity.y) > 0.1);
-    close(r.orientation.length(), 1, 1e-10);
-    assert.ok(r.angularVelocity.length() <= r.config.maxAngularSpeed + 1e-8);
-  }
+test("pitch and roll flips finish one turn with finite normalized quaternions across frame rates", () => {
+  for (const kind of ["frontflip", "backflip", "leftflip", "rightflip"])
+    for (const fps of [30, 60, 144]) {
+      const m = airMovement(),
+        r = new BodyRotation();
+      r.start(kind, 0);
+      for (let n = 0; n < fps * 3; n++)
+        r.update(1 / fps, m, stick(0.6, -0.8), 0.2);
+      close(r.orientation.length(), 1, 1e-10);
+      close(r.rotationTravel, Math.PI * 2);
+      assert.equal(r.completedFlips, 1);
+      assert.equal(r.phase, "idle");
+      assert.ok(r.angularVelocity.length() < 0.01);
+    }
 });
 test("landing recovers smoothly to upright without changing the actor root", () => {
   const m = airMovement(),
@@ -127,22 +127,23 @@ test("100x sandbox translation and independent rotation remain stable through ju
 });
 test("invalid angular parameters fail safely and speed bounds remain configurable", () => {
   for (const n of [NaN, Infinity, 0, -1])
-    assert.throws(() => new BodyRotation({ pitchTorque: n }), RangeError);
+    assert.throws(() => new BodyRotation({ flipDuration: n }), RangeError);
   assert.equal(
     new BodyRotation({ maxAngularSpeed: 1000 }).config.maxAngularSpeed,
     60,
   );
 });
 
-test("flip pressure remains relative to the captured take-off direction after travel heading changes", () => {
+test("later travel-facing changes cannot reverse the selected rotation", () => {
   const m = airMovement();
   m.heading = Math.PI;
-  const rates = [];
-  for (const y of [-1, 1]) {
-    const r = new BodyRotation();
-    r.start("backflip", m.heading, 1, 1, 0);
-    for (let n = 0; n < 12; n++) r.update(1 / 120, m, stick(0, y), 0);
-    rates.push(r.angularVelocity.x);
+  const a = new BodyRotation(),
+    b = new BodyRotation();
+  for (const r of [a, b]) r.start("backflip", 0, 1, 1, 0);
+  for (let n = 0; n < 36; n++) {
+    a.update(1 / 120, m, stick(0, -1), 0);
+    b.update(1 / 120, m, stick(0, 1), 0);
   }
-  assert.ok(rates[0] > rates[1] + 2);
+  close(a.orientation.angleTo(b.orientation), 0);
+  close(a.pitchTravel, b.pitchTravel);
 });

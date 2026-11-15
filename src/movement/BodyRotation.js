@@ -1,13 +1,13 @@
 import { Quaternion, Vector3 } from "three";
+import {
+  AutomaticFlip,
+  AUTOMATIC_FLIP_CONFIG,
+  FLIP_KINDS,
+} from "./AutomaticFlip.js";
 export const BODY_ROTATION_CONFIG = Object.freeze({
-  maxAngularSpeed: 18,
-  flipLaunch: 11.5,
-  pitchTorque: 18,
-  rollTorque: 5,
-  yawTorque: 3,
-  airDrag: 0.85,
-  invertedDrag: 7.5,
-  invertedCoastSpeed: 3.5,
+  ...AUTOMATIC_FLIP_CONFIG,
+  maxAngularSpeed: 26,
+  recoveryResponse: 16,
   recoveryStiffness: 75,
   recoveryDamping: 14,
   landingAssistStiffness: 10,
@@ -15,15 +15,35 @@ export const BODY_ROTATION_CONFIG = Object.freeze({
   spinSpeed: 18,
 });
 const UP = new Vector3(0, 1, 0);
-/** Angular momentum is independent of travel, jump gravity, camera and attack
- * timelines. Quaternion integration stays bounded; no root translation occurs. */
+/** Automatic flips and legacy angular technique motion share a body-only
+ * quaternion. Travel, jump gravity, camera and attack timelines stay independent. */
 export class BodyRotation {
   constructor(config = {}) {
     this.config = { ...BODY_ROTATION_CONFIG, ...config };
+    for (const key of Object.keys(config))
+      if (!Object.hasOwn(BODY_ROTATION_CONFIG, key))
+        throw new RangeError(`Unknown angular ${key}`);
     for (const key of Object.keys(BODY_ROTATION_CONFIG))
       if (!Number.isFinite(this.config[key]) || this.config[key] <= 0)
         throw new RangeError(`Invalid angular ${key}`);
-    this.config.maxAngularSpeed = Math.min(60, this.config.maxAngularSpeed);
+    this.config.maxAngularSpeed = Math.max(
+      12,
+      Math.min(60, this.config.maxAngularSpeed),
+    );
+    this.config.flipDuration = Math.min(
+      1.2,
+      Math.max(0.25, this.config.flipDuration),
+    );
+    this.config.minFlipDuration = Math.min(
+      0.6,
+      Math.max(0.2, this.config.minFlipDuration),
+    );
+    this.automatic = new AutomaticFlip(this.config);
+    this.previousOrientation = new Quaternion();
+    this.completedFlips = 0;
+    this.rollTravel = 0;
+    this.rotationTravel = 0;
+    this.automaticRecovery = false;
     this.orientation = new Quaternion();
     this.angularVelocity = new Vector3();
     this.delta = new Quaternion();
@@ -32,7 +52,7 @@ export class BodyRotation {
     this.local = new Vector3();
     this.axis = new Vector3();
     this.forward = new Vector3(0, 0, -1);
-    this.up = new Vector3();
+    this.up = new Vector3(0, 1, 0);
     this.referenceYaw = 0;
     this.phase = "idle";
     this.time = 0;
@@ -44,22 +64,30 @@ export class BodyRotation {
     this.lastKind = "none";
   }
   get flipping() {
-    return this.phase === "backflip" || this.phase === "frontflip";
+    return FLIP_KINDS.includes(this.phase);
   }
-  start(kind, heading, direction = 1, intensity = 1, referenceYaw = heading) {
+  start(
+    kind,
+    heading,
+    direction = 1,
+    intensity = 1,
+    referenceYaw = heading,
+    airTime = Infinity,
+  ) {
     if (this.phase === "idle") this.orientation.setFromAxisAngle(UP, heading);
     this.referenceYaw = referenceYaw;
     this.elapsed = 0;
     this.sequence++;
     this.lastKind = kind;
-    if (kind === "backflip" || kind === "frontflip") {
+    if (FLIP_KINDS.includes(kind)) {
       this.phase = kind;
-      const sign = kind === "backflip" ? 1 : -1;
-      this.angularVelocity.x =
-        sign *
-        Math.max(10, sign * this.angularVelocity.x + this.config.flipLaunch);
-      this.pitchTravel = 0;
+      this.automaticRecovery = true;
+      this.automatic.start(kind, this.orientation, referenceYaw, airTime);
+      this.angularVelocity.set(0, 0, 0);
+      this.pitchTravel = this.rollTravel = this.rotationTravel = 0;
     } else {
+      this.automatic.stop("technique");
+      this.automaticRecovery = false;
       this.phase = "spin";
       this.angularVelocity.y =
         direction * this.config.spinSpeed * (0.8 + 0.2 * intensity);
@@ -85,59 +113,76 @@ export class BodyRotation {
       this.angularVelocity.set(0, 0, 0);
       this.lift = 0;
       this.invertedWeight = 0;
+      this.up.copy(UP);
       return;
     }
     this.elapsed += dt;
+    if (this.flipping) {
+      const landingTime =
+        movement.jump.timeToLanding ?? movement.jump.timeToBoundary;
+      const imminent =
+        air &&
+        movement.jump.verticalVelocity < 0 &&
+        landingTime < 0.14 &&
+        this.automatic.duration - this.automatic.elapsed > landingTime;
+      if (this.automatic.active && air && !imminent) {
+        this.previousOrientation.copy(this.orientation);
+        const completed = this.automatic.advance(dt, this.orientation);
+        this.rotationTravel = this.automatic.angle;
+        this.pitchTravel =
+          this.automatic.axis.x * this.automatic.sign * this.rotationTravel;
+        this.rollTravel =
+          this.automatic.axis.z * this.automatic.sign * this.rotationTravel;
+        this.measureRate(dt);
+        if (completed) {
+          this.completedFlips++;
+          this.phase = "recover";
+          this.angularVelocity.set(0, 0, 0);
+        }
+        this.clearance(dt, movement);
+        return;
+      }
+      this.automatic.stop(
+        movement.parkour?.attached
+          ? "parkour"
+          : imminent
+            ? "landing-anticipation"
+            : "contact",
+      );
+      this.automaticRecovery = true;
+      this.phase = "recover";
+    }
+    if (this.phase === "recover" && this.automaticRecovery) {
+      this.previousOrientation.copy(this.orientation);
+      this.target.setFromAxisAngle(UP, movement.heading);
+      const angle = this.orientation.angleTo(this.target);
+      this.orientation.rotateTowards(
+        this.target,
+        Math.min(
+          c.maxAngularSpeed * dt,
+          angle * (1 - Math.exp(-c.recoveryResponse * dt)),
+        ),
+      );
+      this.measureRate(dt);
+      if (angle < 0.001 && this.angularVelocity.length() < 0.05) {
+        this.orientation.copy(this.target);
+        this.angularVelocity.set(0, 0, 0);
+        this.phase = "idle";
+      }
+      this.clearance(dt, movement);
+      return;
+    }
     const x = input.move.x,
       y = input.move.y,
       sin = Math.sin(cameraYaw),
       cos = Math.cos(cameraYaw);
     this.local.set(x * cos - y * sin, 0, -x * sin - y * cos);
-    const backwards =
-      this.local.x * Math.sin(this.referenceYaw) +
-      this.local.z * Math.cos(this.referenceYaw);
     const lateral =
       this.local.x * Math.cos(this.referenceYaw) -
       this.local.z * Math.sin(this.referenceYaw);
     this.up.copy(UP).applyQuaternion(this.orientation);
     this.invertedWeight = Math.max(0, Math.min(1, (-this.up.y - 0.15) / 0.85));
-    if (this.flipping && air) {
-      // Extra drag near inversion is soft and bypassed by deliberate pressure.
-      const easing =
-        c.invertedDrag *
-        this.invertedWeight *
-        Math.max(
-          0,
-          1 -
-            (c.invertedCoastSpeed /
-              Math.max(
-                c.invertedCoastSpeed,
-                Math.abs(this.angularVelocity.x),
-              )) **
-              2,
-        ) *
-        (1 -
-          Math.max(
-            0,
-            Math.min(
-              1,
-              backwards *
-                Math.sign(
-                  this.angularVelocity.x ||
-                    (this.lastKind === "frontflip" ? -1 : 1),
-                ),
-            ),
-          ));
-      this.angularVelocity.multiplyScalar(Math.exp(-(c.airDrag + easing) * dt));
-      this.angularVelocity.x += backwards * c.pitchTorque * dt;
-      this.angularVelocity.z -= lateral * c.rollTorque * dt;
-      this.angularVelocity.y += lateral * c.yawTorque * dt;
-      this.pitchTravel += this.angularVelocity.x * dt;
-    } else if (
-      this.phase === "spin" &&
-      movement.jump.ready &&
-      this.elapsed < 0.34
-    ) {
+    if (this.phase === "spin" && movement.jump.ready && this.elapsed < 0.34) {
       this.angularVelocity.y *= Math.exp(-0.8 * dt);
       this.angularVelocity.y += lateral * 2 * dt;
     } else {
@@ -195,21 +240,52 @@ export class BodyRotation {
       this.angularVelocity.set(0, 0, 0);
       this.phase = "idle";
     }
-    // Conservative visual head/foot clearance. This never alters the actor's
-    // physical height or gravity and eases away as the body returns upright.
-    const pivot = 0.955,
-      headMinimum = movement.root.position.y + pivot + this.up.y * 1.04 - 0.2;
+    this.clearance(dt, movement);
+  }
+  measureRate(dt) {
+    this.delta
+      .copy(this.previousOrientation)
+      .invert()
+      .multiply(this.orientation)
+      .normalize();
+    if (this.delta.w < 0)
+      this.delta.set(
+        -this.delta.x,
+        -this.delta.y,
+        -this.delta.z,
+        -this.delta.w,
+      );
+    const angle = 2 * Math.acos(Math.max(-1, Math.min(1, this.delta.w)));
+    this.angularVelocity.set(this.delta.x, this.delta.y, this.delta.z);
+    if (this.angularVelocity.lengthSq() > 1e-16)
+      this.angularVelocity.setLength(angle / dt);
+    else this.angularVelocity.set(0, 0, 0);
+    this.angularVelocity.clampLength(0, this.config.maxAngularSpeed);
+  }
+  clearance(dt, movement) {
+    this.up.copy(UP).applyQuaternion(this.orientation);
+    this.invertedWeight = Math.max(0, Math.min(1, (-this.up.y - 0.15) / 0.85));
+    const headMinimum =
+      movement.root.position.y + 0.955 + this.up.y * 1.04 - 0.2;
     const support = movement.parkour?.attached
       ? 0
       : (movement.jump.landingFloor ?? movement.jump.floorHeight ?? 0);
-    const clearance = Math.max(0, Math.min(0.3, support + 0.025 - headMinimum));
-    this.lift += (clearance - this.lift) * (1 - Math.exp(-35 * dt));
+    const required = Math.max(0, Math.min(0.42, support + 0.025 - headMinimum));
+    // Follow descent immediately, release smoothly. This is a body-pivot visual
+    // clearance, never a change to root height, gravity or collision support.
+    this.lift = Math.max(
+      required,
+      this.lift + (required - this.lift) * (1 - Math.exp(-35 * dt)),
+    );
   }
   reset(heading = 0) {
     this.phase = "idle";
+    this.automatic.reset();
+    this.automaticRecovery = false;
     this.angularVelocity.set(0, 0, 0);
     this.orientation.setFromAxisAngle(UP, heading);
     this.invertedWeight = 0;
+    this.up.copy(UP);
     this.lift = 0;
   }
 }

@@ -107,7 +107,7 @@ export class Hud {
         : combat?.postureActive
           ? "COMBAT POSTURE"
           : rotation?.flipping
-            ? `${rotation.phase.toUpperCase()} · STEER ROTATION`
+            ? `${rotation.phase.toUpperCase()} · AIR STEERING`
             : "FREE MOVEMENT";
     this.speedValue.textContent = speed.toFixed(1);
     this.stanceLabel.dataset.parkour = parkour?.mode ?? "free";
@@ -133,6 +133,16 @@ export class Hud {
       recovery?.intensity ?? 0,
     );
     this.stanceLabel.dataset.acroPhase = rotation?.phase ?? "idle";
+    this.stanceLabel.dataset.acroProgress = String(
+      rotation?.automatic?.progress ?? 0,
+    );
+    this.stanceLabel.dataset.acroStage = rotation?.automatic?.stage ?? "idle";
+    this.stanceLabel.dataset.rotationTravel = String(
+      rotation?.rotationTravel ?? 0,
+    );
+    this.stanceLabel.dataset.completedFlips = String(
+      rotation?.completedFlips ?? 0,
+    );
     this.stanceLabel.dataset.bodyUp = String(rotation?.up.y ?? 1);
     this.stanceLabel.dataset.invertedWeight = String(
       rotation?.invertedWeight ?? 0,

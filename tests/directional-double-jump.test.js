@@ -181,15 +181,15 @@ test("live jump tuning changes the next midair launch without teleporting or dou
     c.root.position.y > before.y && c.root.position.y - before.y < 0.0001,
   );
 });
-test("directional selection accepts forward/backward diagonals and keeps neutral/strafe upright", () => {
+test("directional selection uses dominant facing-relative direction and a compact neutral backflip", () => {
   for (const [x, y, expected] of [
     [0, 1, "frontflip"],
     [0, -1, "backflip"],
     [0.707, 0.707, "frontflip"],
     [-0.707, -0.707, "backflip"],
-    [0.9, 0.4, "frontflip"],
-    [0, 0, null],
-    [1, 0, null],
+    [0.9, 0.4, "rightflip"],
+    [0, 0, "backflip"],
+    [1, 0, "rightflip"],
   ])
     assert.equal(selectDoubleJumpFlip(input(x, y), 0, 0), expected);
   assert.equal(selectDoubleJumpFlip(input(-1, 0), 0, Math.PI / 2), "frontflip");
@@ -199,13 +199,13 @@ test("directional selection accepts forward/backward diagonals and keeps neutral
     "frontflip",
   );
 });
-test("accepted second Jump starts front/back rotation immediately in the real simulation, neutral does not", () => {
+test("accepted second Jump starts an automatic flip immediately, including neutral input", () => {
   for (const [x, y, kind] of [
     [0, 1, "frontflip"],
     [0, -1, "backflip"],
     [0.707, 0.707, "frontflip"],
     [-0.707, -0.707, "backflip"],
-    [0, 0, null],
+    [0, 0, "backflip"],
   ]) {
     const g = game();
     g.controller.requestJump();
@@ -228,20 +228,22 @@ test("accepted second Jump starts front/back rotation immediately in the real si
     );
   }
 });
-test("take-off facing stays stable through later steering, camera orbit and captured press intent", () => {
+test("second-Jump facing and intent are captured before later steering and camera orbit", () => {
   const c = controller();
   c.requestJump(input(1, 0), 0);
   c.update(0.1, input(1, 0), 0);
   close(c.jumpReferenceYaw, -Math.PI / 2);
   advance(c, 0.2, input(-1, 0));
+  const captured = c.heading;
+  const expected = selectDoubleJumpFlip(input(1, 0), 0, captured);
   c.requestJump(input(1, 0), 0);
-  c.update(1 / 120, input(-1, 0), 0);
+  c.update(1 / 120, input(-1, 0), Math.PI);
   assert.equal(
     c.jumpEvent.kind,
-    "frontflip",
+    expected,
     "Direction is captured at the press, before a later steer sample",
   );
-  close(c.jumpEvent.referenceYaw, -Math.PI / 2);
+  close(c.jumpEvent.referenceYaw, captured);
 });
 test("joystick flicks and ordinary air steering never initiate flips or attacks", () => {
   const g = game({ jumpHeight: 20 });
