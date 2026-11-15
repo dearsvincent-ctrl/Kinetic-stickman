@@ -47,6 +47,27 @@ export function sampleLocalStrike(out, technique, elapsed, context = {}) {
       ),
     ),
   );
+  const activeEnd = technique.windup + technique.extension + technique.impact;
+  if (elapsed < technique.windup) {
+    const coil = Math.sin(
+      Math.PI * clamp(elapsed / Math.max(1e-6, technique.windup)),
+    );
+    out.x += sign * coil * (technique.action === "punch" ? 0.035 : 0.025);
+    out.y -= coil * (technique.action === "punch" ? 0.035 : 0.38);
+    out.z += coil * (technique.action === "punch" ? 0.07 : 0.08);
+  } else if (elapsed > activeEnd) {
+    const p = smooth(
+      clamp((elapsed - activeEnd) / Math.max(1e-6, technique.recovery)),
+    );
+    // Recover around the guard/chamber, rather than holding a fully extended
+    // limb while an unrelated overlay pulls it back. Active contact is intact.
+    const hand = technique.action === "punch";
+    out.x += (sign * (hand ? 0.21 : 0.16) - out.x) * p;
+    out.y +=
+      ((hand ? 1.34 : 0.1) - out.y) * p +
+      Math.sin(Math.PI * p) * (hand ? 0.035 : 0.22);
+    out.z += ((hand ? -0.19 : 0.03) - out.z) * p;
+  }
   // Arms retain their real two-bone length, even when a backhand crosses the chest.
   if (technique.action === "punch") {
     const sx = sign * 0.25,

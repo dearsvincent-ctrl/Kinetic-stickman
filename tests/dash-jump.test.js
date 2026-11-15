@@ -15,7 +15,7 @@ const rig = (world = new ArenaBounds(100), options = {}) =>
 const close = (a, b, tolerance = 1e-7) =>
   assert.ok(Math.abs(a - b) < tolerance, `${a} ~= ${b}`);
 const advance = (actor, seconds, input = controls(), dt = 1 / 60) => {
-  for (let remaining = seconds; remaining > 1e-10;) {
+  for (let remaining = seconds; remaining > 1e-10; ) {
     const step = Math.min(dt, remaining);
     actor.update(step, input, 0);
     remaining -= step;
@@ -87,8 +87,11 @@ test("normal and sprint Dash -> Jump -> Air Dash chains preserve momentum and in
     while (actor.dash.active) actor.update(1 / 60, input, 0);
     close(actor.dash.distanceTravelled, 2.5);
     while (!actor.jump.ready) {
-      assert.equal(actor.canJump, actor.jump.airborne);
-      assert.equal(actor.requestDash(), false);
+      assert.equal(
+        actor.canJump,
+        actor.jump.airborne || actor.jump.canActOnGround,
+      );
+      if (!actor.jump.canActOnGround) assert.equal(actor.requestDash(), false);
       actor.update(1 / 60, input, 0);
     }
     assert.equal(actor.airDashesRemaining, 1);

@@ -26,7 +26,7 @@ export function updateCombatContext(context, movement) {
   context.dashActive = movement.dash.active;
   context.environment = jump.airborne ? "air" : "ground";
   context.phase = jump.phase;
-  context.canAttack = jump.airborne || jump.ready;
+  context.canAttack = jump.airborne || jump.canActOnGround || jump.ready;
   context.height = jump.height;
   context.airTimeRemaining = jump.airborne ? jump.timeToBoundary : 0;
   return context;

@@ -4,12 +4,14 @@ import { checkGameplay } from "./manual-gameplay-browser.mjs";
 import { checkAcrobatics } from "./acrobatic-browser.mjs";
 import { checkActiveBattle } from "./active-battle-browser.mjs";
 import { checkPunchAim } from "./punch-aim-browser.mjs";
+import { checkAnimationFluidity } from "./animation-fluidity-browser.mjs";
 
 const run = await openBrowser(
   (process.env.TEST_URL || "http://127.0.0.1:5173") + "/?debug",
   { practice: true },
 );
 try {
+  await checkAnimationFluidity(run.page, run.native);
   await checkGameplay(run.page, run.native);
   await checkAcrobatics(run.page, run.native);
   assert.deepEqual(run.errors, [], "No browser runtime or asset errors");

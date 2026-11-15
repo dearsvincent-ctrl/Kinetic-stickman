@@ -1,10 +1,10 @@
-# Kinetic — Movement Lab v0.7.10
+# Kinetic — Movement Lab v0.8.0
 
-A mobile-first Three.js/Vite stickman prototype. Version 0.7.10 adds **subtle manual-punch aim assistance** to the 2,000 × 2,000-unit arena and active combat waves. The v0.7.8 directional double jump, 1.5× original jump-height baseline, manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place.
+A mobile-first Three.js/Vite stickman prototype. Version 0.8.0 refines **coordinated, contact-driven procedural animation** over the existing 2,000 × 2,000-unit arena, active combat waves and subtle manual-punch aim assistance. The v0.7.8 directional double jump, 1.5× original jump-height baseline, manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place.
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.7.10** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.7.10**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.0** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.0**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -25,6 +25,29 @@ Sliding between **Punch, Kick, Block and Jump** uses the same central action rou
 Combat never reduces movement speed, applies root motion, pulls the character toward a target or automatically turns toward the dummy. Keep using the analogue joystick and Jump while attacking. When collision would leave the fighter facing a tiny tangent slide, facing smoothly retains the last joystick intent; it never reads the opponent to aim. A ground-only strike yields to takeoff; an air-only strike yields to landing. Held input can resume the appropriate technique when the new physical phase permits it. There is no automatic attack merely from standing near the dummy.
 
 **Dash is removed from the normal HUD, keyboard bindings and layout editor.** Its physical ground/aerial implementations remain in the code for future movement abilities. Developer mode retains E and a **Test preserved dash** utility inside the physics panel, so its existing dash sliders remain testable on a phone. Dash still moves continuously, steers, collides, permits ground-dash-to-jump transitions and tracks its aerial allowance independently.
+
+## Coordinated procedural animation (v0.8.0)
+
+The existing hierarchical rig, two-bone leg/arm IK, independent quaternion body rotation, combat scheduler and shared strike sampler remain. The inspection found disconnected body oscillators, joint layers overwriting each other, foot prediction following facing rather than actual travel, fixed flip tuck and a vertical-travel foot reset. This release extends those layers instead of replacing gameplay.
+
+- `AthleticCoordination` reads actual leg support and fore/aft foot separation to coordinate pelvis load, hip twist, opposing shoulders/arms and head balance. Walking has quiet heel/toe steps; running and sprinting retain their distinct heel recovery, push-off and two-foot flight. Sprint adds stronger load/rise, lean and brief trailing arms. Foot prediction follows resolved travel during turns.
+- `MotionPresentation` uses actual lateral acceleration for banking and resolved acceleration/braking for weight shifts. Sharp reversals remain non-damaging athletic recovery, with the existing restrained streak effects.
+- `PoseContinuity` follows upper-body targets using normalized shortest-path quaternion blending and an analytic critically damped pelvis spring. `PoseTransitions` snapshots the current rig at attack and movement boundaries, including interruptions and attack exit. Support IK runs after those crossfades; active strike IK remains last so visuals retain the shared physical trajectory.
+- Jump entry captures the displayed body-local ankle positions. Flip tuck follows body inversion and gradually extends on descent; free shoulders, elbows and head counterbalance the pelvis. Landing anticipates contact, unfolds the feet, absorbs impact and takes a recovery step. Running landings use shallower compression without waiting for a fixed pose.
+- Physical touchdown restores fresh Jump, Punch/Kick and ground-dash eligibility while visual absorption continues. Launch strength, double-jump limits, gravity, air control and dash values are unchanged. Existing safeguards for an aerial dash still crossing touchdown remain. Pausing a flip through a utility no longer erases body orientation or angular momentum; respawn clears its visual caches.
+- Grounded strikes retain a stationary supporting foot, coordinated hip/shoulder transfer and counterbalancing guard. The shared strike sampler chambers during wind-up and follows a curved guard/chamber recovery. **Active hit paths, reach, hit radii, damage and attack timing are unchanged.** Both limbs and appropriate same-limb repeats remain available; there are no added combat locks.
+
+Animation values live in immutable `AnimationStyle` sections so another character can use different presentation tuning. No visual layer writes player travel, velocity, facing or camera. At extreme sandbox speeds, excess travel carries foot contacts while stride rhythm, knee reach and joint interpolation stay bounded; this retains the existing deliberate visual compromise rather than cycling limbs at 100× speed.
+
+This remains procedural kinematic animation, not a simulated balance/ragdoll system. Severe last-moment turns, extreme root travel and interrupted inverted landings can still show some foot sliding or reach-limited limbs. Active strikes intentionally take priority over aesthetic smoothing to preserve contact timing. No parkour or new technique is introduced.
+
+### v0.8.0 Android playtest
+
+1. Extend the joystick slowly from idle through walk/run/sprint and release. Compare relaxed walking, athletic running and the sprint's brief two-foot flight and stronger body commitment. Try sideways travel and broad reversals; movement should respond immediately without attacks.
+2. Sprint → Jump → Kick → land while still moving → sprint. Repeat with an immediate Jump or Punch on touchdown; visual knee absorption must not lock input.
+3. Forward/backward/neutral second Jump should retain frontflip/backflip/upright controls. Accelerate/brake rotation, Kick/Punch while inverted, and Block. Check the camera stays stable and the body does not reset upright in mid-air.
+4. Tap/hold/slide Punch → Kick → Block during reversals and landings. Look for supporting-foot balance, torso drive, either striking limb and recovery from the current pose rather than idle.
+5. Repeat with Enhanced/Extreme and 100× settings. Check stable feet, finite rotations, responsive steering and preserved dash chains using the developer utility. Check enemies, damage, guard, waves, respawn and saved control positions.
 
 ## Subtle punch aim assist (v0.7.10)
 
@@ -52,7 +75,7 @@ The floor and swept collision bounds both span ±1,000 m. A repeated 256 px grid
 
 The stationary dummy remains as a supplementary contact target and does not count toward waves or kills. Optional **`?practice=1`** retains isolated stationary-target practice without active waves. Historical movement/control browser regressions explicitly use that fixture; separate browser checks exercise the normal active encounter, damage, defeating enemies, wave progression, Block and respawn. Normal game URLs always start active combat.
 
-The encounter uses simple kinematic circular footprints and torso/head/hip strike spheres, not a ragdoll or skeletal hurtbox simulation. Enemies currently fight on the ground; the player retains aerial strikes, steering and flips. No progression, animation overhaul, parkour or multiplayer is added.
+The encounter uses simple kinematic circular footprints and torso/head/hip strike spheres, not a ragdoll or skeletal hurtbox simulation. Enemies currently fight on the ground; the player retains aerial strikes, steering and flips. No progression, parkour or multiplayer is added.
 
 ## Momentum recovery and aerial control (v0.7.9)
 
@@ -92,7 +115,7 @@ Positions are normalized to the playable viewport and saved under `kinetic.contr
 
 ## Developer physics sandbox
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.7.10** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.0** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
 
 The original eight sliders still support **0.1×–100×**, with precise stops near 1×, 10×, 20×, 50× and 100×:
 
@@ -159,6 +182,8 @@ GITHUB_REPOSITORY=dearsvincent-ctrl/Kinetic-stickman npm run test:pages
 
 For a normal local build use `npm run build` and `npm run preview`. For a Pages-specific preview use the same `GITHUB_PAGES`/`GITHUB_REPOSITORY` variables with `npm run preview`, then open `http://localhost:4173/Kinetic-stickman/`.
 
+The v0.8.0 tests add contact-driven gait comparisons, acceleration banking, immediate touchdown actions, exact active wrist/ankle agreement with the contact sampler, rapid attack/flip continuity, vertical 100× takeoff capture, support contacts and pause/reset handling. Browser checks capture walk/run/sprint at the same camera angle and exercise sprint → reversal → Punch → double-jump backflip → Kick → Block → running landing.
+
 Logic tests additionally cover broad-angle recovery, exact movement independence at normal/100× settings, bounded effects, grounded support, manual attacks during recovery, directional double jumping versus ordinary air steering, three-axis normalization, counter-rotation/inverted easing, upright recovery, contextual and repeated same-limb selection, kick-to-backhand continuation, pose continuity and rotational swept contacts. They cover scheduling, tap/hold switching, cancellation, numerical stability, swept active-window contacts/misses, one contact per target, moving-target preparation, root ownership, exact movement independence during attacks, animation blending and layout migration. Existing underlying dash, jump, movement, camera, input and sandbox regressions remain. Browser checks exercise real Chromium touch/pointer events, multitouch, action slides, moved controls, Save/Cancel/Reset, portrait/landscape sizes, manual ground/air strikes, Block, misses, extreme physics and production asset routing. Native browser checks cover ground reversals without automatic attacks, manual strikes during recovery, restrained curved turns, attacks during directional double-jump flips, Block, rotational steering, inversion and landing. Screenshots are written to `test-results/`.
 
 Browser testing uses desktop Chromium and Android-style touch emulation. **No physical Android phone or hardware performance is claimed.** The on-screen FPS indicator remains available for your device playtest.
@@ -172,6 +197,6 @@ Pages is already enabled for this repository. To inspect or rerun deployment fro
 1. Open [the repository](https://github.com/dearsvincent-ctrl/Kinetic-stickman) and its **Actions** tab.
 2. Choose **Deploy GitHub Pages** and inspect the latest run. To retry, tap **Run workflow**, select `main`, and confirm Run workflow.
 3. If Pages needs enabling, open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Chrome's **Desktop site** mode may help expose GitHub settings on a phone.
-4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.7.10** appears.
+4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.0** appears.
 
-No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.7.10 for Android playtesting.
+No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.0 for Android playtesting.

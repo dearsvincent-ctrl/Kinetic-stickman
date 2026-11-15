@@ -12,6 +12,8 @@ import { resolveAnimationStyle } from "./AnimationStyle.js";
 import { MotionPresentation } from "./MotionPresentation.js";
 import { MomentumRecoveryAnimator } from "./MomentumRecoveryAnimator.js";
 import { GroundCombatBalance } from "./GroundCombatBalance.js";
+import { AthleticCoordination } from "./AthleticCoordination.js";
+import { PoseContinuity } from "./PoseContinuity.js";
 
 const fract = (value) => value - Math.floor(value);
 const smooth = (value) => value * value * (3 - 2 * value);
@@ -34,6 +36,9 @@ function createFoot(side, offset, sign) {
     runningSwing: false,
     deferSwing: false,
     runningCorrection: new Vector3(),
+    presented: new Vector3(),
+    presentedLocal: new Vector3(),
+    presentedValid: false,
   };
 }
 
@@ -48,6 +53,8 @@ export class CharacterAnimator {
     this.motion = new MotionPresentation(this.style.motion);
     this.recoveryAnimation = new MomentumRecoveryAnimator(character);
     this.groundBalance = new GroundCombatBalance(character);
+    this.coordination = new AthleticCoordination(this.style.coordination);
+    this.continuity = new PoseContinuity(character, this.style.continuity);
     this.combat = new CombatStanceAnimator(this.style.locomotion);
     this.dashPresentation = new DashPresentation();
     this.dashAnimation = new DashAnimator(character, this.style.groundDash);
@@ -84,6 +91,8 @@ export class CharacterAnimator {
     this.visualCarry = new Vector3();
     this.legDirection = new Vector3();
     this.rootYaw = new Quaternion();
+    this.travelYaw = new Quaternion();
+    this.footOrientation = new Quaternion();
     this.landing = new Vector3();
     this.rest = new Vector3();
     this.hipWorld = new Vector3();
@@ -104,7 +113,8 @@ export class CharacterAnimator {
       recovery,
     } = {},
   ) {
-    if (dt <= 0) return;
+    if (!Number.isFinite(dt) || dt <= 0) return;
+    if (!this.initialized) this.continuity.reset();
     if (sandbox) dash = this.dashPresentation.sample(dt, dash);
     const root = this.character.root;
     // At superhuman speed a human-length rig cannot plant feet for 100× the
@@ -166,7 +176,10 @@ export class CharacterAnimator {
     });
     const moving = speed >= 0.015;
     const distance =
-      root.position.distanceTo(this.previousPosition) * visualRatio;
+      Math.hypot(
+        root.position.x - this.previousPosition.x,
+        root.position.z - this.previousPosition.z,
+      ) * visualRatio;
     this.velocity
       .subVectors(root.position, this.previousPosition)
       .multiplyScalar(1 / dt);
@@ -176,6 +189,11 @@ export class CharacterAnimator {
     this.velocity.y = 0;
     if (this.velocity.lengthSq() > 0.0001)
       this.travelDirection.copy(this.velocity).normalize();
+    this.travelYaw.setFromAxisAngle(
+      this.landing.set(0, 1, 0),
+      Math.atan2(-this.travelDirection.x, -this.travelDirection.z),
+    );
+    this.footOrientation.copy(this.rootYaw).slerp(this.travelYaw, 0.45);
     this.motion.update(
       dt,
       this.velocity,
@@ -281,6 +299,18 @@ export class CharacterAnimator {
     }
 
     gait.sampleUpperBody(this.pose, this.gaitOffset, this.motion.drive);
+    this.coordination.apply(
+      dt,
+      this.pose,
+      gait,
+      this.footList,
+      root,
+      this.travelDirection,
+      this.motion,
+      (1 - this.locomotionCombatWeight) *
+        (1 - this.jumpWeight) *
+        (1 - this.dashWeight),
+    );
     this.motion.apply(
       this.pose,
       (1 - this.locomotionCombatWeight) *
@@ -304,6 +334,7 @@ export class CharacterAnimator {
     this.aerialAttackAnimation.apply(this.pose);
     if (aerialPunch) this.attackAnimation.apply(this.pose, true);
     this.groundBalance.apply(this.pose, speed);
+    this.coordination.head(this.pose);
     const pose = this.pose;
     j.hips.position.set(pose.hipX, pose.hipY, pose.hipZ ?? 0);
     j.hips.rotation.set(0, pose.hipYaw, pose.hipRoll);
@@ -326,13 +357,14 @@ export class CharacterAnimator {
       this.airDashWeight,
     );
     j.spine.rotation.z += this.aerialAttackAnimation.spineRoll ?? 0;
-    j.head.rotation.set(pose.headPitch, -pose.spineYaw * 0.65, 0);
+    j.head.rotation.set(pose.headPitch, pose.headYaw, pose.headRoll);
     for (let index = 0; index < 2; index++) {
       const side = index === 0 ? "left" : "right";
       const arm = pose.arms[index];
       j[`${side}Shoulder`].rotation.set(arm.x, arm.y, arm.z);
       j[`${side}Elbow`].rotation.set(arm.elbow, 0, 0);
     }
+    this.continuity.apply(dt, Boolean(combat?.attack.active));
 
     // Pelvis height follows the support legs instead of stretching a locked
     // ankle upward: down through double support, up through mid-step.
@@ -384,6 +416,7 @@ export class CharacterAnimator {
   updateFoot(foot) {
     const gait = this.locomotion;
     const phase = fract(gait.phase + this.gaitOffset + foot.offset);
+    foot.currentPhase = phase;
     if (phase < foot.lastPhase) {
       const deferred = foot.deferSwing;
       foot.planted = true;
@@ -392,7 +425,7 @@ export class CharacterAnimator {
       foot.duty = gait.duty;
       foot.anchor.copy(foot.target);
       foot.anchor.y = this.character.dimensions.ankleHeight;
-      foot.yaw.copy(this.rootYaw);
+      foot.yaw.copy(this.footOrientation);
       if (deferred) {
         // Resume only the support travel still available behind this landing,
         // rather than dragging a centred foot through a full-length contact.
@@ -426,8 +459,7 @@ export class CharacterAnimator {
       // Root-at-touchdown prediction is stationary during constant-velocity
       // travel, reducing swim/slide during both contact and foot recovery.
       this.landing.addScaledVector(this.velocity, remaining);
-      this.rest.set(0, 0, -gait.stride * 0.5).applyQuaternion(this.rootYaw);
-      this.landing.add(this.rest);
+      this.landing.addScaledVector(this.travelDirection, gait.stride * 0.5);
       foot.target.lerpVectors(foot.swingStart, this.landing, smooth(t));
       foot.target.y =
         this.character.dimensions.ankleHeight +
@@ -447,7 +479,7 @@ export class CharacterAnimator {
         this.runningGoal.addScaledVector(foot.runningCorrection, 1 - smooth(t));
         foot.target.lerp(this.runningGoal, runWeight);
       } else foot.runningSwing = false;
-      foot.yaw.copy(foot.swingYaw).slerp(this.rootYaw, smooth(t));
+      foot.yaw.copy(foot.swingYaw).slerp(this.footOrientation, smooth(t));
     }
     // Sudden reversals can strand an old contact. Relax that exceptional
     // contact rather than stretching the knee through an impossible pose.

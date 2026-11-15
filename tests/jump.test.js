@@ -211,7 +211,7 @@ test("air control and drag are configurable and constant-input paths are rate in
   close(coast.controller.velocity.x, 3);
 });
 
-test("takeoff, third-jump and landing input is rejected without buffering", () => {
+test("takeoff and third-jump input is rejected without buffering", () => {
   const { controller: c } = actor();
   assert.equal(c.requestJump(), true);
   assert.equal(c.requestJump(), false);
@@ -225,7 +225,8 @@ test("takeoff, third-jump and landing input is rejected without buffering", () =
         assert.equal(c.requestJump(), true);
         assert.equal(c.requestJump(), false);
         second = true;
-      } else assert.equal(c.requestJump(), false);
+      } else if (c.jump.phase !== "landing")
+        assert.equal(c.requestJump(), false);
     }
   } while (!c.jump.ready);
   assert.deepEqual(phases, new Set(["takeoff", "airborne", "landing"]));
@@ -236,13 +237,14 @@ test("takeoff, third-jump and landing input is rejected without buffering", () =
   assert.equal(c.jump.sequence, 3);
 });
 
-test("ground skills keep request order without buffering takeoff or landing requests", () => {
+test("ground skills keep request order without buffering takeoff requests", () => {
   const jumpFirst = actor().controller;
   assert.equal(jumpFirst.requestJump(), true);
   assert.equal(jumpFirst.requestDash(), false);
   jumpFirst.update(DT, input(), 0);
   while (!jumpFirst.jump.ready) {
-    if (!jumpFirst.jump.airborne) assert.equal(jumpFirst.requestDash(), false);
+    if (jumpFirst.jump.phase === "takeoff")
+      assert.equal(jumpFirst.requestDash(), false);
     jumpFirst.update(DT, input(), 0);
   }
   assert.equal(jumpFirst.dash.sequence, 0);

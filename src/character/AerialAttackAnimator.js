@@ -42,7 +42,9 @@ export class AerialAttackAnimator {
     const active = Boolean(
       attack?.active && (animation === "flying-kick" || groundedKick),
     );
-    const eligiblePose = groundedKick ? !jump || jump.ready : jump?.airborne;
+    const eligiblePose = groundedKick
+      ? !jump || jump.canActOnGround || jump.ready
+      : jump?.airborne;
     const root = this.character.root;
     const s = this.style;
     this.blocking = Boolean(combat?.blocking);

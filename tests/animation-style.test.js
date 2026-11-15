@@ -360,7 +360,10 @@ test("jump and air dash poses retain finite joints and continuous contacts throu
         );
       assert.ok(foot.y + actor.character.root.position.y >= 0.09);
     }
-    assert.ok(airDash && deepest < 0.83);
+    assert.ok(
+      airDash && deepest < 0.88 && deepest > 0.75,
+      `${rate}Hz landing pelvis ${deepest}`,
+    );
     assert.ok(
       largestHand < 22 * dt + 0.04 && largestFoot < 22 * dt + 0.04,
       `${rate}Hz hand ${largestHand}, foot ${largestFoot}`,

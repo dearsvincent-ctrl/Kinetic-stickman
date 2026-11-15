@@ -100,7 +100,9 @@ export class LocomotionAnimator {
             cadenceLimit,
             (speed * this.duty) / this.stride,
           );
-    this.phase += this.cadence * dt;
+    // Catch up to the current pose after a stall without cycling feet many
+    // times inside one rendered frame. Translation continues in physics.
+    this.phase += this.cadence * Math.min(dt, 0.1);
     return this;
   }
 

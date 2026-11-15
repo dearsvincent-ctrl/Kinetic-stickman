@@ -53,9 +53,14 @@ export class JumpState {
     return this.phase === "grounded";
   }
 
+  get canActOnGround() {
+    return this.ready || this.phase === "landing";
+  }
+
   get canJump() {
     return (
-      this.ready || (this.airborne && this.jumpCount < this.config.maxJumps)
+      this.canActOnGround ||
+      (this.airborne && this.jumpCount < this.config.maxJumps)
     );
   }
 

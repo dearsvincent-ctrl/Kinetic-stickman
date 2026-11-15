@@ -41,7 +41,7 @@ function controller(values = {}) {
   return c;
 }
 function advance(c, t, i = input(), dt = 1 / 120, yaw = 0) {
-  for (let left = t; left > 1e-9;) {
+  for (let left = t; left > 1e-9; ) {
     const d = Math.min(dt, left);
     c.update(d, i, yaw);
     left -= d;
@@ -92,7 +92,7 @@ function tick(g, dt = 1 / 60) {
   g.acrobaticPresenter.apply(dt, g.bodyRotation, g.combat);
 }
 function run(g, t, dt = 1 / 60) {
-  for (let left = t; left > 1e-9;) {
+  for (let left = t; left > 1e-9; ) {
     const d = Math.min(dt, left);
     tick(g, d);
     left -= d;
@@ -130,7 +130,7 @@ test("second launch replaces vertical velocity identically in ascent and descent
     assert.equal(j.sequence, 2);
   }
 });
-test("landing resets the allowance while takeoff/landing inputs cannot buffer extra jumps", () => {
+test("landing resets the allowance and permits an immediate fresh jump without a visual lock", () => {
   const j = new JumpState();
   j.start();
   assert.equal(j.start(), false);
@@ -140,8 +140,7 @@ test("landing resets the allowance while takeoff/landing inputs cannot buffer ex
   j.advance(j.timeToBoundary);
   assert.equal(j.phase, "landing");
   assert.equal(j.jumpCount, 0);
-  assert.equal(j.start(), false);
-  j.advance(j.config.landingDuration);
+  assert.equal(j.canActOnGround, true);
   assert.equal(j.start(), true);
   assert.equal(j.jumpCount, 1);
 });

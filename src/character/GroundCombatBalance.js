@@ -7,6 +7,8 @@ export class GroundCombatBalance {
     this.sequence = 0;
     this.weight = 0;
     this.anchor = new Vector3();
+    this.plantStart = new Vector3();
+    this.plantElapsed = 0;
     this.delta = new Vector3();
     this.side = "left";
     this.action = null;
@@ -15,7 +17,9 @@ export class GroundCombatBalance {
   plan(dt, combat, jump, speed, feet) {
     const a = combat?.attack,
       t = combat?.currentTechnique,
-      ground = (!jump || jump.ready) && a?.context?.environment !== "air";
+      ground =
+        (!jump || jump.canActOnGround || jump.ready) &&
+        a?.context?.environment !== "air";
     const active = ground && a?.active && !a.cancelled && !combat.blocking;
     this.weight += ((active ? 1 : 0) - this.weight) * (1 - Math.exp(-22 * dt));
     this.drive +=
@@ -26,8 +30,44 @@ export class GroundCombatBalance {
     if (a.sequence !== this.sequence) {
       this.sequence = a.sequence;
       this.side = t.side === "left" ? "right" : "left";
-      this.character.joints[`${this.side}Ankle`].getWorldPosition(this.anchor);
-      this.anchor.y = 0.1;
+      if (t.action === "punch") {
+        // A backhand/punch can retain the previous kick's supporting leg.
+        // Never force a still-extended free leg straight down into a contact.
+        if (feet.left.planted !== feet.right.planted)
+          this.side = feet.left.planted ? "left" : "right";
+        else {
+          this.character.joints.leftAnkle.getWorldPosition(this.anchor);
+          this.character.joints.rightAnkle.getWorldPosition(this.delta);
+          this.side = this.anchor.y < this.delta.y ? "left" : "right";
+        }
+      }
+      this.character.joints[`${this.side}Ankle`].getWorldPosition(
+        this.plantStart,
+      );
+      this.plantStart.y = Math.max(0.1, this.plantStart.y);
+      this.anchor.copy(this.plantStart).setY(0.1);
+      this.delta.subVectors(this.anchor, this.character.root.position).setY(0);
+      if (this.delta.length() > 0.42)
+        this.anchor
+          .copy(this.character.root.position)
+          .add(this.delta.setLength(0.42))
+          .setY(0.1);
+      this.plantElapsed = 0;
+    }
+    const support = feet[this.side];
+    if (speed < 0.12) {
+      // The guard may reposition the free foot, but a stationary strike retains
+      // one real contact under its weight transfer, for either attack family.
+      this.plantElapsed += dt;
+      const p = Math.min(1, this.plantElapsed / 0.12);
+      support.target.lerpVectors(
+        this.plantStart,
+        this.anchor,
+        p * p * (3 - 2 * p),
+      );
+      support.anchor.copy(support.target);
+      support.planted = support.target.y <= 0.101;
+      return;
     }
     if (t.action !== "kick") return;
     const root = this.character.root,

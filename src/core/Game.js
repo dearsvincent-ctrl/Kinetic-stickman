@@ -229,7 +229,9 @@ export class Game {
     this.attackScheduler.reset();
     this.momentumRecovery.reset();
     this.streaks.reset();
-    this.bodyRotation.reset(this.controller.heading);
+    // Pause/release input without erasing a flip or recovery configuration.
+    if (this.controller.jump.grounded && this.bodyRotation.phase === "idle")
+      this.bodyRotation.reset(this.controller.heading);
     this.accumulator = 0;
     this.lastTime = null;
   }
@@ -248,6 +250,7 @@ export class Game {
     this.controller.applyMovementConfig(config);
     this.lastRotationJumpSequence = 0;
     this.bodyRotation.reset(0);
+    this.acrobaticPresenter?.reset();
     this.animator.initialized = false;
     this.animator.previousPosition.copy(this.character.root.position);
     this.battle.reset();
@@ -297,7 +300,7 @@ export class Game {
         const step = STEP / this.simulationSteps;
         for (let i = 0; i < this.simulationSteps; i++)
           this.simulateMovement(step);
-        this.acrobaticPresenter.begin(this.combat);
+        this.acrobaticPresenter.begin(this.combat, this.controller);
         this.animator.update(STEP, {
           speed: this.controller.speed,
           blocking: this.input.blocking,
@@ -307,7 +310,12 @@ export class Game {
           sandbox: this.physicsSandbox.enabled && this.sandboxModified,
           recovery: this.momentumRecovery,
         });
-        this.acrobaticPresenter.apply(STEP, this.bodyRotation, this.combat);
+        this.acrobaticPresenter.apply(
+          STEP,
+          this.bodyRotation,
+          this.combat,
+          this.controller,
+        );
         if (this.battle.player.stagger > 0)
           this.character.joints.spine.rotation.x -=
             Math.sin((this.battle.player.stagger / 0.24) * Math.PI) * 0.18;
@@ -623,6 +631,14 @@ export class Game {
         strikeRadius: this.dummy.target.strikeRadius,
       },
       animation: {
+        jointRotations: Object.fromEntries(
+          Object.entries(this.character.joints).map(([name, joint]) => [
+            name,
+            joint.quaternion.toArray(),
+          ]),
+        ),
+        flipTuck: this.acrobaticPresenter.tuck,
+        landingAnticipation: this.animator.jumpAnimation.anticipation,
         combatWeight: this.animator.combatWeight,
         phase: this.animator.locomotion.phase,
         cadence: this.animator.locomotion.cadence,

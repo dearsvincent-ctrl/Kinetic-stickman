@@ -39,22 +39,51 @@ export class AcrobaticPresenter {
     this.aimWorld = new Quaternion();
     this.aimParent = new Quaternion();
     this.aimInverse = new Quaternion();
+    this.captureBody = new Quaternion();
+    this.captureInverse = new Quaternion();
+    this.flipStarts = [new Vector3(-0.15, 0.1, 0), new Vector3(0.15, 0.1, 0)];
+    this.capturedFeet = [new Vector3(-0.15, 0.1, 0), new Vector3(0.15, 0.1, 0)];
+    this.flipSequence = -1;
+    this.tuck = 0;
   }
-  begin(combat) {
+  begin(combat, movement) {
+    this.pivot.getWorldQuaternion(this.captureBody);
+    this.captureInverse.copy(this.captureBody).invert();
+    for (let i = 0; i < SIDES.length; i++) {
+      const foot = this.animator.footList[i];
+      this.character.joints[`${SIDES[i]}Ankle`].getWorldPosition(
+        foot.presented,
+      );
+      foot.presentedValid = true;
+      this.capturedFeet[i]
+        .copy(foot.presented)
+        .sub(this.character.root.position);
+      this.capturedFeet[i].y -= this.pivot.position.y;
+      this.capturedFeet[i].applyQuaternion(this.captureInverse);
+      this.capturedFeet[i].y += BODY_PIVOT;
+      foot.presentedLocal.copy(this.capturedFeet[i]);
+    }
     this.pivot.quaternion.identity();
     this.pivot.position.y = BODY_PIVOT;
-    this.transitions.begin(combat);
+    this.transitions.begin(combat, movement);
   }
-  apply(dt, rotation, combat) {
+  apply(dt, rotation, combat, movement) {
     const root = this.character.root,
       j = this.character.joints,
       attack = combat.attack,
       t = combat.currentTechnique;
-    this.transitions.apply(dt);
+    this.transitions.apply(dt, this.animator.footList);
     this.inverse.copy(root.quaternion).invert();
     this.body.copy(rotation.orientation);
     this.pivot.quaternion.copy(this.inverse).multiply(this.body).normalize();
     this.pivot.position.y = BODY_PIVOT + rotation.lift;
+    // Re-solve support after pelvis crossfades and independent body rotation.
+    // A visual transition cannot drag a physically planted ankle off the floor.
+    for (const foot of this.animator.footList)
+      if (foot.planted) {
+        this.animator.ik.solve(foot.side, foot.target, foot.yaw, this.body);
+        j[`${foot.side}Ankle`].rotateX(foot.pitch);
+      }
     const spinning =
       rotation.phase === "spin" ||
       (rotation.phase === "recover" &&
@@ -62,13 +91,37 @@ export class AcrobaticPresenter {
     this.flipWeight +=
       ((rotation.flipping ? 1 : 0) - this.flipWeight) *
       (1 - Math.exp(-18 * dt));
+    if (rotation.flipping && rotation.sequence !== this.flipSequence) {
+      this.flipSequence = rotation.sequence;
+      for (let i = 0; i < 2; i++) this.flipStarts[i].copy(this.capturedFeet[i]);
+    }
+    const landing =
+      movement?.jump?.airborne && movement.jump.verticalVelocity < 0
+        ? Math.max(0, Math.min(1, movement.jump.timeToBoundary / 0.22))
+        : this.animator.jumpAnimation.phase === "landing"
+          ? 0
+          : 1;
+    const inversion = Math.max(0, Math.min(1, (0.2 - rotation.up.y) / 1.2));
+    const targetTuck = this.flipWeight * (0.35 + 0.65 * inversion) * landing;
+    this.tuck += (targetTuck - this.tuck) * (1 - Math.exp(-22 * dt));
     if (this.flipWeight > 0.001) {
       // Tuck around the existing pelvis. Base jump/attack poses remain the source;
       // local knee targets are controlled rather than a baked flip timeline.
       for (let i = 0; i < SIDES.length; i++) {
         const side = SIDES[i];
         if (attack.active && t.action === "kick" && t.side === side) continue;
-        this.local.set(i === 0 ? -0.15 : 0.15, BODY_PIVOT - 0.52, 0.13);
+        const lead = this.animator.jumpAnimation.lead;
+        this.local.set(
+          i === 0 ? -0.16 : 0.16,
+          0.1 + this.tuck * (i === lead ? 0.4 : 0.33),
+          (i === lead ? -0.1 : 0.15) * this.tuck,
+        );
+        const entry = Math.min(1, rotation.elapsed / 0.12);
+        this.local.lerpVectors(
+          this.flipStarts[i],
+          this.local,
+          entry * entry * (3 - 2 * entry),
+        );
         worldStrike(
           this.target,
           this.local,
@@ -77,7 +130,6 @@ export class AcrobaticPresenter {
           rotation.lift,
         );
         j[`${side}Ankle`].getWorldPosition(this.support);
-        const entry = Math.min(1, rotation.elapsed / 0.12);
         this.target.lerpVectors(
           this.support,
           this.target,
@@ -85,6 +137,17 @@ export class AcrobaticPresenter {
         );
         this.animator.ik.solve(side, this.target, this.body, this.body);
       }
+      j.spine.rotateX(-0.1 * this.tuck);
+      j.head.rotateX(0.065 * this.tuck);
+      if (!combat.blocking)
+        for (const side of SIDES) {
+          if (attack.active && t?.action === "punch" && t.side === side)
+            continue;
+          j[`${side}Shoulder`].rotateZ(
+            (side === "left" ? 1 : -1) * 0.11 * this.tuck,
+          );
+          j[`${side}Elbow`].rotateX(0.18 * this.tuck);
+        }
     }
     if (!attack.active || !t?.adaptive) return;
     if (t.action === "punch" && attack.context?.punchAim) {
@@ -157,6 +220,16 @@ export class AcrobaticPresenter {
       this.target.lerpVectors(this.support, this.target, recovery);
       this.handIK.solve(side, this.target, this.body);
     }
+  }
+  reset() {
+    this.flipWeight = this.tuck = 0;
+    this.flipSequence = -1;
+    this.pivot.quaternion.identity();
+    this.pivot.position.y = BODY_PIVOT;
+    this.transitions.elapsed = 1;
+    this.transitions.attackActive = false;
+    this.transitions.movementSequence.phase = null;
+    for (const foot of this.animator.footList) foot.presentedValid = false;
   }
   fillLimbContext(context, rotation) {
     const j = this.character.joints;

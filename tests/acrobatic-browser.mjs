@@ -14,7 +14,7 @@ const fresh = async (p) => {
   await advance(p, 450);
   await p.evaluate(() => document.activeElement?.blur());
 };
-async function stick(p, native) {
+export async function stick(p, native) {
   const centre = await point(p, "#joystick"),
     b = await p.locator("#joystick").boundingBox(),
     r = Math.min(b.width, b.height) * 0.34;

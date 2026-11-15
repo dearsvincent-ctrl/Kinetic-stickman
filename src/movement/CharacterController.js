@@ -89,7 +89,7 @@ export class CharacterController {
       return false;
     return this.jump.airborne
       ? this.airDashesRemaining > 0 && this.airDash.ready
-      : this.jump.ready && this.groundDash.ready;
+      : this.jump.canActOnGround && this.groundDash.ready;
   }
 
   tickDashCooldowns(dt) {
@@ -99,13 +99,18 @@ export class CharacterController {
 
   get canJump() {
     // Ground dash is interruptible. Vertical eligibility and the aerial dash
-    // remain independent; neither a landing nor an air burst grants a jump.
+    // remain independent. Physical touchdown restores ground actions while
+    // the visual landing compression may still be recovering.
     return (
       this.jump.canJump &&
       !this.jumpRequested &&
-      !(this.jump.ready && this.dash.active && this.dash.mode !== "ground") &&
       !(
-        this.jump.ready &&
+        this.jump.canActOnGround &&
+        this.dash.active &&
+        this.dash.mode !== "ground"
+      ) &&
+      !(
+        this.jump.canActOnGround &&
         this.dashRequested &&
         this.requestedDashMode !== "ground"
       )
@@ -199,7 +204,7 @@ export class CharacterController {
       }
     }
     this.facingTarget =
-      this.jump.ready &&
+      this.jump.canActOnGround &&
       !(this.dash.active && this.dash.mode === "air") &&
       Number.isFinite(facingTarget?.x) &&
       Number.isFinite(facingTarget?.z)

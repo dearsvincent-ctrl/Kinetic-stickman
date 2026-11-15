@@ -12,6 +12,8 @@ export class MotionPresentation {
     this.bank = 0;
     this.local = new Vector3();
     this.inverse = new Quaternion();
+    this.previousVelocity = new Vector3();
+    this.acceleration = new Vector3();
   }
 
   update(dt, velocity, quaternion, enabled, reset = false) {
@@ -20,6 +22,11 @@ export class MotionPresentation {
     this.previousSpeed = speed;
     this.inverse.copy(quaternion).invert();
     this.local.copy(velocity).setY(0).applyQuaternion(this.inverse);
+    this.acceleration
+      .subVectors(velocity, this.previousVelocity)
+      .multiplyScalar(reset ? 0 : 1 / dt)
+      .applyQuaternion(this.inverse);
+    this.previousVelocity.copy(velocity);
     const s = this.style;
     this.drive = MathUtils.damp(
       this.drive,
@@ -35,7 +42,14 @@ export class MotionPresentation {
     );
     this.bank = MathUtils.damp(
       this.bank,
-      enabled ? MathUtils.clamp(this.local.x / 5.2, -1, 1) : 0,
+      enabled
+        ? MathUtils.clamp(
+            this.acceleration.x / s.accelerationScale +
+              (this.local.x / 5.2) * 0.25,
+            -1,
+            1,
+          )
+        : 0,
       s.response,
       dt,
     );
