@@ -16,13 +16,19 @@ concurrency:
 
 jobs:
   build:
-    name: Test and build game
+    name: Test and build game (${{ matrix.suite }})
     runs-on: ubuntu-latest
-    # Production traversal, touch/layout, sandbox and combat use software WebGL.
+    # Independent fresh-browser suites keep all software-WebGL regressions
+    # within the job budget. Deployment waits for both matrix jobs.
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [movement, encounter]
     env:
       # GITHUB_REPOSITORY is supplied by Actions (owner/repository).
       GITHUB_PAGES: "true"
+      PAGES_TEST_SUITE: ${{ matrix.suite }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -40,6 +46,7 @@ jobs:
       - name: Check production assets and touch controls
         run: npm run test:pages
       - name: Upload Pages artifact
+        if: matrix.suite == 'movement'
         uses: actions/upload-pages-artifact@v5
         with:
           path: dist

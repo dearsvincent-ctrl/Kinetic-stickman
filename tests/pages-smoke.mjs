@@ -35,6 +35,11 @@ const configuredBase = process.env.GITHUB_REPOSITORY
     })
   : inferredBase;
 const base = process.env.PAGES_TEST_BASE || configuredBase;
+const suite = process.env.PAGES_TEST_SUITE || "all";
+assert.ok(
+  ["all", "movement", "encounter"].includes(suite),
+  "Unknown Pages test suite",
+);
 assert.match(
   base,
   /^\/(?:[^?#]*\/)?$/,
@@ -82,52 +87,61 @@ try {
     server.listen(0, "127.0.0.1", ready);
   });
   const origin = `http://127.0.0.1:${server.address().port}`;
-  run = await openBrowser(`${origin}${base}`, { practice: true });
-  assert.equal(
-    await run.page.evaluate(() => typeof window.__KINETIC__),
-    "undefined",
-  );
-  await checkParkour(run.page, run.native);
-  await checkAnimationFluidity(run.page, run.native);
-  await checkGameplay(run.page, run.native);
-  await checkAcrobatics(run.page, run.native);
-  await checkAutomaticFlips(run.page, run.native);
-  await checkGeometricWorld(run.page, run.native);
-  for (const request of run.requests) {
-    const url = new URL(request);
-    assert.equal(url.origin, origin);
-    assert.ok(
-      url.pathname.startsWith(base),
-      `Asset stays below ${base}: ${request}`,
+  if (suite !== "encounter") {
+    run = await openBrowser(`${origin}${base}`, { practice: true });
+    assert.equal(
+      await run.page.evaluate(() => typeof window.__KINETIC__),
+      "undefined",
     );
+    await checkParkour(run.page, run.native);
+    await checkAnimationFluidity(run.page, run.native);
+    await checkGameplay(run.page, run.native);
+    await checkAcrobatics(run.page, run.native);
+    await checkAutomaticFlips(run.page, run.native);
+    await checkGeometricWorld(run.page, run.native);
+    for (const request of run.requests) {
+      const url = new URL(request);
+      assert.equal(url.origin, origin);
+      assert.ok(
+        url.pathname.startsWith(base),
+        `Asset stays below ${base}: ${request}`,
+      );
+    }
+    for (const extension of [".js", ".css", ".woff2", ".svg"])
+      assert.ok(
+        run.responses.some((url) => new URL(url).pathname.endsWith(extension)),
+        `Loaded ${extension}`,
+      );
+    assert.deepEqual(run.errors, [], "No production runtime or asset errors");
+    await run.browser.close();
+    run = null;
   }
-  for (const extension of [".js", ".css", ".woff2", ".svg"])
-    assert.ok(
-      run.responses.some((url) => new URL(url).pathname.endsWith(extension)),
-      `Loaded ${extension}`,
-    );
-  assert.deepEqual(run.errors, [], "No production runtime or asset errors");
-  await run.browser.close();
   // Fresh context: the normal game must enable active waves by default.
-  run = await openBrowser(`${origin}${base}`);
-  await checkActiveBattle(run.page, run.native);
-  await checkPunchAim(run.page, run.native);
-  await checkEnemySettings(run.page, run.native);
-  await checkCombatStrength(run.page, run.native);
-  await checkTagMode(run.page, run.native);
-  await checkEnemyAbilities(run.page, run.native);
-  await checkSliderLocks(run.page, run.native);
-  for (const request of run.requests) {
-    const url = new URL(request);
-    assert.equal(url.origin, origin);
-    assert.ok(
-      url.pathname.startsWith(base),
-      `Encounter asset stays below ${base}`,
+  if (suite !== "movement") {
+    run = await openBrowser(`${origin}${base}`);
+    assert.equal(
+      await run.page.evaluate(() => typeof window.__KINETIC__),
+      "undefined",
     );
+    await checkActiveBattle(run.page, run.native);
+    await checkPunchAim(run.page, run.native);
+    await checkEnemySettings(run.page, run.native);
+    await checkCombatStrength(run.page, run.native);
+    await checkTagMode(run.page, run.native);
+    await checkEnemyAbilities(run.page, run.native);
+    await checkSliderLocks(run.page, run.native);
+    for (const request of run.requests) {
+      const url = new URL(request);
+      assert.equal(url.origin, origin);
+      assert.ok(
+        url.pathname.startsWith(base),
+        `Encounter asset stays below ${base}`,
+      );
+    }
+    assert.deepEqual(run.errors, [], "No active-encounter production errors");
   }
-  assert.deepEqual(run.errors, [], "No active-encounter production errors");
   console.log(
-    `PASS: production Pages bundle and mobile controls at ${base}. No physical Android device tested.`,
+    `PASS: production Pages ${suite} suite and mobile controls at ${base}. No physical Android device tested.`,
   );
 } finally {
   await run?.browser.close();

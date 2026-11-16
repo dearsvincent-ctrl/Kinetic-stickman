@@ -358,7 +358,7 @@ Browser testing uses desktop Chromium and Android-style touch emulation. **No ph
 
 ## GitHub Pages deployment
 
-The existing [Deploy GitHub Pages workflow](.github/workflows/deploy-pages.yml) runs logic tests, builds with the correct `/Kinetic-stickman/` Vite base, runs the production browser suite, uploads `dist/` and deploys every successful push to `main`. Pull requests run checks without publishing. Assets/fonts are bundled locally; no external rendering service is required.
+The existing [Deploy GitHub Pages workflow](.github/workflows/deploy-pages.yml) runs logic tests, builds with the correct `/Kinetic-stickman/` Vite base, runs the production browser suite, uploads `dist/` and deploys every successful push to `main`. Movement and encounter browser checks run as independent parallel matrix jobs so software rendering stays within each job budget. Both jobs must pass before deployment; only the movement job uploads the shared Pages artifact. `npm run test:pages` still runs the entire suite by default; `PAGES_TEST_SUITE=movement` or `encounter` selects a CI partition. Pull requests run checks without publishing. Assets/fonts are bundled locally; no external rendering service is required.
 
 Pages is already enabled for this repository. To inspect or rerun deployment from Android:
 
