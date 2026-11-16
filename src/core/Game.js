@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { createArena } from "../world/createArena.js";
 import { TraversalWorld } from "../world/TraversalWorld.js";
 import { createTraversalArea } from "../world/createTraversalArea.js";
+import { createGeometricWorld } from "../world/createGeometricWorld.js";
+import { ALL_TRAVERSAL_STRUCTURES } from "../world/GeometricWorldLayout.js";
 import { ARENA_CONFIG } from "../world/ArenaConfig.js";
 import { BattleWorld } from "../combat/BattleWorld.js";
 import { EnemyViews } from "../character/EnemyViews.js";
@@ -37,6 +39,7 @@ import { PhysicsSandboxPanel } from "../ui/PhysicsSandboxPanel.js";
 import {
   movementSubsteps,
   sandboxMovementConfig,
+  PHYSICS_PARAMETERS,
 } from "../sandbox/PhysicsSandbox.js";
 import { ControlLayoutEditor } from "../ui/ControlLayoutEditor.js";
 
@@ -66,6 +69,7 @@ export class Game {
     );
     this.arena = createArena(this.scene);
     this.traversalArea = createTraversalArea(this.scene);
+    this.geometricWorld = createGeometricWorld(this.scene);
     this.dummy = new TrainingDummy();
     this.scene.add(this.dummy.root);
     this.character = new Stickman();
@@ -75,7 +79,7 @@ export class Game {
       new TraversalWorld(
         this.arena.halfSize,
         [this.dummy.target],
-        this.traversalArea.structures,
+        ALL_TRAVERSAL_STRUCTURES,
       ),
       { faceInputWhenBlocked: true },
     );
@@ -183,9 +187,12 @@ export class Game {
       onDash: () => this.input.requestDash(),
       onChange: (values) => {
         this.controller.applyMovementConfig(sandboxMovementConfig(values));
+        this.battle.configureStrength(values);
         // Keep the normal camera angle and user orbit. Bound follow lag only in
         // the explicit sandbox, so a fast launch cannot outrun the view.
-        this.sandboxModified = Object.values(values).some((v) => v !== 1);
+        this.sandboxModified = PHYSICS_PARAMETERS.some(
+          ({ id }) => values[id] !== 1,
+        );
         this.followCamera.maxLag = this.sandboxModified ? 0.65 : Infinity;
       },
     });

@@ -6,6 +6,11 @@ import {
   ENEMY_LIMITS,
   sanitizeEnemySettings,
 } from "../sandbox/EnemySettings.js";
+import {
+  NORMAL_COMBAT_STRENGTH,
+  sanitizeCombatStrength,
+  playerStrikeImpact,
+} from "../sandbox/CombatStrength.js";
 
 export const WAVE_CONFIG = Object.freeze({
   initialEnemies: 3,
@@ -43,6 +48,7 @@ export class BattleWorld {
         new EnemyAgent(i, world, (agent, hit) => this.hitPlayer(agent, hit)),
     );
     this.enemySettings = DEFAULT_ENEMY_SETTINGS;
+    this.strength = NORMAL_COMBAT_STRENGTH;
     this.populationOverride = null;
     this.settingsRevision = 0;
     this.playerVelocity = new Vector3();
@@ -71,6 +77,9 @@ export class BattleWorld {
       this.targets.push(this.dummy);
     }
     if (this.enabled) this.spawnWave();
+  }
+  configureStrength(values) {
+    this.strength = sanitizeCombatStrength(values);
   }
   get alive() {
     let count = 0;
@@ -322,13 +331,15 @@ export class BattleWorld {
       (e) => e.spawned && e.body.id === hit.targetId,
     );
     if (!enemy) return null;
-    const kick = technique?.action === "kick";
+    const effect = playerStrikeImpact(technique?.action, this.strength);
     const result = enemy.body.receive({
-      damage: kick ? DAMAGE_CONFIG.kickDamage : DAMAGE_CONFIG.punchDamage,
+      damage: effect.damage,
       source: hit.source ?? this.player.position,
       heading: hit.heading,
       atPosition: hit.targetPosition ?? enemy.body.position,
-      knockback: kick ? 4.2 : 2.5,
+      knockback: effect.knockback,
+      allowZeroDamage: true,
+      impulseLimit: Math.max(8, effect.knockback * 2),
     });
     if (result) {
       enemy.combat.cancelAttack("hit");
@@ -357,6 +368,7 @@ export class BattleWorld {
   snapshot() {
     return {
       enemySettings: this.enemySettings,
+      strength: this.strength,
       populationOverride: this.populationOverride,
       settingsRevision: this.settingsRevision,
       wave: this.wave,
@@ -380,6 +392,7 @@ export class BattleWorld {
           phase: e.combat.attack.phase,
           sequence: e.combat.attack.sequence,
           velocity: e.controller.velocity.toArray(),
+          impulse: e.body.impulse.toArray(),
           alerted: e.alerted,
         })),
     };

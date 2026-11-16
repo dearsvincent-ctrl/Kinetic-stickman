@@ -1,10 +1,10 @@
-# Kinetic — Movement Lab v0.8.2.1
+# Kinetic — Movement Lab v0.8.3
 
-A mobile-first Three.js/Vite stickman prototype. The current combat aim refinement sets **100% / 20° / ±25°** as the default and adds extended manual Punch/Kick alignment with independent developer aim saves. Version 0.8.2.1 added **automatic directional acrobatic double jumps** with full-body posing and independent air steering. Version 0.8.2 added **live developer enemy pursuit settings**, independent of player physics. Version 0.8.1 added **automatic superhuman traversal** to a compact test area within the existing 2,000 × 2,000-unit arena. The coordinated animation, active combat waves, original jump-height baseline, manual combat, analogue movement, momentum recovery, camera, saved layouts, sandbox and preserved dash physics remain in place. This focused patch retains the existing version/roadmap; the geometric world update is not included.
+A mobile-first Three.js/Vite stickman prototype. Version 0.8.3 adds a **geometric city/jungle playground** and independent **Attack Power / Impact** developer controls. The 2,000 × 2,000-unit arena, automatic traversal, directional acrobatic double jumps, manual combat, active waves, health, analogue movement, camera, custom HUD, aim tuning and enemy pursuit settings remain in place. Aim assistance still defaults to **100% / 20° / ±25°** with its independent save. Full enemy parkour, advanced navigation and Tag Mode are reserved for later updates.
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.2.1** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.2.1**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.3** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.3**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -26,6 +26,27 @@ Combat never reduces movement speed, applies root motion, pulls the character to
 
 **Dash is removed from the normal HUD, keyboard bindings and layout editor.** Its physical ground/aerial implementations remain in the code for future movement abilities. Developer mode retains E and a **Test preserved dash** utility inside the physics panel, so its existing dash sliders remain testable on a phone. Dash still moves continuously, steers, collides, permits ground-dash-to-jump transitions and tracks its aerial allowance independently.
 
+## Geometric playground and strength (v0.8.3)
+
+From spawn, Reset View to face north. Go **left and forward for the block city** (entrance around X −130 / Z −82), or **right and forward for the jungle** (X +135 / Z −88). Ground route markings and entrance signs identify both routes. Developer Movement Speed 3–20× makes crossing the open approaches quicker. The old traversal test area at X 42–80 / Z −20…−50 stays available. Most of the arena, including the entire large area behind spawn, remains open for combat and pursuit.
+
+The fixed city contains 20 blocks of varied size/height, towers up to **320 units**, a narrow alley, stepping roofs, gaps, elevated stages/bridges, vault barriers and poles. The geometric jungle has 20 giant square-column trunks up to **172 units**, split angular crowns, elevated branches, a canopy crossing and narrow perch poles. The split crowns deliberately leave front/back climbing channels; climb a column to its top, then jump/drop across to the lower crown wings. These are stylised geometric silhouettes, not detailed architecture or realistic vegetation.
+
+All **141 new structures** share their exact dimensions with solid collision/parkour surfaces; the existing nine test structures are retained. Static instances are grouped in spatial chunks with shared primitive geometry/materials and frustum culling. Scenery has no update loop or expensive extra shadow maps. A shared static spatial index bounds collision, support, camera and surface queries; continuous box/cylinder sweeps still cover high-speed motion. Enemy ground steering commits to small local routes around obstacles. Enemies do not climb or solve arbitrary multi-obstacle mazes, and an opponent on a roof may remain unreachable to them. Fight and test pursuit in the open approaches/plazas.
+
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.3**, tap **DEV**, and scroll to **Superhuman strength**:
+
+| Control | Default | Range | Applies to |
+| --- | --- | --- | --- |
+| Attack Power | 1× | 0–100× | Damage from confirmed player Punch/Kick contacts |
+| Impact / Knockback | 1× | 0–100× | Enemy impulse from those contacts |
+
+They apply live at contact and are independent: 0× power + 100× impact moves an enemy without reducing its health; 100× power + 0× impact deals damage without adding knockback. Zero-damage contacts can still stagger/react. Neither setting changes attack reach, aim, timings, input rate, enemy attack damage or player locomotion. Separate technique profiles retain the base Punch/Kick damage/impulse values for future individual scaling. Large impulses travel continuously, decay and collide with structures/arena bounds; finite numerical caps prevent runaway stacking without the old 8 m/s cap suppressing the 100× setting.
+
+Both controls are included in the existing physics Save/Load and Reset. Old version-1 physics saves keep their eight movement values and default the missing strength multipliers to 1×. Normal/Enhanced/Extreme presets and Reset restore strength to 1×; Save keeps the chosen configuration. Aim saves, enemy settings and HUD layouts keep their separate keys. Ordinary play ignores saved developer multipliers.
+
+For the Android playtest: enter both zones, vault the entrances, climb a tall wall/column, run along a roof or bridge, jump away from a wall and double jump/flip while Punch/Kick remain available. Try ordinary and extreme movement, land on crowns/branches, check camera clearance, then return to open ground to compare 0×/1×/100× damage and impact independently. Physical-device performance remains for your phone playtest; browser validation uses Chromium touch emulation.
+
 ## Automatic acrobatic double jumps (v0.8.2.1)
 
 Tap **JUMP** normally, then press/slide onto it again while airborne. Both launches keep exactly the existing strength and momentum. At the second button entry, MOVE relative to the fighter's facing selects forward → frontflip, backward → backflip, left/right → side flip. Diagonals choose the dominant component; neutral/drift chooses a compact backflip. The fighter performs one quick staged turn automatically. MOVE continues steering travel; holding/reversing it cannot replay or reverse the flip.
@@ -36,7 +57,7 @@ For the Android playtest: try all four directions plus neutral, redirect travel 
 
 ## Enemy pursuit settings (v0.8.2)
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.2.1**, tap **DEV**, then expand **Enemy Settings**. Ordinary play ignores saved developer enemy settings. No gameplay buttons or saved control positions change.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.3**, tap **DEV**, then expand **Enemy Settings**. Ordinary play ignores saved developer enemy settings. No gameplay buttons or saved control positions change.
 
 | Control | Default | Experimental bounds |
 | --- | --- | --- |
@@ -191,7 +212,7 @@ Positions are normalized to the playable viewport and saved under `kinetic.contr
 
 ## Developer physics sandbox
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.2.1** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.3** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
 
 The original eight sliders still support **0.1×–100×**, with precise stops near 1×, 10×, 20×, 50× and 100×:
 
@@ -214,13 +235,15 @@ Numeric bounds are configurable in `PhysicsSandbox.js`. Defaults allow up to 520
 
 ## Combat architecture
 
+- `GeometricWorldLayout.js`, `createGeometricWorld.js`: one fixed city/jungle collider layout with spatially culled instance batches. `StructureIndex.js` is shared by traversal-world forks; `TraversalWorld.js` retains continuous side/roof/ceiling and camera queries.
+- `GroundObstacleAvoidance.js`: committed local perimeter detours and cached failed routes for ground-only enemies. `CombatStrength.js` resolves independent per-technique damage/impulse profiles; `Combatant.js` continuously resolves and damps the resulting momentum.
 - `PunchAimAssist.js`: per-manual-strike short-horizon ranking, bounded correction and contextual limb preference. `PunchAlignment.js` shares hand/ankle correction with presentation and contact queries; `AimAssistSettings.js` owns independent developer defaults, bounds and Save/Load.
 - `AimAssistPanel.js`, `PunchAimDebug.js`: temporary live developer controls and optional shared-sampler target/path visualization; saved physics and HUD data remain separate.
 
 - `BattleWorld.js`, `EnemyAgent.js`, `Combatant.js`: bounded wave pool, deterministic attack opportunities, stateful pursuit/positioning, health, timed directional Block and collision-resolved damage impulses.
 - `EnemyViews.js`, `BattleHud.js`: shared rig presentation, distance throttling, health/defeat feedback and reset. `ArenaConfig.js` is the source of truth for the expanded floor, collision dimensions and rendering distance.
 
-- `ManualTechniques.js`: separate ground/air Punch and Kick definitions. Each declares startup, active duration, recovery, playback speed, reach, hit radius and ground/air eligibility. `createManualTechniques()` resolves them to the existing windup/extension/impact/recovery animation phases. Code-only `punchSpeed`, `kickSpeed` and `recoverySpeed` factors remain available for future tuning; **no new sandbox parameters are added** in this version.
+- `ManualTechniques.js`: separate ground/air Punch and Kick definitions. Each declares startup, active duration, recovery, playback speed, reach, hit radius and ground/air eligibility. `createManualTechniques()` resolves them to the existing windup/extension/impact/recovery animation phases. Code-only `punchSpeed`, `kickSpeed` and `recoverySpeed` factors remain available for future tuning; the new strength controls do not retime attacks.
 - `AdaptiveTechniques.js`: seven mirrored procedural families and deterministic pose/momentum-based limb selection. `TechniqueGeometry.js` shares strike targets and captured limb-entry poses between procedural IK and contact queries.
 - `MomentumRecovery.js`: collision-resolved velocity/braking observer with broad-angle recovery classification. `MomentumRecoveryAnimator.js` and `GroundCombatBalance.js` layer bounded foot support and additive body loading over the existing gait. `GroundStreaks.js` owns the fixed instanced effect pool.
 - `JoystickGestures.js`: press-time facing-relative second-jump selection; no flick history or activation without an accepted second Jump. `JumpState.js` owns the two-jump allowance and ballistic relaunch; `CharacterController.js` preserves horizontal movement and publishes accepted jump events. `BodyRotation.js` / `AutomaticFlip.js`: separate normalized quaternion/angular state, one bounded authored turn, pose envelopes and upright/contact recovery. Neither changes physical translation.
@@ -234,7 +257,7 @@ Numeric bounds are configurable in `PhysicsSandbox.js`. Defaults allow up to 520
 
 The former `ProximityCombatController` and legacy technique definitions remain unwired library code with regression coverage. They are **not instantiated by the game**. Manual attacks do not depend on target acquisition. Swept contact sensing does not enlarge reach with speed, guarantee a hit or compensate for poor timing. A strike that passes the dummy only during startup or recovery misses.
 
-The arena still uses swept horizontal bounds and a stationary circular dummy footprint. It does not simulate jumping over/onto props, uneven terrain, camera obstacle collision, rigid-body impacts or ragdolls. The hierarchy/kinematic adapter remain suitable for a later Rapier integration.
+The kinematic world uses swept horizontal bounds, round actor/dummy footprints and solid box/cylinder traversal surfaces. It supports roofs, undersides and camera obstacle clearance; it does not simulate a full rigid-body environment or ragdoll balance. The hierarchy and collision adapter remain suitable for later Rapier integration.
 
 ## Run and test locally (optional)
 
@@ -258,6 +281,8 @@ GITHUB_REPOSITORY=dearsvincent-ctrl/Kinetic-stickman npm run test:pages
 
 For a normal local build use `npm run build` and `npm run preview`. For a Pages-specific preview use the same `GITHUB_PAGES`/`GITHUB_REPOSITORY` variables with `npm run preview`, then open `http://localhost:4173/Kinetic-stickman/`.
 
+The v0.8.3 tests cover deterministic city/jungle composition, exact instanced collider dimensions, spatial-index equivalence, tall/raised/underside sweeps, city vault/climb/rooftop transitions, giant-column channels, jungle poles, unlimited climbs, wall/double jumps, ground detours through actual city geometry, cached unreachable-roof routes, safe spawns, camera clearance, 0–100× independent damage/impact, real impulse scaling, extreme collision stability and legacy saves. Native routes travel from spawn using the actual joystick, reach city and jungle rooftops, attack/double jump/land, test portrait strength controls and saves, then demonstrate 0× damage/100× impact and 100× damage/0× impact against active enemies.
+
 The v0.8.2.1 tests cover front/back/left/right/diagonal/neutral selection, press-time facing capture, staged full-body posing, one turn independent of held/reversed input, frame-rate stability, exact movement/gravity independence, manual attacks/Block during every flip, early floor/roof contact, extreme settings, wall-jump/attachment compatibility and unchanged camera orbit. Native browser checks capture initiation/tuck poses and verify one turn, physical equal-strength launches, air steering, third-jump rejection and landing. Testing uses Chromium touch emulation; no physical Android testing is claimed.
 
 The v0.8.2 tests cover live and saved enemy tuning, independent speed/acceleration, high-speed moving-target pursuit, reversal/arrival recovery, detection hysteresis/persistence, separation, bounded adaptive steps, actual attack contacts/Block, population changes without fake deaths or replenishing defeated enemies, wave/respawn compatibility, crowded corner spawns and shared/instanced crowd presentation. Native browser checks exercise Enemy Settings alongside held joystick input, Save/Load/Reset/presets, orientation changes and a 64-enemy extreme chase with directional double jumps and Punch/Block/Kick slides.
@@ -279,6 +304,6 @@ Pages is already enabled for this repository. To inspect or rerun deployment fro
 1. Open [the repository](https://github.com/dearsvincent-ctrl/Kinetic-stickman) and its **Actions** tab.
 2. Choose **Deploy GitHub Pages** and inspect the latest run. To retry, tap **Run workflow**, select `main`, and confirm Run workflow.
 3. If Pages needs enabling, open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Chrome's **Desktop site** mode may help expose GitHub settings on a phone.
-4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.2.1** appears.
+4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.3** appears.
 
-No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.2.1 for Android playtesting.
+No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.3 for Android playtesting.

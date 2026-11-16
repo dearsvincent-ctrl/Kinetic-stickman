@@ -145,7 +145,7 @@ export class PursuitSteering {
       );
     if (this.velocity.lengthSq() > agent.runSpeed * agent.runSpeed)
       this.velocity.setLength(agent.runSpeed);
-    this.navigate?.(agent, this.velocity, player.position);
+    this.navigate?.(agent, this.velocity, player.position, dt);
     return this.velocity;
   }
 }

@@ -60,12 +60,19 @@ export class Combatant {
     heading = 0,
     knockback = 3,
     atPosition = this.position,
+    allowZeroDamage = false,
+    impulseLimit = 8,
   }) {
     if (
       !this.active ||
       this.invulnerable > 0 ||
       !Number.isFinite(damage) ||
-      damage <= 0 ||
+      damage < 0 ||
+      (damage === 0 && !allowZeroDamage) ||
+      !Number.isFinite(knockback) ||
+      knockback < 0 ||
+      !Number.isFinite(impulseLimit) ||
+      impulseLimit <= 0 ||
       !Number.isFinite(source?.x) ||
       !Number.isFinite(source?.z)
     )
@@ -89,8 +96,25 @@ export class Combatant {
     // Bounded impulse, independent of sandbox travel speed and attack reach.
     const nx = length > 1e-8 ? -dx / length : -Math.sin(heading);
     const nz = length > 1e-8 ? -dz / length : -Math.cos(heading);
-    this.impulse.x = Math.max(-8, Math.min(8, this.impulse.x + nx * force));
-    this.impulse.z = Math.max(-8, Math.min(8, this.impulse.z + nz * force));
+    if (force > 0) {
+      const cap = Math.min(
+        1000,
+        Math.max(
+          8,
+          impulseLimit,
+          Math.abs(this.impulse.x),
+          Math.abs(this.impulse.z),
+        ),
+      );
+      this.impulse.x = Math.max(
+        -cap,
+        Math.min(cap, this.impulse.x + nx * force),
+      );
+      this.impulse.z = Math.max(
+        -cap,
+        Math.min(cap, this.impulse.z + nz * force),
+      );
+    }
     if (this.health === 0) this.active = false;
     return (this.lastResult = {
       damage: applied,
@@ -105,11 +129,18 @@ export class Combatant {
     out
       .copy(this.impulse)
       .multiplyScalar((1 - decay) / DAMAGE_CONFIG.impulseDrag);
+    const expectedX = out.x,
+      expectedZ = out.z;
     const y = this.position.y;
     world.move(this.position, out, this.radius, out);
+    const travelledX = out.x - this.position.x,
+      travelledZ = out.z - this.position.z;
     this.position.copy(out);
     this.position.y = y;
-    world.resolveVelocity(this.impulse);
+    if (!world.resolveVelocity(this.impulse)) {
+      if (Math.abs(travelledX - expectedX) > 1e-6) this.impulse.x = 0;
+      if (Math.abs(travelledZ - expectedZ) > 1e-6) this.impulse.z = 0;
+    }
     this.impulse.multiplyScalar(decay);
   }
 }

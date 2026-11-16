@@ -8,6 +8,8 @@ import { checkAnimationFluidity } from "./animation-fluidity-browser.mjs";
 import { checkParkour } from "./parkour-browser.mjs";
 import { checkEnemySettings } from "./enemy-settings-browser.mjs";
 import { checkAutomaticFlips } from "./automatic-flips-browser.mjs";
+import { checkGeometricWorld } from "./geometric-world-browser.mjs";
+import { checkCombatStrength } from "./combat-strength-browser.mjs";
 
 const run = await openBrowser(
   (process.env.TEST_URL || "http://127.0.0.1:5173") + "/?debug",
@@ -19,6 +21,7 @@ try {
   await checkGameplay(run.page, run.native);
   await checkAcrobatics(run.page, run.native);
   await checkAutomaticFlips(run.page, run.native);
+  await checkGeometricWorld(run.page, run.native);
   assert.deepEqual(run.errors, [], "No browser runtime or asset errors");
   console.log(
     "PASS: development mobile browser checks. No physical Android device tested.",
@@ -34,6 +37,7 @@ try {
   await checkActiveBattle(active.page, active.native);
   await checkPunchAim(active.page, active.native);
   await checkEnemySettings(active.page, active.native);
+  await checkCombatStrength(active.page, active.native);
   assert.deepEqual(
     active.errors,
     [],

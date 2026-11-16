@@ -4,6 +4,7 @@ import { Group, PerspectiveCamera, Vector3 } from "three";
 import {
   NORMAL_PHYSICS,
   SANDBOX_PARAMETERS,
+  PHYSICS_PARAMETERS,
   SANDBOX_PRESETS,
   SANDBOX_STORAGE_KEY,
   sanitizePhysics,
@@ -54,7 +55,8 @@ test("Normal sandbox resolves the exact original movement profiles", () => {
     sandboxMovementConfig(NORMAL_PHYSICS),
     resolveMovementConfig(),
   );
-  assert.equal(SANDBOX_PARAMETERS.length, 8);
+  assert.equal(PHYSICS_PARAMETERS.length, 8);
+  assert.equal(SANDBOX_PARAMETERS.length, 10);
   for (const values of Object.values(SANDBOX_PRESETS))
     assert.deepEqual(sanitizePhysics(values), values);
 });

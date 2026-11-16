@@ -1,5 +1,6 @@
 import { Vector3 } from "three";
 import { ArenaBounds } from "./ArenaBounds.js";
+import { StructureIndex } from "./StructureIndex.js";
 const EPS = 1e-6;
 const AXES = ["x", "y", "z"];
 
@@ -105,9 +106,15 @@ export class TraversalWorld extends ArenaBounds {
     obstacles = [],
     structures = [],
     ignoredObstacle = null,
+    index = null,
   ) {
     super(halfSize, obstacles, ignoredObstacle);
-    this.structures = structures;
+    this._structures = structures;
+    this.spatialIndex = index ?? new StructureIndex(structures);
+    this.candidates = [];
+    this.queryNormal = new Vector3();
+    this.queryHit = { structure: null, fraction: 1, normal: new Vector3() };
+    this.querySample = { normal: new Vector3(), gap: 0, insideSpan: false };
     this.bodyHeight = 1.8;
     this.parkourEnabled = true;
     this.roundResult = new Vector3();
@@ -121,12 +128,31 @@ export class TraversalWorld extends ArenaBounds {
     this.ceilingHit = false;
     this.hitStructure = null;
   }
+  get structures() {
+    return this._structures;
+  }
+  set structures(value) {
+    this._structures = value;
+    this.spatialIndex = new StructureIndex(value);
+  }
+  query(minX, maxX, minZ, maxZ) {
+    return this.spatialIndex.query(minX, maxX, minZ, maxZ, this.candidates);
+  }
+  sweepCandidates(p, d, r) {
+    return this.query(
+      Math.min(p.x, p.x + d.x) - r,
+      Math.max(p.x, p.x + d.x) + r,
+      Math.min(p.z, p.z + d.z) - r,
+      Math.max(p.z, p.z + d.z) + r,
+    );
+  }
   fork(ignored) {
     const w = new TraversalWorld(
       this.halfSize,
       this.obstacles,
       this.structures,
       ignored,
+      this.spatialIndex,
     );
     w.parkourEnabled = false;
     return w;
@@ -146,7 +172,11 @@ export class TraversalWorld extends ArenaBounds {
     for (let pass = 0; pass < 6 && this.remainder.lengthSq() > 1e-20; pass++) {
       let t = 1,
         hit = null;
-      for (const s of this.structures) {
+      for (const s of this.sweepCandidates(
+        this.cursor,
+        this.remainder,
+        radius,
+      )) {
         if (
           s === ignored ||
           !overlapsSweep(this.cursor, this.remainder, s, radius, height)
@@ -192,7 +222,12 @@ export class TraversalWorld extends ArenaBounds {
   }
   supportHeight(p, radius = 0) {
     let y = 0;
-    for (const s of this.structures) {
+    for (const s of this.query(
+      p.x - radius,
+      p.x + radius,
+      p.z - radius,
+      p.z + radius,
+    )) {
       if (s.top > p.y + 0.015) continue;
       const pad = radius * 0.3;
       const inside =
@@ -207,7 +242,12 @@ export class TraversalWorld extends ArenaBounds {
     return y;
   }
   isSpaceFree(p, radius = 0.36, height = 1.8) {
-    for (const s of this.structures) {
+    for (const s of this.query(
+      p.x - radius,
+      p.x + radius,
+      p.z - radius,
+      p.z + radius,
+    )) {
       if (p.y >= s.top - EPS || p.y + height <= s.bottom + EPS) continue;
       if (s.kind === "pole") {
         if (Math.hypot(p.x - s.x, p.z - s.z) < s.radius + radius) return false;
@@ -267,7 +307,13 @@ export class TraversalWorld extends ArenaBounds {
   querySurface(p, direction, radius, out, reach = 0.16, ignored = null) {
     let best = Infinity,
       found = false;
-    for (const s of this.structures) {
+    const searchPad = radius + reach;
+    for (const s of this.query(
+      p.x - searchPad,
+      p.x + searchPad,
+      p.z - searchPad,
+      p.z + searchPad,
+    )) {
       if (
         s === ignored ||
         !s.climbable ||
@@ -309,7 +355,7 @@ export class TraversalWorld extends ArenaBounds {
     this.origin.y -= 0.2;
     this.delta.subVectors(desired, target);
     let t = 1;
-    for (const s of this.structures) {
+    for (const s of this.sweepCandidates(this.origin, this.delta, 0.2)) {
       if (!overlapsSweep(this.origin, this.delta, s, 0.2, 0.4)) continue;
       const f = s.kind === "pole" ? sweepPole : sweepBox;
       t = Math.min(t, f(this.origin, this.delta, s, 0.2, 0.4, this.normal));
@@ -317,5 +363,45 @@ export class TraversalWorld extends ArenaBounds {
     return out
       .copy(target)
       .addScaledVector(this.delta, t < 1 ? Math.max(0, t - 0.015) : 1);
+  }
+  /** Read-only local obstacle query for ground navigation, separate from the
+   * collision contact normals used to resolve physical momentum. */
+  firstBlock(p, d, radius = 0.5, height = 1.8) {
+    let best = 1,
+      hit = null;
+    for (const s of this.sweepCandidates(p, d, radius)) {
+      if (!overlapsSweep(p, d, s, radius, height)) continue;
+      let t = (s.kind === "pole" ? sweepPole : sweepBox)(
+        p,
+        d,
+        s,
+        radius,
+        height,
+        this.queryNormal,
+      );
+      if (!Number.isFinite(t)) {
+        this.sampleSurface(s, p, radius, this.querySample);
+        if (
+          p.y < s.top &&
+          p.y + height > s.bottom &&
+          this.querySample.insideSpan &&
+          this.querySample.gap < 0 &&
+          this.querySample.gap > -radius - 0.05 &&
+          d.dot(this.querySample.normal) < -EPS
+        ) {
+          t = 0;
+          this.queryNormal.copy(this.querySample.normal);
+        }
+      }
+      if (t < best) {
+        best = t;
+        hit = s;
+        this.queryHit.normal.copy(this.queryNormal);
+      }
+    }
+    if (!hit) return null;
+    this.queryHit.structure = hit;
+    this.queryHit.fraction = best;
+    return this.queryHit;
   }
 }

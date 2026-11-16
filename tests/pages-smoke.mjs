@@ -12,6 +12,8 @@ import { checkAnimationFluidity } from "./animation-fluidity-browser.mjs";
 import { checkParkour } from "./parkour-browser.mjs";
 import { checkEnemySettings } from "./enemy-settings-browser.mjs";
 import { checkAutomaticFlips } from "./automatic-flips-browser.mjs";
+import { checkGeometricWorld } from "./geometric-world-browser.mjs";
+import { checkCombatStrength } from "./combat-strength-browser.mjs";
 import { resolvePagesBase } from "../build/pagesBase.js";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
@@ -87,6 +89,7 @@ try {
   await checkGameplay(run.page, run.native);
   await checkAcrobatics(run.page, run.native);
   await checkAutomaticFlips(run.page, run.native);
+  await checkGeometricWorld(run.page, run.native);
   for (const request of run.requests) {
     const url = new URL(request);
     assert.equal(url.origin, origin);
@@ -107,6 +110,7 @@ try {
   await checkActiveBattle(run.page, run.native);
   await checkPunchAim(run.page, run.native);
   await checkEnemySettings(run.page, run.native);
+  await checkCombatStrength(run.page, run.native);
   for (const request of run.requests) {
     const url = new URL(request);
     assert.equal(url.origin, origin);

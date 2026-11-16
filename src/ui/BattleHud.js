@@ -1,3 +1,4 @@
+import { worldZoneAt } from "../world/GeometricWorldLayout.js";
 export class BattleHud {
   constructor(onRespawn) {
     this.root = document.querySelector("#battle-status");
@@ -33,6 +34,8 @@ export class BattleHud {
     this.root.dataset.heading = p.heading;
     this.root.dataset.enemySettings = JSON.stringify(battle.enemySettings);
     this.root.dataset.enemySettingsRevision = battle.settingsRevision;
+    this.root.dataset.strength = JSON.stringify(battle.strength);
+    this.root.dataset.worldZone = worldZoneAt(p.position);
     this.root.dataset.enemies = JSON.stringify(
       battle.enemies
         .filter((e) => e.spawned)
@@ -43,6 +46,7 @@ export class BattleHud {
           position: e.root.position.toArray(),
           phase: e.combat.attack.phase,
           velocity: e.controller.velocity.toArray(),
+          impulse: e.body.impulse.toArray(),
           alerted: e.alerted,
         })),
     );

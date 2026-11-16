@@ -3,10 +3,11 @@ import {
   MOVEMENT_DEFAULTS,
   resolveMovementConfig,
 } from "../movement/MovementConfig.js";
+import { COMBAT_STRENGTH_PARAMETERS } from "./CombatStrength.js";
 
 export const SANDBOX_STORAGE_KEY = "kinetic.physics-sandbox.v1";
 // Numerical guardrails, not balance rules. Each multiplier is independent.
-export const SANDBOX_PARAMETERS = Object.freeze(
+export const PHYSICS_PARAMETERS = Object.freeze(
   [
     ["movement", "Movement speed"],
     ["jumpHeight", "Jump height"],
@@ -16,14 +17,21 @@ export const SANDBOX_PARAMETERS = Object.freeze(
     ["airDistance", "Aerial dash distance"],
     ["airControl", "Air steering / control"],
     ["gravity", "Gravity"],
-  ].map(([id, label]) => Object.freeze({ id, label, min: 0.1, max: 100 })),
+  ].map(([id, label]) =>
+    Object.freeze({ id, label, min: 0.1, max: 100, log: true }),
+  ),
 );
+export const SANDBOX_PARAMETERS = Object.freeze([
+  ...PHYSICS_PARAMETERS,
+  ...COMBAT_STRENGTH_PARAMETERS,
+]);
 export const NORMAL_PHYSICS = Object.freeze(
   Object.fromEntries(SANDBOX_PARAMETERS.map(({ id }) => [id, 1])),
 );
 export const SANDBOX_PRESETS = Object.freeze({
   Normal: NORMAL_PHYSICS,
   Enhanced: Object.freeze({
+    ...NORMAL_PHYSICS,
     movement: 3,
     jumpHeight: 5,
     groundSpeed: 5,
@@ -34,6 +42,7 @@ export const SANDBOX_PRESETS = Object.freeze({
     gravity: 1,
   }),
   Extreme: Object.freeze({
+    ...NORMAL_PHYSICS,
     movement: 20,
     jumpHeight: 50,
     groundSpeed: 50,

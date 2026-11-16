@@ -4,6 +4,7 @@ import { speedForMagnitude } from "../src/movement/AnalogueLocomotion.js";
 import { resolveMovementConfig } from "../src/movement/MovementConfig.js";
 import {
   NORMAL_PHYSICS,
+  SANDBOX_PARAMETERS,
   SANDBOX_STORAGE_KEY,
 } from "../src/sandbox/PhysicsSandbox.js";
 import { checkLayoutEditorEdges } from "./layout-editor-edge-cases.mjs";
@@ -55,13 +56,19 @@ async function tap(page, native, id, n = 10) {
   await native("touchEnd", [], f);
 }
 const tune = (p, values) =>
-  p.evaluate((values) => {
-    for (const [id, v] of Object.entries(values)) {
-      const el = document.querySelector(`#physics-${id}`);
-      el.value = Math.log10(v);
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-  }, values);
+  p.evaluate(
+    ({ values, parameters }) => {
+      for (const [id, v] of Object.entries(values)) {
+        const el = document.querySelector(`#physics-${id}`);
+        el.value =
+          parameters.find((p) => p.id === id)?.log === false
+            ? v
+            : Math.log10(v);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    },
+    { values, parameters: SANDBOX_PARAMETERS },
+  );
 
 export async function checkGameplay(page, native) {
   await page.evaluate(() => {

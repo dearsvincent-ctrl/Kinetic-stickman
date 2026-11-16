@@ -8,6 +8,7 @@ import { StrikeHitDetector } from "./StrikeHitDetector.js";
 import { PursuitSteering } from "./PursuitSteering.js";
 import { DEFAULT_ENEMY_SETTINGS } from "../sandbox/EnemySettings.js";
 import { resolveMovementConfig } from "../movement/MovementConfig.js";
+import { GroundObstacleAvoidance } from "./GroundObstacleAvoidance.js";
 
 export const ENEMY_CONFIG = Object.freeze({
   detectRange: 60,
@@ -60,7 +61,11 @@ export class EnemyAgent {
     this.spawned = false;
     this.wave = 1;
     this.settings = DEFAULT_ENEMY_SETTINGS;
-    this.steering = new PursuitSteering();
+    this.navigation = new GroundObstacleAvoidance(this.world);
+    this.steering = new PursuitSteering({
+      navigate: (agent, velocity, target, dt) =>
+        this.navigation.update(agent, velocity, target, dt),
+    });
   }
   spawn(position, wave, generation) {
     this.spawned = true;
@@ -77,6 +82,7 @@ export class EnemyAgent {
     this.wave = wave;
     this.configure(this.settings);
     this.steering.reset();
+    this.navigation.reset();
     this.lostTime = 0;
     this.state = "Idle";
     this.alerted = false;

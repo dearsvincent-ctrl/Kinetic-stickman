@@ -40,6 +40,17 @@ export class PhysicsSandboxPanel {
     dashTest.addEventListener("click", onDash);
     document.querySelector("#physics-presets").after(dashTest);
     const fields = document.querySelector("#physics-fields");
+    const strengthFields = document.createElement("fieldset");
+    strengthFields.id = "strength-controls";
+    strengthFields.className = "aim-assist-controls";
+    const legend = document.createElement("legend");
+    legend.textContent = "Superhuman strength";
+    const note = document.createElement("p");
+    note.className = "physics-note";
+    note.textContent =
+      "Player strikes only · damage and impact are independent. 0× disables that effect; 1× preserves the original. Included in physics Save/Load and Reset.";
+    strengthFields.append(legend, note);
+    fields.after(strengthFields);
     for (const parameter of SANDBOX_PARAMETERS) {
       const row = document.createElement("label");
       row.className = "physics-row";
@@ -49,19 +60,27 @@ export class PhysicsSandboxPanel {
       const slider = document.createElement("input");
       slider.type = "range";
       slider.id = `physics-${parameter.id}`;
-      slider.min = String(Math.log10(parameter.min));
-      slider.max = String(Math.log10(parameter.max));
-      slider.step = "0.01";
+      slider.min = String(
+        parameter.log ? Math.log10(parameter.min) : parameter.min,
+      );
+      slider.max = String(
+        parameter.log ? Math.log10(parameter.max) : parameter.max,
+      );
+      slider.step = parameter.log ? "0.01" : String(parameter.step);
       slider.setAttribute("aria-label", parameter.label);
       output.htmlFor = slider.id;
       row.append(label, output, slider);
-      fields.appendChild(row);
-      this.rows.set(parameter.id, { output, slider });
+      (parameter.group === "combat" ? strengthFields : fields).appendChild(row);
+      this.rows.set(parameter.id, { output, slider, parameter });
       slider.addEventListener("input", () => {
-        const raw = 10 ** Number(slider.value);
-        const mark = [0.1, 1, 10, 20, 50, 100].find(
-          (n) => Math.abs(raw - n) <= n * 0.012,
-        );
+        const raw = parameter.log
+          ? 10 ** Number(slider.value)
+          : Number(slider.value);
+        const mark = parameter.log
+          ? [0.1, 1, 10, 20, 50, 100].find(
+              (n) => Math.abs(raw - n) <= n * 0.012,
+            )
+          : undefined;
         this.apply({ ...this.values, [parameter.id]: mark ?? raw });
         this.status.textContent = "Applied live · unsaved";
       });
@@ -104,9 +123,9 @@ export class PhysicsSandboxPanel {
 
   apply(values) {
     this.values = sanitizePhysics(values);
-    for (const [id, { slider, output }] of this.rows) {
+    for (const [id, { slider, output, parameter }] of this.rows) {
       const value = this.values[id];
-      slider.value = String(Math.log10(value));
+      slider.value = String(parameter.log ? Math.log10(value) : value);
       output.value = `${Number(value.toFixed(2))}×`;
       slider.setAttribute("aria-valuetext", output.value);
     }
