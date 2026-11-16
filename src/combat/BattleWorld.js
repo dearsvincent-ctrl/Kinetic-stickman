@@ -16,6 +16,13 @@ import {
   sanitizeTagSettings,
 } from "../sandbox/TagSettings.js";
 import { TagContactDetector } from "./TagContactDetector.js";
+import {
+  DEFAULT_ENEMY_PROFILES,
+  sanitizeEnemyProfile,
+  sanitizeRoster,
+  rosterCount,
+  rosterProfileAt,
+} from "../sandbox/EnemyAbilities.js";
 
 export const TAG_CONFIG = Object.freeze({
   respawnDelay: 2,
@@ -59,6 +66,8 @@ export class BattleWorld {
     );
     this.enemySettings = DEFAULT_ENEMY_SETTINGS;
     this.tagSettings = DEFAULT_TAG_SETTINGS;
+    this.enemyProfiles = DEFAULT_ENEMY_PROFILES;
+    this.enemyRosters = { combat: null, tag: null };
     this.mode = "combat";
     this.tagDetector = new TagContactDetector(world);
     this.tagSettingsRevision = 0;
@@ -115,8 +124,70 @@ export class BattleWorld {
     for (const e of this.enemies) e.configureTag(this.tagSettings);
     if (this.enabled && this.player.active) this.reconcileTagPopulation();
   }
+  configureProfile(id, patch) {
+    if (!Object.hasOwn(this.enemyProfiles, id)) return;
+    const profile = sanitizeEnemyProfile(id, {
+      ...this.enemyProfiles[id],
+      ...patch,
+    });
+    this.enemyProfiles = { ...this.enemyProfiles, [id]: profile };
+    for (const e of this.enemies)
+      if (e.profile.id === id) {
+        e.setProfile(profile);
+        if (this.mode === "tag") e.configureTag(this.tagSettings);
+      }
+  }
+  resetProfiles() {
+    this.enemyProfiles = DEFAULT_ENEMY_PROFILES;
+    for (const e of this.enemies) {
+      e.setProfile(this.enemyProfiles[e.profile.id]);
+      if (this.mode === "tag") e.configureTag(this.tagSettings);
+    }
+  }
+  configureRoster(mode, values) {
+    if (mode !== "combat" && mode !== "tag") return;
+    this.enemyRosters = {
+      ...this.enemyRosters,
+      [mode]: sanitizeRoster(values),
+    };
+    if (mode === this.mode && this.enabled && this.player.active)
+      this.reconcileRoster();
+  }
+  profileForSlot(slot) {
+    return this.enemyProfiles[
+      rosterProfileAt(this.enemyRosters[this.mode], slot) ?? "standard"
+    ];
+  }
+  reconcileRoster() {
+    const count = this.desiredPopulation;
+    this.ensureCapacity(count);
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (i >= count) {
+        e.spawned = e.body.active = false;
+        e.tagRespawnRemaining = 0;
+        e.combat.cancelAttack("roster");
+        e.controller.stop();
+      } else {
+        const profile = this.profileForSlot(i);
+        if (e.profile !== profile) {
+          e.setProfile(profile);
+          e.combat.cancelAttack("roster");
+          e.traversalPlanner.reset();
+        }
+        if (this.mode === "tag") e.configureTag(this.tagSettings);
+      }
+    }
+    this.rebuildBodies();
+    for (let i = 0; i < count; i++) {
+      const e = this.enemies[i];
+      if ((!e.spawned || !e.body.active) && e.tagRespawnRemaining <= 0)
+        this.spawnEnemy(e, i, count);
+    }
+    this.nextWave = 0;
+  }
   reconcileTagPopulation() {
-    const count = this.tagSettings.maxEnemies;
+    const count = this.desiredPopulation;
     this.ensureCapacity(count);
     for (let i = count; i < this.enemies.length; i++) {
       const e = this.enemies[i];
@@ -141,6 +212,14 @@ export class BattleWorld {
     return count;
   }
   get desiredPopulation() {
+    const roster = this.enemyRosters[this.mode];
+    if (roster !== null)
+      return Math.min(
+        rosterCount(roster),
+        this.mode === "tag"
+          ? this.tagSettings.maxEnemies
+          : this.enemySettings.maxEnemies,
+      );
     if (this.mode === "tag") return this.tagSettings.maxEnemies;
     return Math.min(
       this.enemySettings.maxEnemies,
@@ -180,6 +259,16 @@ export class BattleWorld {
     }
     this.settingsRevision++;
     if (this.mode === "tag") return;
+    if (
+      populationChanged &&
+      this.enemyRosters.combat !== null &&
+      this.enabled
+    ) {
+      // A tuning change must not revive a finished wave or repopulate a
+      // defeated player's encounter. Keep the same gate as legacy waves.
+      if (this.player.active && this.alive > 0) this.reconcileRoster();
+      return;
+    }
     if (
       !populationChanged ||
       !this.enabled ||
@@ -271,6 +360,7 @@ export class BattleWorld {
       enemy.spawned = enemy.body.active = false;
       return false;
     }
+    enemy.setProfile(this.profileForSlot(slot));
     enemy.spawn(this.spawnPoint, Math.max(1, this.wave), ++this.generation);
     if (this.mode === "tag") enemy.configureTag(this.tagSettings);
     this.world.obstacles.push(enemy.body);
@@ -296,7 +386,15 @@ export class BattleWorld {
     for (const e of this.enemies)
       if (e.spawned && e.body.active) {
         count++;
-        speed = Math.max(speed, e.controller.velocity.length());
+        speed = Math.max(
+          speed,
+          e.controller.velocity.length(),
+          Math.abs(e.controller.jump.verticalVelocity),
+          e.controller.jumpRequested ? e.controller.jump.launchVelocity : 0,
+          e.controller.parkour?.attached
+            ? e.controller.parkour.velocity.length()
+            : 0,
+        );
         if (
           e.alerted ||
           e.root.position.distanceToSquared(this.player.position) <
@@ -332,14 +430,15 @@ export class BattleWorld {
     if (this.mode === "tag") {
       this.tagTime += dt;
       this.tagFeedback = Math.max(0, this.tagFeedback - dt);
-      for (let i = 0; i < this.tagSettings.maxEnemies; i++) {
+      const count = this.desiredPopulation;
+      for (let i = 0; i < count; i++) {
         const e = this.enemies[i];
         if (!e.spawned) {
           e.tagRespawnRemaining = Math.max(0, e.tagRespawnRemaining - dt);
           if (
             e.tagRespawnRemaining === 0 &&
             this.player.active &&
-            !this.spawnEnemy(e, i, this.tagSettings.maxEnemies)
+            !this.spawnEnemy(e, i, count)
           )
             e.tagRespawnRemaining = 0.5;
         }
@@ -430,7 +529,7 @@ export class BattleWorld {
     }
     for (const e of this.enemies)
       if (e.spawned) e.advanceAttack(dt, this.player);
-    if (this.alive === 0 && this.player.active) {
+    if (this.alive === 0 && this.player.active && this.desiredPopulation > 0) {
       this.nextWave += dt;
       if (this.nextWave >= WAVE_CONFIG.delay) this.spawnWave();
     }
@@ -442,17 +541,19 @@ export class BattleWorld {
     );
     if (!enemy) return null;
     const effect = playerStrikeImpact(technique?.action, this.strength);
+    const knockback = effect.knockback / enemy.profile.knockbackResistance;
     const result = enemy.body.receive({
       damage: effect.damage,
       source: hit.source ?? this.player.position,
       heading: hit.heading,
       atPosition: hit.targetPosition ?? enemy.body.position,
-      knockback: effect.knockback,
+      knockback,
       allowZeroDamage: true,
-      impulseLimit: Math.max(8, effect.knockback * 2),
+      impulseLimit: Math.max(8, knockback * 2),
     });
     if (result) {
       enemy.combat.cancelAttack("hit");
+      enemy.controller.parkour?.cancel(enemy.controller);
       if (result.defeated) this.defeated++;
     }
     return result;
@@ -464,7 +565,9 @@ export class BattleWorld {
       damage:
         (kick
           ? DAMAGE_CONFIG.enemyKickDamage
-          : DAMAGE_CONFIG.enemyPunchDamage) * enemy.damageScale,
+          : DAMAGE_CONFIG.enemyPunchDamage) *
+        enemy.damageScale *
+        enemy.profile.damage,
       source: hit.source ?? enemy.root.position,
       heading: hit.heading,
       atPosition: hit.targetPosition ?? this.player.position,
@@ -479,6 +582,8 @@ export class BattleWorld {
   snapshot() {
     return {
       mode: this.mode,
+      enemyProfiles: this.enemyProfiles,
+      enemyRosters: this.enemyRosters,
       tagSettings: this.tagSettings,
       tagSettingsRevision: this.tagSettingsRevision,
       tags: this.tags,
@@ -501,6 +606,15 @@ export class BattleWorld {
         .filter((e) => e.spawned)
         .map((e) => ({
           id: e.body.id,
+          profile: e.profile.id,
+          parkour: e.controller.parkour?.mode ?? "free",
+          jump: {
+            phase: e.controller.jump.phase,
+            count: e.controller.jump.jumpCount,
+            height: e.controller.jump.height,
+            verticalVelocity: e.controller.jump.verticalVelocity,
+            launchVelocity: e.controller.jump.launchVelocity,
+          },
           state: e.state,
           health: e.body.health,
           maxHealth: e.body.maxHealth,

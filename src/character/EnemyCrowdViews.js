@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { ENEMY_LIMITS } from "../sandbox/EnemySettings.js";
 const SIDES = [-1, 1];
+const LEDGE_MODES = new Set(["ledge", "mantle", "pole-mantle", "vault"]);
 
 /** Four instanced draws for the experimental crowd beyond the detailed rigs.
  * Only presentation is simplified: health, collision and strike timing remain
@@ -72,19 +73,40 @@ export class EnemyCrowdViews {
     this.rods.setColorAt(this.rods.count++, this.color);
   }
   add(agent, dt, camera) {
+    if (this.heads.count >= ENEMY_LIMITS.population) return;
     this.p = agent.root.position;
     this.sin = Math.sin(agent.controller.heading);
     this.cos = Math.cos(agent.controller.heading);
-    this.phases[agent.index] =
-      (this.phases[agent.index] +
-        Math.min(24, agent.controller.speed * 3) * dt) %
+    const traversal = agent.controller.parkour;
+    const attached = Boolean(agent.body.active && traversal?.attached);
+    const jump = agent.controller.jump;
+    const airborne = Boolean(jump?.airborne && !attached);
+    const index = Math.max(
+      0,
+      Math.min(ENEMY_LIMITS.population - 1, agent.index | 0),
+    );
+    const travelSpeed = attached
+      ? Math.max(agent.controller.speed, traversal.velocity?.length() ?? 0)
+      : agent.controller.speed;
+    this.phases[index] =
+      (this.phases[index] +
+        Math.min(24, Math.max(attached ? 0.4 : 0, travelSpeed) * 3) * dt) %
       (Math.PI * 2);
-    const phase = this.phases[agent.index],
+    const phase = this.phases[index],
       swing =
         Math.sin(phase) * 0.24 * Math.min(1, agent.controller.speed / 2.6);
     const fall = agent.body.active ? 0 : Math.min(0.75, agent.defeatTime);
-    const hip = 0.97 - fall,
-      shoulder = 1.45 - fall;
+    const landing =
+      jump?.phase === "landing"
+        ? Math.sin(Math.PI * jump.phaseProgress) * 0.13
+        : 0;
+    const hip = (attached ? 0.89 : 0.97) - fall - landing,
+      shoulder = hip + 0.48;
+    const ledge = attached && LEDGE_MODES.has(traversal.mode);
+    const perch = attached && traversal.mode === "perch";
+    const reachHeight = ledge
+      ? Math.max(0.95, Math.min(1.8, traversal.surface.top - this.p.y + 0.04))
+      : shoulder + 0.2;
     const extension = agent.combat.attack.active
       ? agent.combat.attack.extension
       : 0;
@@ -92,40 +114,64 @@ export class EnemyCrowdViews {
       agent.combat.currentTechnique?.action === "punch" ? extension : 0;
     const kick =
       agent.combat.currentTechnique?.action === "kick" ? extension : 0;
-    this.color.setHex(agent.body.flash > 0 ? 0xffffff : 0xb85f51);
+    this.color.setHex(
+      agent.body.flash > 0
+        ? 0xffffff
+        : Number.isInteger(agent.profile?.color)
+          ? agent.profile.color & 0xffffff
+          : 0xb85f51,
+    );
     this.q.identity();
-    this.point(this.mid, 0, 1.78 - fall, -0.03);
+    this.point(this.mid, 0, shoulder + 0.33, attached ? -0.08 : -0.03);
     this.scale.set(0.17, 0.19, 0.17);
     this.matrix.compose(this.mid, this.q, this.scale);
     this.heads.setMatrixAt(this.heads.count, this.matrix);
     this.heads.setColorAt(this.heads.count++, this.color);
-    this.segment(0, hip, 0, 0, shoulder, -0.02, 0.09);
+    this.segment(0, hip, 0, 0, shoulder, attached ? -0.06 : -0.02, 0.09);
     for (const side of SIDES) {
       const striking = side === 1;
-      const elbowZ = -swing * side - (striking ? punch * 0.3 : 0);
-      const handZ = -swing * side - (striking ? punch * 0.64 : 0);
+      const cycle = Math.sin(phase + (side < 0 ? Math.PI : 0));
+      const climbArm = attached && !perch && !(striking && punch > 0.01);
+      const elbowZ = climbArm
+        ? -0.22
+        : -swing * side - (striking ? punch * 0.3 : 0);
+      const handZ = climbArm
+        ? -0.34
+        : -swing * side - (striking ? punch * 0.64 : 0);
+      const elbowY = climbArm
+        ? shoulder - 0.08 + cycle * 0.08
+        : shoulder -
+          0.28 +
+          punch * (striking ? 0.22 : 0) +
+          (airborne ? 0.12 : 0);
+      const handY = climbArm
+        ? reachHeight + (ledge ? 0 : cycle * 0.13)
+        : shoulder - 0.6 + punch * (striking ? 0.6 : 0) + (airborne ? 0.16 : 0);
+      this.segment(side * 0.25, shoulder, 0, side * 0.29, elbowY, elbowZ);
       this.segment(
-        side * 0.25,
-        shoulder,
-        0,
         side * 0.29,
-        shoulder - 0.28 + punch * (striking ? 0.22 : 0),
-        elbowZ,
-      );
-      this.segment(
-        side * 0.29,
-        shoulder - 0.28 + punch * (striking ? 0.22 : 0),
+        elbowY,
         elbowZ,
         side * 0.26,
-        shoulder - 0.6 + punch * (striking ? 0.6 : 0),
+        handY,
         handZ,
         0.05,
       );
       const legKick = striking ? kick : 0,
-        kneeY = hip - 0.43 + legKick * 0.37,
-        kneeZ = swing * side - legKick * 0.38;
-      const footZ = swing * side - legKick * 0.78,
-        footY = 0.1 + Math.max(0, -swing * side) * 0.4 + legKick * 0.85;
+        kneeY =
+          hip -
+          0.43 +
+          legKick * 0.37 +
+          (attached ? 0.15 + Math.max(0, cycle) * 0.08 : airborne ? 0.18 : 0),
+        kneeZ =
+          (attached ? -0.24 : airborne ? -0.15 : swing * side) - legKick * 0.38;
+      const footZ =
+          (attached ? -0.3 : airborne ? 0.05 : swing * side) - legKick * 0.78,
+        footY =
+          0.1 +
+          Math.max(0, -swing * side) * 0.4 +
+          legKick * 0.85 +
+          (attached ? 0.12 + Math.max(0, cycle) * 0.13 : airborne ? 0.22 : 0);
       this.segment(side * 0.15, hip, 0, side * 0.16, kneeY, kneeZ, 0.07);
       this.segment(side * 0.16, kneeY, kneeZ, side * 0.16, footY, footZ, 0.06);
     }

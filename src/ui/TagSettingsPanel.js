@@ -111,7 +111,7 @@ export class TagSettingsPanel {
     this.status.id = "tag-settings-status";
     this.status.setAttribute("role", "status");
     this.status.textContent =
-      "Independent Tag Mode settings · ground escape routes";
+      "Independent Tag Mode settings · ability-aware escape routes";
     fields.append(this.warning, storage, this.status);
     section.append(summary, fields);
     document.querySelector("#physics-presets").before(section);
@@ -130,7 +130,7 @@ export class TagSettingsPanel {
     }
     this.warning.textContent =
       current.maxEnemies > 16
-        ? "Experimental crowd: above 16 runners costs more CPU/GPU. Lower population if FPS drops. Hard limit: 64. Navigation and movement updates are bounded; runners do not climb."
-        : "Start with 3–8 runners on Android. Speed: 0.25×–100× of the enemy movement baseline; acceleration is independent. Low flees directly, Medium avoids obstacles, High predicts approaches and evaluates escape routes. Runners stay on ground-level routes.";
+        ? "Experimental crowd: above 16 runners costs more CPU/GPU. Lower population if FPS drops. Hard limit: 64. Local route queries and movement updates are bounded; vertical traversal requires a capable enemy profile."
+        : "Start with 3–8 runners on Android. Speed: 0.25×–100× of each archetype's running baseline; acceleration is independent. Low flees directly, Medium avoids obstacles, High predicts approaches. Select archetypes below; enabled abilities can add jumps and local wall/roof escape routes.";
   }
 }

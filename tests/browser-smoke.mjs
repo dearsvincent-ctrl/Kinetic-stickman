@@ -11,6 +11,8 @@ import { checkAutomaticFlips } from "./automatic-flips-browser.mjs";
 import { checkGeometricWorld } from "./geometric-world-browser.mjs";
 import { checkCombatStrength } from "./combat-strength-browser.mjs";
 import { checkTagMode } from "./tag-mode-browser.mjs";
+import { checkEnemyAbilities } from "./enemy-abilities-browser.mjs";
+import { checkSliderLocks } from "./slider-locks-browser.mjs";
 
 const run = await openBrowser(
   (process.env.TEST_URL || "http://127.0.0.1:5173") + "/?debug",
@@ -40,6 +42,8 @@ try {
   await checkEnemySettings(active.page, active.native);
   await checkCombatStrength(active.page, active.native);
   await checkTagMode(active.page, active.native);
+  await checkEnemyAbilities(active.page, active.native);
+  await checkSliderLocks(active.page, active.native);
   assert.deepEqual(
     active.errors,
     [],

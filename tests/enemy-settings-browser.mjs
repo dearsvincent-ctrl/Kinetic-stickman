@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { unlockSlider } from "./slider-test-utils.mjs";
 import { stick } from "./acrobatic-browser.mjs";
 const read = (p) =>
   p.locator("#battle-status").evaluate((e) => ({
@@ -42,7 +43,7 @@ export async function checkEnemySettings(page, native) {
     waitUntil: "networkidle",
   });
   await page.clock.runFor(450);
-  assert.equal(await page.locator(".version b").textContent(), "0.8.4");
+  assert.equal(await page.locator(".version b").textContent(), "0.8.5");
   let state = await read(page);
   assert.equal(state.alive, "3");
   assert.equal(state.config.speed, 1);
@@ -56,6 +57,7 @@ export async function checkEnemySettings(page, native) {
   await tune(page, { attackFrequency: 0, maxEnemies: 16, speed: 5 });
   await page.clock.runFor(120);
   await page.locator("#enemy-acceleration").scrollIntoViewIfNeeded();
+  await unlockSlider(page, "enemy-acceleration");
   const c = await point(page, "#joystick"),
     jb = await page.locator("#joystick").boundingBox();
   const joy = touch(1, { x: c.x, y: c.y - jb.width * 0.34 * 0.4 });

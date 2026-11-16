@@ -12,6 +12,7 @@ import { PunchAimAssist } from "../combat/PunchAimAssist.js";
 import { AimAssistPanel } from "../ui/AimAssistPanel.js";
 import { EnemySettingsPanel } from "../ui/EnemySettingsPanel.js";
 import { TagSettingsPanel } from "../ui/TagSettingsPanel.js";
+import { EnemyAbilitiesPanel } from "../ui/EnemyAbilitiesPanel.js";
 import { PunchAimDebug } from "../character/PunchAimDebug.js";
 import { Stickman } from "../character/Stickman.js";
 import { CharacterAnimator } from "../character/CharacterAnimator.js";
@@ -203,6 +204,7 @@ export class Game {
     this.aimAssistPanel = new AimAssistPanel(this.punchAim);
     this.enemySettingsPanel = new EnemySettingsPanel(this.battle);
     this.tagSettingsPanel = new TagSettingsPanel(this.battle);
+    this.enemyAbilitiesPanel = new EnemyAbilitiesPanel(this.battle);
     this.accumulator = 0;
     this.lastTime = null;
     this.resize = this.resize.bind(this);

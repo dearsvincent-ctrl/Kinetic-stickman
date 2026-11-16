@@ -2,7 +2,11 @@ import * as THREE from "three";
 import { Stickman } from "./Stickman.js";
 import { CharacterAnimator } from "./CharacterAnimator.js";
 import { EnemyCrowdViews } from "./EnemyCrowdViews.js";
+import { ParkourPresenter } from "./ParkourPresenter.js";
 import { ENEMY_LIMITS } from "../sandbox/EnemySettings.js";
+
+const PROFILE_IDS = ["standard", "acrobat", "leaper", "heavy"];
+const DEFAULT_COLOR = 0xb85f51;
 
 /** Bounded rig pool. Limb meshes share their expensive geometries/materials;
  * distant fighters skip presentation work while simulation keeps pursuing. */
@@ -28,19 +32,29 @@ export class EnemyViews {
       depthTest: false,
     });
     this.resources = null;
+    this.palette = new Map();
     this.views = [];
     this.syncAgents();
     this.inverse = new THREE.Quaternion();
+    this.body = new THREE.Quaternion();
   }
   syncAgents() {
     while (this.views.length < this.agents.length) {
       const agent = this.agents[this.views.length];
       const character = new Stickman({ resources: this.resources });
       if (!this.resources) {
-        this.resources = character.resources;
-        this.resources.ivory.color.setHex(0xb85f51);
+        // The pool owns its shared resources separately from each rig's
+        // appearance references, which may change when a slot is reused.
+        this.resources = { ...character.resources };
+        this.resources.ivory.color.setHex(DEFAULT_COLOR);
         this.resources.orange.color.setHex(0xffd088);
+        this.palette.set("standard", this.resources.ivory);
       }
+      const bodyParts = [];
+      character.root.traverse((part) => {
+        if (part.isMesh && part.material === this.resources.ivory)
+          bodyParts.push(part);
+      });
       // Give the animator the actual world-travel root, preserving local joints.
       for (const child of [...character.root.children]) agent.root.add(child);
       character.root = agent.root;
@@ -53,14 +67,37 @@ export class EnemyViews {
       fill.position.z = 0.002;
       bar.add(background, fill);
       agent.root.add(bar);
-      this.views.push({
+      const animator = new CharacterAnimator(character);
+      const view = {
         agent,
         character,
-        animator: new CharacterAnimator(character),
+        animator,
+        parkour: new ParkourPresenter(character, animator),
+        bodyParts,
         bar,
         fill,
         elapsed: 0,
-      });
+      };
+      this.applyAppearance(view);
+      this.views.push(view);
+    }
+  }
+  applyAppearance(view) {
+    const profile = view.agent.profile;
+    const id = PROFILE_IDS.includes(profile?.id) ? profile.id : "standard";
+    const color = Number.isInteger(profile?.color)
+      ? profile.color & 0xffffff
+      : DEFAULT_COLOR;
+    let material = this.palette.get(id);
+    if (!material) {
+      material = this.resources.ivory.clone();
+      this.palette.set(id, material);
+    }
+    if (material.color.getHex() !== color) material.color.setHex(color);
+    if (view.profileId !== id) {
+      for (const part of view.bodyParts) part.material = material;
+      view.character.resources.ivory = material;
+      view.profileId = id;
     }
   }
   update(dt, camera, playerPosition) {
@@ -87,6 +124,7 @@ export class EnemyViews {
     this.crowd.begin();
     for (const v of this.views) {
       const { agent: a, character: c } = v;
+      this.applyAppearance(v);
       const distance = a.root.position.distanceToSquared(playerPosition);
       const visible =
         a.spawned &&
@@ -103,13 +141,17 @@ export class EnemyViews {
         v.generation = a.body.id;
         v.animator.initialized = false;
         v.animator.previousPosition.copy(a.root.position);
+        v.parkour.reset();
       }
       if (distance < 65 * 65 || v.elapsed > 0.1) {
         v.animator.update(v.elapsed, {
           speed: a.controller.speed,
           combat: a.combat,
           jump: a.controller.jump,
+          sandbox: a.controller.speed > 5.2,
         });
+        a.root.getWorldQuaternion(this.body);
+        v.parkour.apply(v.elapsed, a.controller.parkour, this.body, a.combat);
         v.elapsed = 0;
       }
       // Additive, short reaction after the authored pose. Root physics stays free.
@@ -135,6 +177,9 @@ export class EnemyViews {
     // Dispose shared resources after their last user.
     for (let i = this.views.length - 1; i >= 0; i--) {
       this.views[i].bar.removeFromParent();
+      // Per-rig box geometries are private, but primitives and palette
+      // materials belong to this pool and are disposed once below.
+      this.views[i].character.sharedResources = true;
       this.views[i].character.dispose();
       this.views[i].agent.root.removeFromParent();
     }
@@ -142,5 +187,12 @@ export class EnemyViews {
     this.barBackground.dispose();
     this.barFill.dispose();
     this.barFlash.dispose();
+    if (this.resources)
+      for (const resource of new Set([
+        ...Object.values(this.resources),
+        ...this.palette.values(),
+      ]))
+        resource.dispose();
+    this.palette.clear();
   }
 }

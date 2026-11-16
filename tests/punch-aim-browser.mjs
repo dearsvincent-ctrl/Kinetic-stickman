@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { unlockSlider } from "./slider-test-utils.mjs";
 const advance = (p, ms) => p.clock.runFor(ms);
 const read = (p) =>
   p.locator("#stance-label").evaluate((e) => ({ ...e.dataset }));
@@ -51,6 +52,7 @@ export async function checkPunchAim(page, native) {
   await tune(page, { strength: 0, maxAngle: 7, cone: 15 });
   assert.equal(await page.locator("#aim-strength").inputValue(), "0");
   await page.locator("#aim-strength").scrollIntoViewIfNeeded();
+  await unlockSlider(page, "aim-strength");
   const centre = await point(page, "#joystick"),
     joyBox = await page.locator("#joystick").boundingBox(),
     r = Math.min(joyBox.width, joyBox.height) * 0.34;
@@ -148,7 +150,7 @@ export async function checkPunchAim(page, native) {
     waitUntil: "networkidle",
   });
   await advance(page, 450);
-  assert.equal(await page.locator(".version b").textContent(), "0.8.4");
+  assert.equal(await page.locator(".version b").textContent(), "0.8.5");
   assert.equal(
     (await read(page)).sequence,
     "0",

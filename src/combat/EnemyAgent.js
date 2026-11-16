@@ -11,6 +11,9 @@ import { resolveMovementConfig } from "../movement/MovementConfig.js";
 import { GroundObstacleAvoidance } from "./GroundObstacleAvoidance.js";
 import { EvasionSteering } from "./EvasionSteering.js";
 import { DEFAULT_TAG_SETTINGS } from "../sandbox/TagSettings.js";
+import { DEFAULT_ENEMY_PROFILES } from "../sandbox/EnemyAbilities.js";
+import { EnemyTraversalPlanner } from "./EnemyTraversalPlanner.js";
+import { ParkourState } from "../traversal/ParkourState.js";
 
 export const ENEMY_CONFIG = Object.freeze({
   detectRange: 60,
@@ -64,6 +67,10 @@ export class EnemyAgent {
     this.wave = 1;
     this.settings = DEFAULT_ENEMY_SETTINGS;
     this.tagSettings = DEFAULT_TAG_SETTINGS;
+    this.profile = DEFAULT_ENEMY_PROFILES.standard;
+    this.mode = "combat";
+    this.traversalPlanner = new EnemyTraversalPlanner(this.world);
+    this.travelIntent = new Vector3();
     this.tagRespawnRemaining = 0;
     this.evasion = new EvasionSteering(this.world);
     this.navigation = new GroundObstacleAvoidance(this.world);
@@ -71,6 +78,7 @@ export class EnemyAgent {
       navigate: (agent, velocity, target, dt) =>
         this.navigation.update(agent, velocity, target, dt),
     });
+    this.applyAbilities(this.settings, true);
   }
   spawn(position, wave, generation) {
     this.spawned = true;
@@ -79,6 +87,13 @@ export class EnemyAgent {
     this.body.reset(Math.min(140, 72 + (wave - 1) * 5));
     this.controller.stop();
     this.controller.velocity.set(0, 0, 0);
+    // A tagged airborne actor must not carry its old height into a ground
+    // respawn. This is an explicit spawn reset, never traversal root motion.
+    this.controller.jump.land(position.y, 0);
+    this.controller.jump.phase = "grounded";
+    this.controller.airDashesUsed = 0;
+    this.controller.parkour = null;
+    this.traversalPlanner.reset();
     this.combat.cancelAttack("spawn");
     this.combat.update(1);
     this.cooldown =
@@ -99,25 +114,8 @@ export class EnemyAgent {
   configure(settings) {
     const prior = this.settings.attackFrequency;
     this.settings = settings;
-    this.runSpeed =
-      Math.min(4.8, ENEMY_CONFIG.runSpeed + (this.wave - 1) * 0.08) *
-      settings.speed;
-    this.controller.applyMovementConfig(
-      resolveMovementConfig({
-        walkSpeed: 2.1 * settings.speed,
-        sprintSpeed: this.runSpeed,
-        movementConfig: {
-          analogue: {
-            accelerationResponse: 11 * settings.acceleration,
-            decelerationResponse: 15 * settings.acceleration,
-          },
-        },
-      }),
-    );
-    this.controller.facingTurnRate = Math.min(
-      20,
-      6 + Math.log2(Math.max(1, settings.speed)) * 1.4,
-    );
+    this.mode = "combat";
+    this.applyAbilities(settings, true);
     if (
       prior !== settings.attackFrequency &&
       prior > 0 &&
@@ -145,6 +143,82 @@ export class EnemyAgent {
     );
     this.steering.neighborTime = 0;
   }
+  setProfile(profile) {
+    this.profile = profile;
+    this.applyAbilities(
+      this.mode === "tag" ? this.tagSettings : this.settings,
+      this.mode !== "tag",
+    );
+  }
+  applyAbilities(settings, waveScaling) {
+    const p = this.profile;
+    const waveFactor = waveScaling
+      ? Math.min(4.8, ENEMY_CONFIG.runSpeed + (this.wave - 1) * 0.08) /
+        ENEMY_CONFIG.runSpeed
+      : 1;
+    // Finite integration guard, far above ordinary/superhuman presets. These
+    // values never read or rewrite the player's sandbox configuration.
+    this.runSpeed = Math.min(8000, p.runSpeed * settings.speed * waveFactor);
+    this.controller.applyMovementConfig(
+      resolveMovementConfig({
+        walkSpeed: Math.min(8000, p.runSpeed * (2.1 / 3.6) * settings.speed),
+        sprintSpeed: this.runSpeed,
+        movementConfig: {
+          analogue: {
+            accelerationResponse: p.acceleration * settings.acceleration,
+            decelerationResponse: p.deceleration * settings.acceleration,
+          },
+          jump: {
+            height: p.jumpHeight,
+            maxJumps: p.maxJumps,
+            gravity: 18,
+            airControl: p.airControl * p.aerialControl,
+            airDrag: 0.1 / p.aerialControl,
+          },
+        },
+      }),
+    );
+    this.controller.facingTurnRate = Math.min(
+      40,
+      p.turnRate + Math.log2(Math.max(1, settings.speed)) * 1.4,
+    );
+    if (
+      this.world.querySurface &&
+      (p.wallRun || p.climb || p.ledgeGrab || p.rooftop)
+    ) {
+      this.controller.parkour ??= new ParkourState(this.world);
+      this.controller.parkour.config = Object.freeze({
+        ...this.controller.parkour.config,
+        climbSpeed: p.climbSpeed,
+        descentSpeed: Math.max(3, p.climbSpeed * 0.8),
+      });
+    } else if (this.controller.parkour) {
+      this.controller.parkour.cancel(this.controller);
+      this.controller.parkour = null;
+    }
+  }
+  planTraversal(dt, player, playerVelocity, mode) {
+    const magnitude = Math.hypot(this.input.move.x, this.input.move.y);
+    this.travelIntent.set(this.input.move.x, 0, -this.input.move.y);
+    if (magnitude > 1e-6)
+      this.travelIntent.multiplyScalar(this.input.locomotionSpeed / magnitude);
+    const velocity = this.traversalPlanner.update(
+      dt,
+      this,
+      player,
+      playerVelocity,
+      mode,
+      this.travelIntent,
+    );
+    const speed = velocity.length();
+    this.input.move.x = speed > 1e-6 ? velocity.x / speed : 0;
+    this.input.move.y = speed > 1e-6 ? -velocity.z / speed : 0;
+    this.input.locomotionSpeed = speed;
+    this.input.movementMagnitude = Math.min(1, speed / this.runSpeed);
+    this.controller.facingResponse = this.controller.jump.airborne
+      ? Math.min(80, 13 * this.profile.aerialControl)
+      : 13;
+  }
   steer(dt, player, playerVelocity, peers, mayAttack) {
     const velocity = this.steering.update(
       dt,
@@ -165,23 +239,8 @@ export class EnemyAgent {
   /** Independent escape tuning: never writes Combat Mode's pursuit values. */
   configureTag(settings) {
     this.tagSettings = settings;
-    this.runSpeed = ENEMY_CONFIG.runSpeed * settings.speed;
-    this.controller.applyMovementConfig(
-      resolveMovementConfig({
-        walkSpeed: 2.1 * settings.speed,
-        sprintSpeed: this.runSpeed,
-        movementConfig: {
-          analogue: {
-            accelerationResponse: 11 * settings.acceleration,
-            decelerationResponse: 15 * settings.acceleration,
-          },
-        },
-      }),
-    );
-    this.controller.facingTurnRate = Math.min(
-      20,
-      6 + Math.log2(Math.max(1, settings.speed)) * 1.4,
-    );
+    this.mode = "tag";
+    this.applyAbilities(settings, false);
     // Retain the committed escape route when a live slider changes.
   }
   moveTag(dt, player, peers, playerVelocity = NEUTRAL_VELOCITY) {
@@ -203,6 +262,8 @@ export class EnemyAgent {
     this.input.move.y = speed > 1e-6 ? -velocity.z / speed : 0;
     this.input.movementMagnitude = Math.min(1, speed / this.runSpeed);
     this.input.locomotionSpeed = speed;
+    if (this.alerted || this.controller.parkour?.attached)
+      this.planTraversal(dt, player, playerVelocity, "tag");
     // Do not face the pursuer: body orientation follows the resolved travel.
     // No damage/stagger/attack scheduler is advanced in Tag Mode.
     this.controller.update(dt, this.input, 0);
@@ -279,7 +340,12 @@ export class EnemyAgent {
           Math.abs(player.position.y - this.root.position.y) < 0.55 &&
           Math.abs(error) < ENEMY_CONFIG.attackAngle
         ) {
-          if (this.combat.requestAttack({ action, environment: "ground" })) {
+          if (
+            this.combat.requestAttack({
+              action,
+              environment: this.controller.jump.airborne ? "air" : "ground",
+            })
+          ) {
             this.attackCount++;
             this.state = "Attack";
             this.cooldown =
@@ -296,13 +362,32 @@ export class EnemyAgent {
         }
       }
     }
+    if (
+      this.body.active &&
+      this.body.stagger <= 0 &&
+      player.active &&
+      (this.alerted || this.controller.parkour?.attached)
+    )
+      this.planTraversal(dt, player, playerVelocity, "combat");
+    else this.controller.parkour?.cancel(this.controller);
     // Only enemy tuning is scaled by wave difficulty; player values are untouched.
     this.controller.update(
       dt,
       this.body.active && this.body.stagger <= 0 ? this.input : NEUTRAL,
       0,
-      this.body.active && player.active ? player.position : null,
+      this.body.active &&
+        player.active &&
+        !this.controller.jump.airborne &&
+        !this.controller.parkour?.attached
+        ? player.position
+        : null,
     );
+    const environment = this.controller.jump.airborne ? "air" : "ground";
+    if (
+      this.combat.attack.active &&
+      !this.combat.currentTechnique.environments.includes(environment)
+    )
+      this.combat.cancelAttack("movement-phase");
     this.body.moveImpulse(dt, this.world, this.impulseStep);
   }
   advanceAttack(dt, player) {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { unlockSlider } from "./slider-test-utils.mjs";
 import { JUMP_CONFIG } from "../src/movement/JumpState.js";
 import { speedForMagnitude } from "../src/movement/AnalogueLocomotion.js";
 import { resolveMovementConfig } from "../src/movement/MovementConfig.js";
@@ -429,6 +430,7 @@ export async function checkSandbox(page, native) {
     original,
   );
   // Native joystick + live slider: utility contact never turns into an attack.
+  await unlockSlider(page, "physics-movement");
   const joy = await point(page, "#joystick"),
     box = await page.locator("#physics-movement").boundingBox();
   let fingers = [

@@ -6,6 +6,7 @@ import {
   loadPhysics,
   savePhysics,
 } from "../sandbox/PhysicsSandbox.js";
+import { SliderLocks } from "./SliderLocks.js";
 
 /** Explicit developer opt-in, separate from saved layouts and progression.
  * Non-modal: only this panel's pointer contacts are UI; other fingers retain
@@ -119,6 +120,7 @@ export class PhysicsSandboxPanel {
       }
     });
     this.apply(loadPhysics(this.storage) ?? NORMAL_PHYSICS);
+    this.sliderLocks = new SliderLocks(this.panel);
   }
 
   apply(values) {
@@ -133,6 +135,7 @@ export class PhysicsSandboxPanel {
   }
 
   setOpen(open) {
+    this.sliderLocks?.lockAll();
     this.panel.hidden = !open;
     this.toggle.setAttribute("aria-expanded", String(open));
     if (!open) this.toggle.focus({ preventScroll: true });

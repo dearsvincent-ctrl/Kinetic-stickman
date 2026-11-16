@@ -61,6 +61,8 @@ export class BattleHud {
     this.root.dataset.position = JSON.stringify(p.position.toArray());
     this.root.dataset.heading = p.heading;
     this.root.dataset.enemySettings = JSON.stringify(battle.enemySettings);
+    this.root.dataset.enemyProfiles = JSON.stringify(battle.enemyProfiles);
+    this.root.dataset.enemyRosters = JSON.stringify(battle.enemyRosters);
     this.root.dataset.enemySettingsRevision = battle.settingsRevision;
     this.root.dataset.strength = JSON.stringify(battle.strength);
     this.root.dataset.worldZone = worldZoneAt(p.position);
@@ -69,6 +71,17 @@ export class BattleHud {
         .filter((e) => e.spawned)
         .map((e) => ({
           id: e.body.id,
+          profile: e.profile.id,
+          parkour: e.controller.parkour?.mode ?? "free",
+          jump: {
+            phase: e.controller.jump.phase,
+            count: e.controller.jump.jumpCount,
+            height: e.controller.jump.height,
+            verticalVelocity: e.controller.jump.verticalVelocity,
+            launchVelocity: e.controller.jump.launchVelocity,
+          },
+          traversal: e.traversalPlanner.state,
+          routeGoal: e.traversalPlanner.goal?.toArray() ?? null,
           health: e.body.health,
           state: e.state,
           position: e.root.position.toArray(),

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { unlockSlider } from "./slider-test-utils.mjs";
 import { stick } from "./acrobatic-browser.mjs";
 
 const advance = (p, ms) => p.clock.runFor(ms);
@@ -156,6 +157,7 @@ export async function checkTagMode(page, native) {
   assert.equal(await range.getAttribute("max"), "2");
   // A slider contact is UI-only while another finger keeps the joystick.
   await page.locator("#tag-acceleration").scrollIntoViewIfNeeded();
+  await unlockSlider(page, "tag-acceleration");
   const jb = await page.locator("#joystick").boundingBox(),
     joy = {
       id: 1,
