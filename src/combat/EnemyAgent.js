@@ -9,6 +9,8 @@ import { PursuitSteering } from "./PursuitSteering.js";
 import { DEFAULT_ENEMY_SETTINGS } from "../sandbox/EnemySettings.js";
 import { resolveMovementConfig } from "../movement/MovementConfig.js";
 import { GroundObstacleAvoidance } from "./GroundObstacleAvoidance.js";
+import { EvasionSteering } from "./EvasionSteering.js";
+import { DEFAULT_TAG_SETTINGS } from "../sandbox/TagSettings.js";
 
 export const ENEMY_CONFIG = Object.freeze({
   detectRange: 60,
@@ -61,6 +63,9 @@ export class EnemyAgent {
     this.spawned = false;
     this.wave = 1;
     this.settings = DEFAULT_ENEMY_SETTINGS;
+    this.tagSettings = DEFAULT_TAG_SETTINGS;
+    this.tagRespawnRemaining = 0;
+    this.evasion = new EvasionSteering(this.world);
     this.navigation = new GroundObstacleAvoidance(this.world);
     this.steering = new PursuitSteering({
       navigate: (agent, velocity, target, dt) =>
@@ -83,6 +88,8 @@ export class EnemyAgent {
     this.configure(this.settings);
     this.steering.reset();
     this.navigation.reset();
+    this.evasion.reset();
+    this.tagRespawnRemaining = 0;
     this.lostTime = 0;
     this.state = "Idle";
     this.alerted = false;
@@ -154,6 +161,51 @@ export class EnemyAgent {
       this.input.movementMagnitude = Math.min(1, speed / this.runSpeed);
       this.input.locomotionSpeed = speed;
     }
+  }
+  /** Independent escape tuning: never writes Combat Mode's pursuit values. */
+  configureTag(settings) {
+    this.tagSettings = settings;
+    this.runSpeed = ENEMY_CONFIG.runSpeed * settings.speed;
+    this.controller.applyMovementConfig(
+      resolveMovementConfig({
+        walkSpeed: 2.1 * settings.speed,
+        sprintSpeed: this.runSpeed,
+        movementConfig: {
+          analogue: {
+            accelerationResponse: 11 * settings.acceleration,
+            decelerationResponse: 15 * settings.acceleration,
+          },
+        },
+      }),
+    );
+    this.controller.facingTurnRate = Math.min(
+      20,
+      6 + Math.log2(Math.max(1, settings.speed)) * 1.4,
+    );
+    // Retain the committed escape route when a live slider changes.
+  }
+  moveTag(dt, player, peers, playerVelocity = NEUTRAL_VELOCITY) {
+    this.start.copy(this.root.position);
+    this.body.previousPosition.copy(this.root.position);
+    this.startHeading = this.controller.heading;
+    this.body.update(dt, false, this.controller.heading);
+    const velocity = this.evasion.update(
+      dt,
+      this,
+      player,
+      playerVelocity,
+      peers,
+    );
+    const speed = velocity.length();
+    this.alerted = this.evasion.threatened;
+    this.state = this.alerted ? "Flee" : "Idle";
+    this.input.move.x = speed > 1e-6 ? velocity.x / speed : 0;
+    this.input.move.y = speed > 1e-6 ? -velocity.z / speed : 0;
+    this.input.movementMagnitude = Math.min(1, speed / this.runSpeed);
+    this.input.locomotionSpeed = speed;
+    // Do not face the pursuer: body orientation follows the resolved travel.
+    // No damage/stagger/attack scheduler is advanced in Tag Mode.
+    this.controller.update(dt, this.input, 0);
   }
   move(dt, player, peers, mayAttack, playerVelocity = NEUTRAL_VELOCITY) {
     this.start.copy(this.root.position);

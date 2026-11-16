@@ -11,6 +11,7 @@ import { BattleHud } from "../ui/BattleHud.js";
 import { PunchAimAssist } from "../combat/PunchAimAssist.js";
 import { AimAssistPanel } from "../ui/AimAssistPanel.js";
 import { EnemySettingsPanel } from "../ui/EnemySettingsPanel.js";
+import { TagSettingsPanel } from "../ui/TagSettingsPanel.js";
 import { PunchAimDebug } from "../character/PunchAimDebug.js";
 import { Stickman } from "../character/Stickman.js";
 import { CharacterAnimator } from "../character/CharacterAnimator.js";
@@ -178,7 +179,10 @@ export class Game {
         this.clearMotion();
       },
     });
-    this.battleHud = new BattleHud(() => this.respawn());
+    this.battleHud = new BattleHud(
+      () => this.respawn(),
+      (mode) => this.setMode(mode),
+    );
     this.simulationPrevious = new THREE.Vector3();
     this.combatStartRoot = new THREE.Vector3();
     this.combatEndRoot = new THREE.Vector3();
@@ -198,6 +202,7 @@ export class Game {
     });
     this.aimAssistPanel = new AimAssistPanel(this.punchAim);
     this.enemySettingsPanel = new EnemySettingsPanel(this.battle);
+    this.tagSettingsPanel = new TagSettingsPanel(this.battle);
     this.accumulator = 0;
     this.lastTime = null;
     this.resize = this.resize.bind(this);
@@ -276,6 +281,22 @@ export class Game {
     this.followCamera.target.y += 1.02;
     this.input.setEnabled(!this.controlsOpen && !this.helpOpen);
     this.battleHud.update(1, this.battle);
+    this.controlLayoutEditor?.refresh();
+  }
+
+  setMode(mode) {
+    if (!this.battle.setMode(mode)) return;
+    // Release held combat/touch requests at the mode boundary while retaining
+    // player velocity, aerial state, camera and all independent configurations.
+    this.input.reset();
+    this.combat.reset();
+    this.attackScheduler.reset();
+    this.defeated = false;
+    this.contactFeedbackRemaining = 0;
+    this.punchAim.targets = mode === "tag" ? [] : this.battle.enemies;
+    this.input.setEnabled(!this.controlsOpen && !this.helpOpen);
+    this.battleHud.update(1, this.battle);
+    this.controlLayoutEditor?.refresh();
   }
 
   frame(time) {

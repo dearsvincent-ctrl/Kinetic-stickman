@@ -34,7 +34,7 @@
           <span class="brand-sub">MOVEMENT<br />LABORATORY</span>
         </a>
         <div class="top-actions">
-          <span class="version">PROTOTYPE <b>0.8.3</b></span>
+          <span class="version">PROTOTYPE <b>0.8.4</b></span>
           <span class="fps"
             ><span class="live-dot"></span><b id="fps-value">—</b
             ><span>FPS</span></span
@@ -99,11 +99,14 @@
         <div class="session-tag">
           <span></span><span id="stance-label">FREE MOVEMENT</span>
         </div>
-        <div
-          id="battle-status"
-          class="battle-status"
-          aria-label="Combat status"
-        >
+        <div id="battle-status" class="battle-status" aria-label="Game status">
+          <label class="mode-picker" data-gameplay-ui>
+            <span>MODE</span>
+            <select id="game-mode" aria-label="Game mode">
+              <option value="combat">Combat Mode</option>
+              <option value="tag">Tag Mode</option>
+            </select>
+          </label>
           <div class="health-readout">
             <span>HP <b id="health-value">120 / 120</b></span>
             <div
@@ -121,6 +124,12 @@
           <div class="wave-readout">
             WAVE <b id="wave-value">1</b> · LEFT <b id="enemies-value">3</b> ·
             DEFEATED <b id="defeated-value">0</b>
+          </div>
+          <div id="tag-readout" class="tag-readout" hidden>
+            ACTIVE <b id="tag-active-value">3</b> · TAGS
+            <b id="tag-count-value">0</b> ·
+            <span id="tag-time-value">0:00</span>
+            <span id="tag-feedback" role="status" aria-live="polite"></span>
           </div>
           <button
             type="button"
@@ -380,13 +389,22 @@
             ×
           </button>
         </form>
-        <div class="eyebrow">KINETIC / VERSION 0.8.3</div>
+        <div class="eyebrow">KINETIC / VERSION 0.8.4</div>
         <h2>Get a feel for it<span>.</span></h2>
         <p>
           Choose when to strike.<br />Tap for one strike. Hold to repeat after
           recovery.
         </p>
         <dl>
+          <div>
+            <dt>Game mode</dt>
+            <dd>
+              Use MODE in the top-left status readout. Combat keeps enemies,
+              health and waves. In Tag Mode, chase fleeing characters and touch
+              them to tag; no attack button is needed. Tagged runners return
+              after a short delay. DEV → Tag Mode tunes escape difficulty.
+            </dd>
+          </div>
           <div>
             <dt>Move</dt>
             <dd>

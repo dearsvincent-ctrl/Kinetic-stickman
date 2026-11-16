@@ -14,6 +14,7 @@ import { checkEnemySettings } from "./enemy-settings-browser.mjs";
 import { checkAutomaticFlips } from "./automatic-flips-browser.mjs";
 import { checkGeometricWorld } from "./geometric-world-browser.mjs";
 import { checkCombatStrength } from "./combat-strength-browser.mjs";
+import { checkTagMode } from "./tag-mode-browser.mjs";
 import { resolvePagesBase } from "../build/pagesBase.js";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
@@ -111,6 +112,7 @@ try {
   await checkPunchAim(run.page, run.native);
   await checkEnemySettings(run.page, run.native);
   await checkCombatStrength(run.page, run.native);
+  await checkTagMode(run.page, run.native);
   for (const request of run.requests) {
     const url = new URL(request);
     assert.equal(url.origin, origin);

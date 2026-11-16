@@ -1691,3 +1691,58 @@ h1 {
   width: 20px;
   height: 20px;
 }
+
+/* Mode selection is a utility control, independent of movable action buttons. */
+.mode-picker {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+.mode-picker select {
+  min-height: 30px;
+  min-width: 133px;
+  max-width: 180px;
+  padding: 4px 24px 4px 8px;
+  border: 1px solid #65766a;
+  border-radius: 5px;
+  background: #1b2928ed;
+  color: #dce1cf;
+  font: inherit;
+  font-size: 11px;
+  color-scheme: dark;
+  touch-action: manipulation;
+}
+.mode-picker select:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+.tag-readout {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 20px;
+  font-size: 9px;
+}
+#tag-feedback {
+  display: inline-block;
+  min-width: 40px;
+  margin-left: 3px;
+  color: #b4efd0;
+  font-weight: bold;
+  text-shadow: 0 0 9px #47cdac99;
+}
+#tag-performance {
+  color: #e3c1a0;
+}
+@media (max-height: 430px) and (orientation: landscape) {
+  .mode-picker {
+    flex-basis: auto;
+  }
+  .mode-picker select {
+    min-height: 28px;
+    min-width: 127px;
+    font-size: 10px;
+  }
+}

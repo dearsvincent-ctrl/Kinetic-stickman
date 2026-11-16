@@ -1,10 +1,10 @@
-# Kinetic — Movement Lab v0.8.3
+# Kinetic — Movement Lab v0.8.4
 
-A mobile-first Three.js/Vite stickman prototype. Version 0.8.3 adds a **geometric city/jungle playground** and independent **Attack Power / Impact** developer controls. The 2,000 × 2,000-unit arena, automatic traversal, directional acrobatic double jumps, manual combat, active waves, health, analogue movement, camera, custom HUD, aim tuning and enemy pursuit settings remain in place. Aim assistance still defaults to **100% / 20° / ±25°** with its independent save. Full enemy parkour, advanced navigation and Tag Mode are reserved for later updates.
+A mobile-first Three.js/Vite stickman prototype. Version 0.8.4 adds a separate **Tag Mode** with fleeing AI, swept contact tags, automatic respawning and independent escape settings. **Combat Mode** retains enemy pursuit, manual Punch/Kick, health, damage, waves, aim assistance and strength tuning. The 2,000 × 2,000 geometric city/jungle playground, automatic parkour, directional double jumps, analogue locomotion, camera, physics sandbox and custom mobile HUD remain available in both modes. Full enemy parkour and advanced global navigation remain outside this update.
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.3** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.3**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.4** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.4**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -15,6 +15,7 @@ Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.3** in Androi
 | Jump              | Tap/slide onto JUMP; press again in the air                 | Space                              |
 | Camera            | Drag on the right side                                      | Mouse drag on the right            |
 | Reset View        | Small top-right RESET VIEW button                           | R                                  |
+| Game mode         | MODE selector in the top-left status readout                | Same                               |
 | Edit Controls     | Settings → Edit Controls                                    | Same                               |
 | Developer physics | Settings → Developer tools → Open physics sandbox, then DEV | Same                               |
 
@@ -26,6 +27,31 @@ Combat never reduces movement speed, applies root motion, pulls the character to
 
 **Dash is removed from the normal HUD, keyboard bindings and layout editor.** Its physical ground/aerial implementations remain in the code for future movement abilities. Developer mode retains E and a **Test preserved dash** utility inside the physics panel, so its existing dash sliders remain testable on a phone. Dash still moves continuously, steers, collides, permits ground-dash-to-jump transitions and tracks its aerial allowance independently.
 
+## Tag Mode and AI evasion (v0.8.4)
+
+Use the **MODE** selector in the top-left status readout to choose **Combat Mode** or **Tag Mode**. Combat remains the default. Switching starts a clean encounter for the selected mode without overwriting saved Combat Mode, aim, strength, player physics or control-layout preferences. The selector is a utility control; movable Punch, Kick, Jump and Block buttons keep their positions and slide-to-activate behaviour.
+
+In Tag Mode, approach and chase the fleeing stickmen. No attack button is required: physically reach a runner inside the configured tag radius. Contact is tested continuously along the player/runner movement paths, with solid structures blocking tags. Successful tags show **TAG +1**, increase **TAGS**, temporarily remove the tagged runner and respawn it after a short delay at a free ground-level position away from the player. The compact status readout shows active runners, total tags and elapsed session time. **RESET** restarts the tag session. Runners never attack or damage the player in this mode.
+
+Open the developer sandbox, tap **DEV**, then expand **Tag Mode**:
+
+| Escape control          | Default                    | Range               |
+| ----------------------- | -------------------------- | ------------------- |
+| Escape Speed Multiplier | 1× enemy movement baseline | 0.25×–100×          |
+| Escape Acceleration     | 1×                         | 0.1×–100×           |
+| Evasion Intelligence    | Medium                     | Low / Medium / High |
+| Enemy Count             | 3                          | 1–64                |
+| Detection Distance      | 60 m                       | 2–4000 m            |
+| Tag Radius              | 0.85 m                     | 0.75–3 m            |
+
+Speed and acceleration apply independently and live, without changing the player's acceleration. Low uses direct fleeing with collision safety; Medium evaluates clear directions around obstacles; High also predicts the player's approach and scores escape routes. Decision hysteresis reduces constant side-switching. Escaping remains collision-resolved physical movement, not teleportation. Tag Radius controls the actual contact threshold; increasing movement speed never secretly expands it.
+
+**Save tag**, **Load tag** and **Reset tag** use a separate local configuration. Saved Tag settings are read only in the opted-in developer sandbox. Ordinary play starts with defaults. Reset tag restores the values above without modifying saved Combat Mode enemy settings, aim assistance or physics. Counts above 16 are experimental and show a performance warning; start with 3–8 on Android. Detailed character rigs and simulation substeps retain their existing budgets.
+
+Runners use lightweight ground-level escape routes and local obstacle queries. They do not perform enemy climbing, wall running or rooftop navigation; the player retains all existing parkour. Very dense multi-obstacle arrangements can still trap a runner temporarily. This is not an advanced city pathfinder.
+
+For your Android playtest: switch modes, compare Low/High near the city alleys and jungle columns, reverse direction suddenly, chase with ordinary and extreme speeds, tag while jumping, and confirm the counter/respawn delay. Change speed and acceleration separately, save/refresh/reset Tag settings, then return to Combat and check Punch/Kick, Block, health and waves. Repeat in portrait/landscape with your saved control positions. Browser validation uses Chromium touch emulation; physical Android performance remains for your playtest.
+
 ## Geometric playground and strength (v0.8.3)
 
 From spawn, Reset View to face north. Go **left and forward for the block city** (entrance around X −130 / Z −82), or **right and forward for the jungle** (X +135 / Z −88). Ground route markings and entrance signs identify both routes. Developer Movement Speed 3–20× makes crossing the open approaches quicker. The old traversal test area at X 42–80 / Z −20…−50 stays available. Most of the arena, including the entire large area behind spawn, remains open for combat and pursuit.
@@ -34,12 +60,12 @@ The fixed city contains 20 blocks of varied size/height, towers up to **320 unit
 
 All **141 new structures** share their exact dimensions with solid collision/parkour surfaces; the existing nine test structures are retained. Static instances are grouped in spatial chunks with shared primitive geometry/materials and frustum culling. Scenery has no update loop or expensive extra shadow maps. A shared static spatial index bounds collision, support, camera and surface queries; continuous box/cylinder sweeps still cover high-speed motion. Enemy ground steering commits to small local routes around obstacles. Enemies do not climb or solve arbitrary multi-obstacle mazes, and an opponent on a roof may remain unreachable to them. Fight and test pursuit in the open approaches/plazas.
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.3**, tap **DEV**, and scroll to **Superhuman strength**:
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.4**, tap **DEV**, and scroll to **Superhuman strength**:
 
-| Control | Default | Range | Applies to |
-| --- | --- | --- | --- |
-| Attack Power | 1× | 0–100× | Damage from confirmed player Punch/Kick contacts |
-| Impact / Knockback | 1× | 0–100× | Enemy impulse from those contacts |
+| Control            | Default | Range  | Applies to                                       |
+| ------------------ | ------- | ------ | ------------------------------------------------ |
+| Attack Power       | 1×      | 0–100× | Damage from confirmed player Punch/Kick contacts |
+| Impact / Knockback | 1×      | 0–100× | Enemy impulse from those contacts                |
 
 They apply live at contact and are independent: 0× power + 100× impact moves an enemy without reducing its health; 100× power + 0× impact deals damage without adding knockback. Zero-damage contacts can still stagger/react. Neither setting changes attack reach, aim, timings, input rate, enemy attack damage or player locomotion. Separate technique profiles retain the base Punch/Kick damage/impulse values for future individual scaling. Large impulses travel continuously, decay and collide with structures/arena bounds; finite numerical caps prevent runaway stacking without the old 8 m/s cap suppressing the 100× setting.
 
@@ -57,17 +83,17 @@ For the Android playtest: try all four directions plus neutral, redirect travel 
 
 ## Enemy pursuit settings (v0.8.2)
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.3**, tap **DEV**, then expand **Enemy Settings**. Ordinary play ignores saved developer enemy settings. No gameplay buttons or saved control positions change.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.4**, tap **DEV**, then expand **Enemy Settings**. Ordinary play ignores saved developer enemy settings. No gameplay buttons or saved control positions change.
 
-| Control | Default | Experimental bounds |
-| --- | --- | --- |
-| Movement speed | 1× (3.6 m/s on wave 1) | 0.1×–1000× |
-| Acceleration / braking | 1× | 0.1×–100× |
-| Pursuit aggression | 1× | 0–3× |
-| Attack frequency | 1× | 0–10×; 0 suppresses new enemy attacks |
-| Maximum active enemies | 8; normal waves begin with 3 | 1–64 |
-| Detection distance | 60 m | 2–4000 m |
-| Disengagement distance | 120 m | 4–6000 m, always at least 2 m beyond detection |
+| Control                | Default                      | Experimental bounds                            |
+| ---------------------- | ---------------------------- | ---------------------------------------------- |
+| Movement speed         | 1× (3.6 m/s on wave 1)       | 0.1×–1000×                                     |
+| Acceleration / braking | 1×                           | 0.1×–100×                                      |
+| Pursuit aggression     | 1×                           | 0–3×                                           |
+| Attack frequency       | 1×                           | 0–10×; 0 suppresses new enemy attacks          |
+| Maximum active enemies | 8; normal waves begin with 3 | 1–64                                           |
+| Detection distance     | 60 m                         | 2–4000 m                                       |
+| Disengagement distance | 120 m                        | 4–6000 m, always at least 2 m beyond detection |
 
 Changes apply live. Speed and acceleration are independent of the player sliders; the displayed speed multiplier scales the existing wave-adjusted enemy cruise speed. Acceleration scales velocity response and braking without resetting velocity. Aggression changes arrival/directness, surrounding distance, prediction and pursuit memory: after leaving disengagement range, alertness expires in 0.25–2.5 seconds. Detection is three-dimensional; ground-only navigation pursues the player's horizontal position. A close approach does not inflict damage: existing swept strike contacts, windup/recovery, range, Block and stagger still decide hits. Timing changes apply to the next enemy strike, preserving an executing strike's contact window. At superhuman enemy settings, attacks retain pursuit movement and velocity matching; their start gate remains bounded by the technique's original physical reach. A substep travel margin avoids repeatedly colliding with the player's older footprint while both are moving together. Enemies never automatically trigger player attacks.
 
@@ -94,16 +120,16 @@ Look to the right of spawn for the gold-marked structures and **TRAVERSAL / 01**
 
 No additional action button is needed:
 
-| Context | MOVE / Jump |
-| --- | --- |
-| Wall approach | Intentionally move into a nearby face; parallel passes and released-stick inertia do not attach. |
-| Wall climb / run | Continue toward the wall to ascend; steer along its face to run sideways. Combine both directions for diagonal travel. |
-| Hold / descend / detach | Centre MOVE to hold a reachable contact. Extend moderately away to descend; a strong away input detaches. |
-| Wall / ledge Jump | Press Jump to launch outward, with lateral steering from MOVE. This starts a fresh first jump; one ordinary directional second jump remains. Repeated free-air presses cannot refill it. A new wall interaction requires leaving and contacting a surface again. |
-| Ledge | Approach within hand reach to catch it. MOVE sideways to shimmy, toward the wall to pull up, or Jump away. Above an unsupported rim, interrupting the pull-up returns to gravity. |
-| Roof | Continue onto the roof and immediately walk/run/jump/attack. Leaving a roof starts a fall; roof or ground contact restores both jumps. |
-| Low barrier | Moving into a gold-marked low barrier automatically vaults it. Keep steering, interrupt away or press Jump. |
-| Pole | Approach deliberately, then climb using the approach direction. Left/right relative to the initial contact plane circles the pole; the control direction stays consistent around the shaft. Continue to the top to perch. Neutral/continued approach holds the perch; steer sideways to step off, or Jump with MOVE aimed at the next structure. |
+| Context                 | MOVE / Jump                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Wall approach           | Intentionally move into a nearby face; parallel passes and released-stick inertia do not attach.                                                                                                                                                                                                                                                 |
+| Wall climb / run        | Continue toward the wall to ascend; steer along its face to run sideways. Combine both directions for diagonal travel.                                                                                                                                                                                                                           |
+| Hold / descend / detach | Centre MOVE to hold a reachable contact. Extend moderately away to descend; a strong away input detaches.                                                                                                                                                                                                                                        |
+| Wall / ledge Jump       | Press Jump to launch outward, with lateral steering from MOVE. This starts a fresh first jump; one ordinary directional second jump remains. Repeated free-air presses cannot refill it. A new wall interaction requires leaving and contacting a surface again.                                                                                 |
+| Ledge                   | Approach within hand reach to catch it. MOVE sideways to shimmy, toward the wall to pull up, or Jump away. Above an unsupported rim, interrupting the pull-up returns to gravity.                                                                                                                                                                |
+| Roof                    | Continue onto the roof and immediately walk/run/jump/attack. Leaving a roof starts a fall; roof or ground contact restores both jumps.                                                                                                                                                                                                           |
+| Low barrier             | Moving into a gold-marked low barrier automatically vaults it. Keep steering, interrupt away or press Jump.                                                                                                                                                                                                                                      |
+| Pole                    | Approach deliberately, then climb using the approach direction. Left/right relative to the initial contact plane circles the pole; the control direction stays consistent around the shaft. Continue to the top to perch. Neutral/continued approach holds the perch; steer sideways to step off, or Jump with MOVE aimed at the next structure. |
 
 Climbing and wall running have **no stamina or duration limit**. Very fast upward runs carry momentum over a crest into ballistic flight; brake before the rim to settle into a normal ledge catch/perch. Punch/Kick still use the manual scheduler and existing active contact paths; wall contacts use the existing aerial techniques, while roofs/perches support grounded techniques. Block retains priority. No damage, attack-rate or hit-range tuning is changed.
 
@@ -212,7 +238,7 @@ Positions are normalized to the playable viewport and saved under `kinetic.contr
 
 ## Developer physics sandbox
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.3** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.4** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
 
 The original eight sliders still support **0.1×–100×**, with precise stops near 1×, 10×, 20×, 50× and 100×:
 
@@ -281,6 +307,8 @@ GITHUB_REPOSITORY=dearsvincent-ctrl/Kinetic-stickman npm run test:pages
 
 For a normal local build use `npm run build` and `npm run preview`. For a Pages-specific preview use the same `GITHUB_PAGES`/`GITHUB_REPOSITORY` variables with `npm run preview`, then open `http://localhost:4173/Kinetic-stickman/`.
 
+The v0.8.4 tests cover safe Combat/Tag switching, independent live/saved Tag settings, direct and predictive fleeing, acceleration/speed scaling, decision hysteresis, obstacle/boundary escape, high-speed three-dimensional swept tags, wall occlusion, one credit per runner activation, safe delayed respawning and bounded experimental populations. Native browser checks use the real mode selector, tune/save/reload Tag settings, chase and tag using touchscreen movement, verify the counter/feedback/respawn, exercise double jumps and action sliding with 64 runners, and return to unchanged Combat Mode.
+
 The v0.8.3 tests cover deterministic city/jungle composition, exact instanced collider dimensions, spatial-index equivalence, tall/raised/underside sweeps, city vault/climb/rooftop transitions, giant-column channels, jungle poles, unlimited climbs, wall/double jumps, ground detours through actual city geometry, cached unreachable-roof routes, safe spawns, camera clearance, 0–100× independent damage/impact, real impulse scaling, extreme collision stability and legacy saves. Native routes travel from spawn using the actual joystick, reach city and jungle rooftops, attack/double jump/land, test portrait strength controls and saves, then demonstrate 0× damage/100× impact and 100× damage/0× impact against active enemies.
 
 The v0.8.2.1 tests cover front/back/left/right/diagonal/neutral selection, press-time facing capture, staged full-body posing, one turn independent of held/reversed input, frame-rate stability, exact movement/gravity independence, manual attacks/Block during every flip, early floor/roof contact, extreme settings, wall-jump/attachment compatibility and unchanged camera orbit. Native browser checks capture initiation/tuck poses and verify one turn, physical equal-strength launches, air steering, third-jump rejection and landing. Testing uses Chromium touch emulation; no physical Android testing is claimed.
@@ -304,6 +332,6 @@ Pages is already enabled for this repository. To inspect or rerun deployment fro
 1. Open [the repository](https://github.com/dearsvincent-ctrl/Kinetic-stickman) and its **Actions** tab.
 2. Choose **Deploy GitHub Pages** and inspect the latest run. To retry, tap **Run workflow**, select `main`, and confirm Run workflow.
 3. If Pages needs enabling, open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Chrome's **Desktop site** mode may help expose GitHub settings on a phone.
-4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.3** appears.
+4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.4** appears.
 
-No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.3 for Android playtesting.
+No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.4 for Android playtesting.

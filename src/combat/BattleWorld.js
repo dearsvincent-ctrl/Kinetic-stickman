@@ -11,6 +11,16 @@ import {
   sanitizeCombatStrength,
   playerStrikeImpact,
 } from "../sandbox/CombatStrength.js";
+import {
+  DEFAULT_TAG_SETTINGS,
+  sanitizeTagSettings,
+} from "../sandbox/TagSettings.js";
+import { TagContactDetector } from "./TagContactDetector.js";
+
+export const TAG_CONFIG = Object.freeze({
+  respawnDelay: 2,
+  feedbackDuration: 0.9,
+});
 
 export const WAVE_CONFIG = Object.freeze({
   initialEnemies: 3,
@@ -48,6 +58,10 @@ export class BattleWorld {
         new EnemyAgent(i, world, (agent, hit) => this.hitPlayer(agent, hit)),
     );
     this.enemySettings = DEFAULT_ENEMY_SETTINGS;
+    this.tagSettings = DEFAULT_TAG_SETTINGS;
+    this.mode = "combat";
+    this.tagDetector = new TagContactDetector(world);
+    this.tagSettingsRevision = 0;
     this.strength = NORMAL_COMBAT_STRENGTH;
     this.populationOverride = null;
     this.settingsRevision = 0;
@@ -64,11 +78,15 @@ export class BattleWorld {
     this.lastPlayerPosition.copy(this.player.position);
     this.player.invulnerable = 1.5;
     this.wave = this.defeated = this.damageEvents = this.blockEvents = 0;
+    this.tags = this.tagTime = this.tagFeedback = 0;
     this.nextWave = this.attackGate = 0;
     this.attackerCursor = 0;
     for (const e of this.enemies) {
       e.spawned = false;
       e.body.active = false;
+      e.tagRespawnRemaining = 0;
+      e.combat.cancelAttack("encounter-reset");
+      e.controller.stop();
     }
     this.world.obstacles.length = 0;
     this.targets.length = 0;
@@ -76,7 +94,43 @@ export class BattleWorld {
       this.world.obstacles.push(this.dummy);
       this.targets.push(this.dummy);
     }
-    if (this.enabled) this.spawnWave();
+    if (this.enabled) {
+      if (this.mode === "tag") this.reconcileTagPopulation();
+      else this.spawnWave();
+    }
+  }
+  setMode(mode) {
+    if ((mode !== "combat" && mode !== "tag") || mode === this.mode)
+      return false;
+    this.mode = mode;
+    // Restart the encounter, not the scene/player transform or configuration.
+    this.reset();
+    return true;
+  }
+  configureTag(values) {
+    this.tagSettings = sanitizeTagSettings({ ...this.tagSettings, ...values });
+    this.tagSettingsRevision++;
+    if (this.mode !== "tag") return;
+    this.ensureCapacity(this.tagSettings.maxEnemies);
+    for (const e of this.enemies) e.configureTag(this.tagSettings);
+    if (this.enabled && this.player.active) this.reconcileTagPopulation();
+  }
+  reconcileTagPopulation() {
+    const count = this.tagSettings.maxEnemies;
+    this.ensureCapacity(count);
+    for (let i = count; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      e.spawned = e.body.active = false;
+      e.tagRespawnRemaining = 0;
+      e.combat.cancelAttack("population");
+      e.controller.stop();
+    }
+    this.rebuildBodies();
+    for (let i = 0; i < count; i++) {
+      const e = this.enemies[i];
+      if (!e.spawned && e.tagRespawnRemaining <= 0)
+        this.spawnEnemy(e, i, count);
+    }
   }
   configureStrength(values) {
     this.strength = sanitizeCombatStrength(values);
@@ -87,6 +141,7 @@ export class BattleWorld {
     return count;
   }
   get desiredPopulation() {
+    if (this.mode === "tag") return this.tagSettings.maxEnemies;
     return Math.min(
       this.enemySettings.maxEnemies,
       this.populationOverride ??
@@ -119,8 +174,12 @@ export class BattleWorld {
         0.25 / this.enemySettings.attackFrequency,
       );
     this.ensureCapacity(this.enemySettings.maxEnemies);
-    for (const e of this.enemies) e.configure(this.enemySettings);
+    for (const e of this.enemies) {
+      e.configure(this.enemySettings);
+      if (this.mode === "tag") e.configureTag(this.tagSettings);
+    }
     this.settingsRevision++;
+    if (this.mode === "tag") return;
     if (
       !populationChanged ||
       !this.enabled ||
@@ -157,7 +216,7 @@ export class BattleWorld {
     for (const e of this.enemies)
       if (e.spawned && e.body.active) {
         this.world.obstacles.push(e.body);
-        this.targets.push(e.body);
+        if (this.mode === "combat") this.targets.push(e.body);
       }
     for (const e of this.enemies) e.world.obstacles = this.world.obstacles;
   }
@@ -212,9 +271,10 @@ export class BattleWorld {
       enemy.spawned = enemy.body.active = false;
       return false;
     }
-    enemy.spawn(this.spawnPoint, this.wave, ++this.generation);
+    enemy.spawn(this.spawnPoint, Math.max(1, this.wave), ++this.generation);
+    if (this.mode === "tag") enemy.configureTag(this.tagSettings);
     this.world.obstacles.push(enemy.body);
-    this.targets.push(enemy.body);
+    if (this.mode === "combat") this.targets.push(enemy.body);
     return true;
   }
   spawnWave() {
@@ -240,7 +300,10 @@ export class BattleWorld {
         if (
           e.alerted ||
           e.root.position.distanceToSquared(this.player.position) <
-            this.enemySettings.detection ** 2
+            (this.mode === "tag"
+              ? this.tagSettings.detection
+              : this.enemySettings.detection) **
+              2
         )
           speed = Math.max(speed, e.runSpeed);
       }
@@ -266,6 +329,25 @@ export class BattleWorld {
     this.player.previousPosition.copy(this.player.position);
     this.player.update(dt, blocking, heading);
     if (!this.enabled) return;
+    if (this.mode === "tag") {
+      this.tagTime += dt;
+      this.tagFeedback = Math.max(0, this.tagFeedback - dt);
+      for (let i = 0; i < this.tagSettings.maxEnemies; i++) {
+        const e = this.enemies[i];
+        if (!e.spawned) {
+          e.tagRespawnRemaining = Math.max(0, e.tagRespawnRemaining - dt);
+          if (
+            e.tagRespawnRemaining === 0 &&
+            this.player.active &&
+            !this.spawnEnemy(e, i, this.tagSettings.maxEnemies)
+          )
+            e.tagRespawnRemaining = 0.5;
+        }
+        if (e.spawned)
+          e.moveTag(dt, this.player, this.enemies, this.playerVelocity);
+      }
+      return;
+    }
     this.attackGate = Math.max(0, this.attackGate - dt);
     let attackers = 0;
     for (const e of this.enemies)
@@ -319,6 +401,33 @@ export class BattleWorld {
     if (!Number.isFinite(dt) || dt <= 0) return;
     this.player.heading = heading;
     if (!this.enabled) return;
+    if (this.mode === "tag") {
+      let changed = false;
+      for (const e of this.enemies) {
+        if (!e.spawned || !e.body.active) continue;
+        if (
+          this.tagDetector.contact(
+            this.player.previousPosition,
+            this.player.position,
+            e.body.previousPosition,
+            e.body.position,
+            this.tagSettings.tagRadius,
+          ) === null
+        )
+          continue;
+        this.tags++;
+        this.tagFeedback = TAG_CONFIG.feedbackDuration;
+        e.spawned = e.body.active = false;
+        e.tagRespawnRemaining = TAG_CONFIG.respawnDelay;
+        e.defeatTime = 3;
+        e.state = "Tagged";
+        e.combat.cancelAttack("tagged");
+        e.controller.stop();
+        changed = true;
+      }
+      if (changed) this.rebuildBodies();
+      return;
+    }
     for (const e of this.enemies)
       if (e.spawned) e.advanceAttack(dt, this.player);
     if (this.alive === 0 && this.player.active) {
@@ -327,6 +436,7 @@ export class BattleWorld {
     }
   }
   hitEnemy(hit, technique) {
+    if (this.mode === "tag") return null;
     const enemy = this.enemies.find(
       (e) => e.spawned && e.body.id === hit.targetId,
     );
@@ -348,6 +458,7 @@ export class BattleWorld {
     return result;
   }
   hitPlayer(enemy, hit) {
+    if (this.mode === "tag") return null;
     const kick = enemy.combat.currentTechnique?.action === "kick";
     const result = this.player.receive({
       damage:
@@ -367,6 +478,12 @@ export class BattleWorld {
   }
   snapshot() {
     return {
+      mode: this.mode,
+      tagSettings: this.tagSettings,
+      tagSettingsRevision: this.tagSettingsRevision,
+      tags: this.tags,
+      tagTime: this.tagTime,
+      tagFeedback: this.tagFeedback,
       enemySettings: this.enemySettings,
       strength: this.strength,
       populationOverride: this.populationOverride,

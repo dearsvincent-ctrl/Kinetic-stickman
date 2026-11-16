@@ -1,6 +1,6 @@
 import { worldZoneAt } from "../world/GeometricWorldLayout.js";
 export class BattleHud {
-  constructor(onRespawn) {
+  constructor(onRespawn, onModeChange = () => {}) {
     this.root = document.querySelector("#battle-status");
     this.health = document.querySelector("#health-value");
     this.fill = document.querySelector("#health-fill");
@@ -9,6 +9,16 @@ export class BattleHud {
     this.defeated = document.querySelector("#defeated-value");
     this.alive = document.querySelector("#enemies-value");
     this.defeatPanel = document.querySelector("#defeat-panel");
+    this.mode = document.querySelector("#game-mode");
+    this.healthReadout = this.root.querySelector(".health-readout");
+    this.waveReadout = this.root.querySelector(".wave-readout");
+    this.tagReadout = document.querySelector("#tag-readout");
+    this.tagActive = document.querySelector("#tag-active-value");
+    this.tagCount = document.querySelector("#tag-count-value");
+    this.tagTime = document.querySelector("#tag-time-value");
+    this.tagFeedback = document.querySelector("#tag-feedback");
+    this.reset = this.root.querySelector("[data-respawn]");
+    this.mode.addEventListener("change", () => onModeChange(this.mode.value));
     for (const button of document.querySelectorAll("[data-respawn]"))
       button.addEventListener("click", onRespawn);
     this.elapsed = 1;
@@ -18,6 +28,24 @@ export class BattleHud {
     if (this.elapsed < 0.08) return;
     this.elapsed = 0;
     const p = battle.player;
+    const tag = battle.mode === "tag";
+    this.mode.value = tag ? "tag" : "combat";
+    this.healthReadout.hidden = this.waveReadout.hidden = tag;
+    this.tagReadout.hidden = !tag;
+    this.tagActive.textContent = battle.alive;
+    this.tagCount.textContent = battle.tags ?? 0;
+    const seconds = Math.max(0, Math.floor(battle.tagTime ?? 0));
+    this.tagTime.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    const feedback = tag && battle.tagFeedback > 0 ? "TAG +1" : "";
+    if (this.tagFeedback.textContent !== feedback)
+      this.tagFeedback.textContent = feedback;
+    this.reset.title = tag
+      ? "Restart Tag Mode and reset the tag counter"
+      : "Restore health and restart wave 1";
+    this.root.dataset.mode = tag ? "tag" : "combat";
+    this.root.dataset.tags = battle.tags ?? 0;
+    this.root.dataset.tagTime = battle.tagTime ?? 0;
+    this.root.dataset.tagSettings = JSON.stringify(battle.tagSettings ?? {});
     this.health.textContent = `${Math.ceil(p.health)} / ${p.maxHealth}`;
     this.fill.style.transform = `scaleX(${p.health / p.maxHealth})`;
     this.meter.setAttribute("aria-valuenow", p.health);
