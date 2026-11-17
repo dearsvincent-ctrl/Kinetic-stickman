@@ -4,6 +4,47 @@ import { StructureIndex } from "./StructureIndex.js";
 const EPS = 1e-6;
 const AXES = ["x", "y", "z"];
 
+// The normal sweep starts outside its expanded collider. A wider camera lens
+// may begin inside the added clearance shell while the player is still clear.
+// Catch motion into that shell; motion away from its nearest face can escape.
+function entersCameraShell(p, d, s, radius) {
+  if (s.kind === "pole") {
+    const dx = p.x - s.x,
+      dz = p.z - s.z;
+    const distance = Math.hypot(dx, dz);
+    const radialDepth = s.radius + radius - distance;
+    const lowerDepth = p.y - (s.bottom - radius * 2);
+    const upperDepth = s.top - p.y;
+    if (Math.min(radialDepth, lowerDepth, upperDepth) <= EPS) return false;
+    if (lowerDepth < radialDepth && lowerDepth < upperDepth) return d.y > EPS;
+    if (upperDepth < radialDepth) return d.y < -EPS;
+    return dx * d.x + dz * d.z < -EPS;
+  }
+  let depth = Infinity,
+    axis = "x",
+    sign = 0;
+  for (const a of AXES) {
+    const low =
+      a === "x" ? s.minX - radius : a === "y" ? s.bottom - radius * 2 : s.minZ - radius;
+    const high =
+      a === "x" ? s.maxX + radius : a === "y" ? s.top : s.maxZ + radius;
+    const lowerDepth = p[a] - low,
+      upperDepth = high - p[a];
+    if (Math.min(lowerDepth, upperDepth) <= EPS) return false;
+    if (lowerDepth < depth) {
+      depth = lowerDepth;
+      axis = a;
+      sign = -1;
+    }
+    if (upperDepth < depth) {
+      depth = upperDepth;
+      axis = a;
+      sign = 1;
+    }
+  }
+  return d[axis] * sign < -EPS;
+}
+
 function overlapsSweep(p, d, s, r, height) {
   const minX = s.kind === "pole" ? s.x - s.radius : s.minX,
     maxX = s.kind === "pole" ? s.x + s.radius : s.maxX;
@@ -350,15 +391,23 @@ export class TraversalWorld extends ArenaBounds {
     }
     return found ? this.sampleSurface(this.bestSurface, p, radius, out) : null;
   }
-  clipCamera(target, desired, out) {
+  clipCamera(target, desired, out, margin = 0.2) {
+    const radius = Number.isFinite(margin) ? Math.max(0, margin) : 0.2;
     this.origin.copy(target);
-    this.origin.y -= 0.2;
+    this.origin.y -= radius;
     this.delta.subVectors(desired, target);
     let t = 1;
-    for (const s of this.sweepCandidates(this.origin, this.delta, 0.2)) {
-      if (!overlapsSweep(this.origin, this.delta, s, 0.2, 0.4)) continue;
+    for (const s of this.sweepCandidates(this.origin, this.delta, radius)) {
+      if (!overlapsSweep(this.origin, this.delta, s, radius, radius * 2)) continue;
+      if (radius > 0.2 && entersCameraShell(this.origin, this.delta, s, radius)) {
+        t = 0;
+        break;
+      }
       const f = s.kind === "pole" ? sweepPole : sweepBox;
-      t = Math.min(t, f(this.origin, this.delta, s, 0.2, 0.4, this.normal));
+      t = Math.min(
+        t,
+        f(this.origin, this.delta, s, radius, radius * 2, this.normal),
+      );
     }
     return out
       .copy(target)

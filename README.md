@@ -1,10 +1,10 @@
-# Kinetic — Movement Lab v0.8.5
+# Kinetic — Movement Lab v0.8.6
 
-A mobile-first Three.js/Vite stickman prototype. Version 0.8.5 adds configurable **Standard, Acrobat, Leaper and Heavy enemy profiles**, separate Combat/Tag group selection, ability-aware vertical traversal and an individual lock for every developer slider. **Tag Mode** retains fleeing AI, swept contact tags, counters and delayed respawning. **Combat Mode** retains pursuit, manual Punch/Kick, health, damage, waves, aim assistance and strength tuning. The 2,000 × 2,000 city/jungle playground, player parkour, directional double jumps, analogue locomotion, camera and custom mobile HUD remain available in both modes. Enemy route planning is local and bounded; this is not a complete city-wide navigation system.
+A mobile-first Three.js/Vite stickman prototype. Version 0.8.6 adds **Manual, Assisted and Dynamic camera modes**, optional dynamic field of view, live camera tuning and independently saved Combat/Tag camera profiles. The default retains the existing 52° manual view. Configurable Standard/Acrobat/Leaper/Heavy enemies, ability-aware traversal and individual developer slider locks remain available. **Tag Mode** retains fleeing AI, swept contact tags, counters and delayed respawning. **Combat Mode** retains pursuit, manual Punch/Kick, health, damage, waves, aim assistance and strength tuning. The 2,000 × 2,000 city/jungle playground, player parkour, directional double jumps, analogue locomotion and custom mobile HUD remain available in both modes. Enemy route planning is local and bounded.
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.5** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.5**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.6** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.6**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -27,9 +27,31 @@ Combat never reduces movement speed, applies root motion, pulls the character to
 
 **Dash is removed from the normal HUD, keyboard bindings and layout editor.** Its physical ground/aerial implementations remain in the code for future movement abilities. Developer mode retains E and a **Test preserved dash** utility inside the physics panel, so its existing dash sliders remain testable on a phone. Dash still moves continuously, steers, collides, permits ground-dash-to-jump transitions and tracks its aerial allowance independently.
 
+## Camera profiles and assistance (v0.8.6)
+
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.6**, tap **DEV**, then expand **Camera Settings**. Choose the Combat or Tag profile to edit; changing that selector displays its saved controls without changing the gameplay mode. The top-left MODE selector applies the matching camera profile and updates the editor. Changes apply live to the active gameplay profile and save automatically on this browser. Camera preferences also reload in ordinary play, where the developer editor stays hidden.
+
+**Manual** retains direct orbit control and the existing low-angle view: 52° base FOV, 4.8 m follow distance and 0.23-radian pitch. **Assisted** subtly reframes relevant visible actors; **Dynamic** allows a wider correction. Both stay within bounded angles around the manually chosen view, reject actors behind that view and hold a context briefly to reduce rapid switching. Solid structures block context selection. Dragging the right side always gives manual camera control; assistance waits for the configured override delay after the drag ends, then resumes gradually. Dynamic FOV is a separate checkbox, off by default, that responds to smoothed three-dimensional movement speed in any camera mode. Its maximum is always at least the base FOV. Reset View remains available.
+
+| Camera control                | Default | Range                       |
+| ----------------------------- | ------- | --------------------------- |
+| Base field of view            | 52°     | 50°–120°                    |
+| Maximum dynamic FOV           | 105°    | 50°–120°, at least base FOV |
+| Dynamic FOV speed sensitivity | 1×      | 0.1×–4×                     |
+| FOV transition smoothness     | 0.35 s  | 0.05–3 s                    |
+| Camera awareness              | 90 m    | 2–2000 m                    |
+| Assistance strength           | 0.35    | 0–1                         |
+| Manual override delay         | 1.25 s  | 0–5 s                       |
+
+Sensitivity controls how strongly movement speed widens dynamic FOV. Smoothness sets the FOV transition response time. Right-side orbit dragging keeps its existing sensitivity. Automatic visual framing offsets do not steer the character; the manual orbit anchor remains the movement reference. Awareness bounds camera context queries; it never changes enemy detection, pursuit, evasion, player movement, attacks, aim assistance or hit reach. **Reset this camera profile** restores only the selected Combat or Tag camera defaults. Saves use `kinetic.camera-settings.v1`; physics, aim, enemy, Tag and HUD keys stay independent. Corrupt or unsupported camera saves fall back safely; blocked storage keeps changes live for the current session.
+
+Every camera range uses the existing individual slider lock. Opening DEV or Camera Settings relocks them; switching the edited profile or the gameplay mode relocks the camera ranges too. Unlock one range, drag horizontally to adjust, and swipe vertically to scroll while other fingers retain movement/action/camera ownership.
+
+For the Android playtest, first check the unchanged Manual default. Compare Assisted and Dynamic while running, double jumping and moving among elevated enemies in Combat/Tag; drag the view during assistance, wait for the override delay, and check Reset View near buildings. Try dynamic FOV at ordinary and extreme speeds, independent Combat/Tag values, save/refresh, and reset one profile while retaining the other. Repeat in portrait and landscape. Camera assistance cannot guarantee that every actor or route stays visible around dense structures; use manual orbit when needed. Physical-device performance remains for your playtest.
+
 ## Enemy profiles and selection (v0.8.5)
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.5**, tap **DEV**, then expand **Enemy Settings** for the Combat roster or **Tag Mode** for the fleeing roster. The two rosters are independent. Ordinary waves and Tag population controls remain the default: **Use custom archetype group** starts off. Enable it, choose the types and set their counts to make a mixed group or a single-type encounter. Editing a type/count also enables its custom group. Uncheck the custom-group option to return to the original controls.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.6**, tap **DEV**, then expand **Enemy Settings** for the Combat roster or **Tag Mode** for the fleeing roster. The two rosters are independent. Ordinary waves and Tag population controls remain the default: **Use custom archetype group** starts off. Enable it, choose the types and set their counts to make a mixed group or a single-type encounter. Editing a type/count also enables its custom group. Uncheck the custom-group option to return to the original controls.
 
 | Archetype | Base running speed | Jump height / allowance | Distinct abilities                                                                   |
 | --------- | ------------------ | ----------------------- | ------------------------------------------------------------------------------------ |
@@ -54,7 +76,7 @@ For the Android playtest, select **Leaper only** in Tag Mode, raise the Tag popu
 
 Every developer range has its **own lock icon**. Sliders start locked when DEV or their nested settings section opens. Tap a slider's lock to unlock only that slider; its neighbours remain locked. Tap again to lock it. Locking never resets its value, and Save/Load/presets/Reset still apply their chosen values normally. Closing and reopening DEV or a nested section relocks its sliders. Selecting a different enemy archetype also relocks the ability editor.
 
-Swipe vertically over a locked slider to scroll safely. An unlocked slider also preserves vertical scrolling: a clear horizontal drag, after a small direction threshold, adjusts relative to its current value; a tap does not jump the value. Other fingers can retain joystick, camera and action control. Mouse dragging works after unlocking; desktop keyboard users can focus an unlocked range and use its arrow keys. The lock buttons are separate touch targets, not a global unlock switch. The same reusable control wraps existing player physics, jump, aim, strength, pursuit, Tag, roster-count and ability ranges, including future ranges added to the developer panel.
+Swipe vertically over a locked slider to scroll safely. An unlocked slider also preserves vertical scrolling: a clear horizontal drag, after a small direction threshold, adjusts relative to its current value; a tap does not jump the value. Other fingers can retain joystick, camera and action control. Mouse dragging works after unlocking; desktop keyboard users can focus an unlocked range and use its arrow keys. The lock buttons are separate touch targets, not a global unlock switch. The same reusable control wraps existing player physics, jump, aim, strength, pursuit, Tag, camera, roster-count and ability ranges, including future ranges added to the developer panel.
 
 ## Tag Mode and AI evasion (v0.8.4)
 
@@ -89,7 +111,7 @@ The fixed city contains 20 blocks of varied size/height, towers up to **320 unit
 
 All **141 new structures** share their exact dimensions with solid collision/parkour surfaces; the existing nine test structures are retained. Static instances are grouped in spatial chunks with shared primitive geometry/materials and frustum culling. Scenery has no update loop or expensive extra shadow maps. A shared static spatial index bounds collision, support, camera and surface queries; continuous box/cylinder sweeps still cover high-speed motion. Standard enemies commit to local ground routes around obstacles; capable v0.8.5 profiles can use supported vertical routes. None of the profiles solve arbitrary city-wide multi-obstacle mazes. Open approaches/plazas remain useful for high-speed combat and pursuit.
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.5**, tap **DEV**, and scroll to **Superhuman strength**:
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.6**, tap **DEV**, and scroll to **Superhuman strength**:
 
 | Control            | Default | Range  | Applies to                                       |
 | ------------------ | ------- | ------ | ------------------------------------------------ |
@@ -112,7 +134,7 @@ For the Android playtest: try all four directions plus neutral, redirect travel 
 
 ## Enemy pursuit settings (v0.8.2)
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.5**, tap **DEV**, then expand **Enemy Settings**. Ordinary play ignores saved developer enemy settings. No gameplay buttons or saved control positions change.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.6**, tap **DEV**, then expand **Enemy Settings**. Ordinary play ignores saved developer enemy settings. No gameplay buttons or saved control positions change.
 
 | Control                | Default                      | Experimental bounds                            |
 | ---------------------- | ---------------------------- | ---------------------------------------------- |
@@ -267,7 +289,7 @@ Positions are normalized to the playable viewport and saved under `kinetic.contr
 
 ## Developer physics sandbox
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.5** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.6** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
 
 The original eight sliders still support **0.1×–100×**, with precise stops near 1×, 10×, 20×, 50× and 100×:
 
@@ -290,6 +312,8 @@ Numeric bounds are configurable in `PhysicsSandbox.js`. Defaults allow up to 520
 
 ## Combat architecture
 
+- `CameraSettings.js` / `CameraSettingsPanel.js`: immutable, validated Combat/Tag camera preferences, independent browser persistence, live sandbox controls and per-profile reset.
+- `FollowCamera.js` / `DynamicCameraDirector.js`: direct orbit, bounded camera guidance, manual override and optional dynamic FOV; camera state stays separate from gameplay decisions.
 - `GeometricWorldLayout.js`, `createGeometricWorld.js`: one fixed city/jungle collider layout with spatially culled instance batches. `StructureIndex.js` is shared by traversal-world forks; `TraversalWorld.js` retains continuous side/roof/ceiling and camera queries.
 - `EnemyAbilities.js` / `EnemyAbilitiesPanel.js`: validated, plain per-archetype capability profiles, independent mode rosters and session-only live editing. `EnemyTraversalPlanner.js` makes bounded ability-aware ground/air/surface decisions; `EnemyAgent.js` configures the existing character controller and shared parkour state.
 - `SliderLocks.js`: automatic per-range registration, independent accessible locks, directional touch intent and reopening/profile-change relocking; saved values stay independent.
@@ -338,6 +362,8 @@ GITHUB_REPOSITORY=dearsvincent-ctrl/Kinetic-stickman npm run test:pages
 
 For a normal local build use `npm run build` and `npm run preview`. For a Pages-specific preview use the same `GITHUB_PAGES`/`GITHUB_REPOSITORY` variables with `npm run preview`, then open `http://localhost:4173/Kinetic-stickman/`.
 
+The v0.8.6 camera tests cover exact defaults and bounds, independent Combat/Tag persistence, invalid or unavailable storage, actual projection changes, nonlinear velocity-driven FOV and recovery, target scoring and persistence, awareness independent of AI, held manual override, bounded vertical framing, wide-lens obstruction clearance, stable collision recovery and actual collision-resolved Game integration. Production browser checks exercise individual locks and native touch scrolling, simultaneous joystick input, both mode profiles, refresh/reset, speed/vertical FOV response and manual takeover of live enemy framing.
+
 The v0.8.5 tests cover independent enemy ability data, exact mixed/single-type rosters, global multiplier isolation, genuine per-profile jumps, high leaps, ability-gated wall/roof traversal, movement stability, damage/resistance and unchanged Combat/Tag interactions. Slider checks cover individual locking, value preservation, locked and unlocked vertical scrolling, deliberate horizontal adjustment, dynamically added ranges, reopening/profile-change relocking and independent gameplay pointers. Native browser routes exercise profile selection/editing, mixed encounters and safe slider gestures in mobile layouts.
 
 The v0.8.4 tests cover safe Combat/Tag switching, independent live/saved Tag settings, direct and predictive fleeing, acceleration/speed scaling, decision hysteresis, obstacle/boundary escape, high-speed three-dimensional swept tags, wall occlusion, one credit per runner activation, safe delayed respawning and bounded experimental populations. Native browser checks use the real mode selector, tune/save/reload Tag settings, chase and tag using touchscreen movement, verify the counter/feedback/respawn, exercise double jumps and action sliding with 64 runners, and return to unchanged Combat Mode.
@@ -365,6 +391,6 @@ Pages is already enabled for this repository. To inspect or rerun deployment fro
 1. Open [the repository](https://github.com/dearsvincent-ctrl/Kinetic-stickman) and its **Actions** tab.
 2. Choose **Deploy GitHub Pages** and inspect the latest run. To retry, tap **Run workflow**, select `main`, and confirm Run workflow.
 3. If Pages needs enabling, open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Chrome's **Desktop site** mode may help expose GitHub settings on a phone.
-4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.5** appears.
+4. Wait for green build/deploy jobs, then open the deployment link or the play URL above. Refresh until **0.8.6** appears.
 
-No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.5 for Android playtesting.
+No personal access token, added secret, `gh-pages` branch or local phone build is needed. This release stops at Version 0.8.6 for Android playtesting.

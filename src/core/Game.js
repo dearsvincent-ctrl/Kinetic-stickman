@@ -13,6 +13,8 @@ import { AimAssistPanel } from "../ui/AimAssistPanel.js";
 import { EnemySettingsPanel } from "../ui/EnemySettingsPanel.js";
 import { TagSettingsPanel } from "../ui/TagSettingsPanel.js";
 import { EnemyAbilitiesPanel } from "../ui/EnemyAbilitiesPanel.js";
+import { CameraSettingsPanel } from "../ui/CameraSettingsPanel.js";
+import { CameraPreferences } from "../sandbox/CameraSettings.js";
 import { PunchAimDebug } from "../character/PunchAimDebug.js";
 import { Stickman } from "../character/Stickman.js";
 import { CharacterAnimator } from "../character/CharacterAnimator.js";
@@ -126,6 +128,10 @@ export class Game {
       onContact: (hit) => {
         this.contactFeedbackRemaining = 0.18;
         this.battle.hitEnemy(hit, this.combat.currentTechnique);
+        if (this.cameraContext) {
+          this.cameraContext.recentTargetId = hit.targetId;
+          this.cameraContext.recentEngagementRemaining = 2.5;
+        }
       },
     });
     // Reuse live movement context; accepted attacks take their own snapshot.
@@ -140,6 +146,30 @@ export class Game {
       this.character.root.position,
     );
     this.followCamera.world = this.controller.world;
+    let cameraStorage;
+    try {
+      cameraStorage = localStorage;
+    } catch {
+      cameraStorage = null;
+    }
+    // Camera preferences also load in ordinary play. They never share the
+    // physics/AI/aim/layout saves or modify the player's movement parameters.
+    this.cameraPreferences = new CameraPreferences(cameraStorage);
+    this.followCamera.configure(this.cameraPreferences.get(this.battle.mode));
+    this.cameraVelocity = new THREE.Vector3();
+    this.cameraContext = {
+      velocity: this.cameraVelocity,
+      enemies: this.battle.enemies,
+      gameplayMode: this.battle.mode,
+      manualActive: false,
+      recentTargetId: null,
+      recentEngagementRemaining: 0,
+      airborne: false,
+      parkour: "free",
+      world: this.controller.world,
+      cameraPosition: this.camera.position,
+    };
+    this.cameraTelemetry = { velocity: [0, 0, 0], cameraPosition: [0, 0, 0] };
     this.helpOpen = false;
     this.controlsOpen = false;
     this.contextLost = false;
@@ -205,6 +235,13 @@ export class Game {
     this.enemySettingsPanel = new EnemySettingsPanel(this.battle);
     this.tagSettingsPanel = new TagSettingsPanel(this.battle);
     this.enemyAbilitiesPanel = new EnemyAbilitiesPanel(this.battle);
+    this.cameraSettingsPanel = new CameraSettingsPanel({
+      preferences: this.cameraPreferences,
+      getGameplayMode: () => this.battle.mode,
+      onChange: (mode, settings) => {
+        if (mode === this.battle.mode) this.followCamera.configure(settings);
+      },
+    });
     this.accumulator = 0;
     this.lastTime = null;
     this.resize = this.resize.bind(this);
@@ -252,6 +289,7 @@ export class Game {
     this.attackScheduler.reset();
     this.momentumRecovery.reset();
     this.streaks.reset();
+    this.cameraVelocity?.set(0, 0, 0);
     // Pause/release input without erasing a flip or recovery configuration.
     if (this.controller.jump.grounded && this.bodyRotation.phase === "idle")
       this.bodyRotation.reset(this.controller.heading);
@@ -281,6 +319,12 @@ export class Game {
     this.contactFeedbackRemaining = 0;
     this.followCamera.target.copy(this.character.root.position);
     this.followCamera.target.y += 1.02;
+    this.followCamera.recenter?.(this.character.root.position);
+    this.cameraVelocity?.set(0, 0, 0);
+    if (this.cameraContext) {
+      this.cameraContext.recentTargetId = null;
+      this.cameraContext.recentEngagementRemaining = 0;
+    }
     this.input.setEnabled(!this.controlsOpen && !this.helpOpen);
     this.battleHud.update(1, this.battle);
     this.controlLayoutEditor?.refresh();
@@ -296,9 +340,78 @@ export class Game {
     this.defeated = false;
     this.contactFeedbackRemaining = 0;
     this.punchAim.targets = mode === "tag" ? [] : this.battle.enemies;
+    if (this.cameraPreferences)
+      this.followCamera.configure(this.cameraPreferences.get(mode));
+    this.cameraSettingsPanel?.setGameplayMode(mode);
+    if (this.cameraContext) {
+      this.cameraContext.gameplayMode = mode;
+      this.cameraContext.recentTargetId = null;
+      this.cameraContext.recentEngagementRemaining = 0;
+    }
     this.input.setEnabled(!this.controlsOpen && !this.helpOpen);
     this.battleHud.update(1, this.battle);
     this.controlLayoutEditor?.refresh();
+  }
+
+  updateCameraMotion(dt) {
+    if (
+      !this.cameraVelocity ||
+      !this.cameraContext ||
+      !Number.isFinite(dt) ||
+      dt <= 0
+    )
+      return;
+    this.cameraVelocity
+      .subVectors(this.character.root.position, this.simulationPrevious)
+      .divideScalar(dt);
+    const speed = this.cameraVelocity.length();
+    if (!Number.isFinite(speed)) this.cameraVelocity.set(0, 0, 0);
+    else if (speed > 100000) this.cameraVelocity.setLength(100000);
+    this.cameraContext.recentEngagementRemaining = Math.max(
+      0,
+      this.cameraContext.recentEngagementRemaining - dt,
+    );
+    if (this.cameraContext.recentEngagementRemaining === 0)
+      this.cameraContext.recentTargetId = null;
+  }
+
+  refreshCameraContext() {
+    const context = this.cameraContext;
+    if (!context) return null;
+    context.manualActive = this.input?.cameraPointer != null;
+    context.gameplayMode = this.battle.mode;
+    context.enemies = this.battle.enemies;
+    context.airborne = this.controller.jump.airborne;
+    context.parkour = this.controller.parkour?.mode ?? "free";
+    context.world = this.controller.world;
+    context.cameraPosition = this.camera.position;
+    return context;
+  }
+
+  refreshCameraTelemetry() {
+    if (!this.cameraTelemetry) return;
+    const out = this.cameraTelemetry,
+      follow = this.followCamera;
+    const state = follow.director?.state;
+    this.cameraVelocity.toArray(out.velocity);
+    this.camera.position.toArray(out.cameraPosition);
+    out.actualFov = this.camera.fov;
+    out.projectionY = this.camera.projectionMatrix.elements[5];
+    out.distance = follow.distance;
+    out.yaw = follow.yaw;
+    out.pitch = follow.pitch;
+    out.targetYaw = follow.targetYaw;
+    out.targetPitch = follow.targetPitch;
+    out.speed = this.cameraVelocity.length();
+    out.settings = follow.settings;
+    out.preferences = this.cameraPreferences.values;
+    out.gameplayMode = this.battle.mode;
+    out.selectedTargetId = state?.selectedTargetId ?? null;
+    out.overrideRemaining = state?.overrideRemaining ?? 0;
+    out.assistWeight = state?.assistWeight ?? 0;
+    out.yawOffset = state?.yawOffset ?? 0;
+    out.pitchOffset = state?.pitchOffset ?? 0;
+    out.focusOffset = state?.focusOffset ?? 0;
   }
 
   frame(time) {
@@ -383,6 +496,7 @@ export class Game {
         dt,
         this.character.root.position,
         this.input.consumeLookDelta(),
+        this.refreshCameraContext(),
       );
       this.arena.updateFocus(this.character.root.position);
       this.enemyViews.update(dt, this.camera, this.character.root.position);
@@ -397,7 +511,8 @@ export class Game {
       this.bodyRotation.orientation,
       this.bodyRotation.lift,
     );
-    this.battleHud.update(dt, this.battle);
+    this.refreshCameraTelemetry();
+    this.battleHud.update(dt, this.battle, this.cameraTelemetry);
     if (!this.contextLost) this.renderer.render(this.scene, this.camera);
     this.hud.update(
       Math.max(0.001, elapsed),
@@ -428,6 +543,7 @@ export class Game {
     this.controller.update(dt, this.input, this.followCamera.yaw);
     this.battle?.movePlayerImpulse(dt);
     this.controller.syncSupport?.();
+    this.updateCameraMotion?.(dt);
     const jumpEvent = this.controller.jumpEvent;
     if (
       this.bodyRotation &&
