@@ -3,6 +3,8 @@ import {
   BODY_PIVOT,
   sampleLocalStrike,
   worldStrike,
+  strikeFootOrientation,
+  strikeKneePole,
 } from "../combat/TechniqueGeometry.js";
 import { ParkourPresenter } from "./ParkourPresenter.js";
 import { ArmIK } from "./ArmIK.js";
@@ -30,6 +32,8 @@ export class AcrobaticPresenter {
     this.inner.add(character.joints.hips);
     this.local = new Vector3();
     this.flipKneePole = new Vector3();
+    this.strikePole = new Vector3();
+    this.strikeFoot = new Quaternion();
     this.target = new Vector3();
     this.support = new Vector3();
     this.inverse = new Quaternion();
@@ -248,7 +252,7 @@ export class AcrobaticPresenter {
         }
     }
     this.parkour.apply(dt, movement?.parkour, this.body, combat);
-    if (!attack.active || !t?.adaptive) return;
+    if (!attack.active || !t?.adaptive || attack.cancelled) return;
     if (t.action === "punch" && attack.context?.punchAim) {
       punchAlignmentQuaternion(
         this.aimCorrection,
@@ -283,13 +287,17 @@ export class AcrobaticPresenter {
       this.body,
       rotation.lift,
     );
-    const recovery =
-      (attack.phase === "recovery"
-        ? Math.max(0, 1 - attack.phaseProgress)
-        : 1) *
-      (attack.context?.limbs?.[side]?.[t.action === "kick" ? "foot" : "hand"]
-        ? 1
-        : this.transitions.blend);
+    const activeContact =
+      attack.elapsed >= t.windup &&
+      attack.elapsed <= t.windup + t.extension + t.impact;
+    const recovery = activeContact
+      ? 1
+      : (attack.phase === "recovery"
+          ? Math.max(0, 1 - attack.phaseProgress)
+          : 1) *
+        (attack.context?.limbs?.[side]?.[t.action === "kick" ? "foot" : "hand"]
+          ? 1
+          : this.transitions.blend);
     if (t.action === "kick") {
       const ankle = j[`${side}Ankle`];
       ankle.getWorldPosition(this.support);
@@ -297,9 +305,11 @@ export class AcrobaticPresenter {
       this.animator.ik.solve(
         side,
         this.target,
+        strikeFootOrientation(this.strikeFoot, t, attack.elapsed, this.body),
         this.body,
-        this.body,
-        this.flipWeight > 0.001 ? this.flipPole(side) : null,
+        this.flipWeight > 0.001
+          ? this.flipPole(side)
+          : strikeKneePole(this.strikePole, t, attack.elapsed),
       );
       if (
         (spinning || t.gesture) &&

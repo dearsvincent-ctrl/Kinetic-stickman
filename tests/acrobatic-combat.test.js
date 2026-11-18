@@ -56,7 +56,7 @@ function advance(f, dt, ctx) {
 }
 test("adaptive registry is a small set of mirrored families with authored reach and recovery", () => {
   const ts = createAdaptiveTechniques();
-  assert.equal(ts.length, 7);
+  assert.equal(ts.length, 13);
   assert.equal(ts.filter((t) => t.gesture).length, 2);
   for (const t of ts) {
     assert.ok(t.adaptive);
@@ -185,7 +185,7 @@ test("a committed normal strike can redirect in recovery, while early spam and h
   advance(f, 0.17, ctx);
   f.scheduler.press("kick");
   assert.equal(f.scheduler.prepare(ctx), true);
-  assert.equal(f.combat.attack.techniqueId, "front-kick");
+  assert.equal(f.combat.attack.techniqueId, "roundhouse-kick");
   const count = f.combat.attack.sequence;
   f.scheduler.press("punch");
   assert.equal(f.scheduler.prepare(ctx), false);
@@ -277,7 +277,11 @@ test("descending sweep's physical leg trajectory is lower than the horizontal wh
   sampleLocalStrike(b, sweep, 0.26, { gestureIntensity: 1 });
   assert.ok(a.y > 1);
   assert.ok(b.y < 0.3);
-  assert.ok(b.z < -0.7);
+  assert.ok(b.z < -0.5, "the descending arc extends in front of the body");
+  assert.ok(
+    Math.hypot(b.x, b.z) <= 0.67 + 1e-8,
+    "low reach remains inside a natural leg length",
+  );
 });
 test("multiple opponent hitboxes do not report duplicate contacts for one strike", () => {
   const f = fixture();
@@ -416,8 +420,9 @@ test("adaptive hand/foot targets stay close to contact geometry through mirrored
 test("full acrobatic integration preserves translation, dash/jump eligibility and bounds at normal and 100x travel", async () => {
   const { Game } = await import("../src/core/Game.js"),
     { createCombatContext } = await import("../src/combat/CombatContext.js"),
-    { sandboxMovementConfig, movementSubsteps } =
-      await import("../src/sandbox/PhysicsSandbox.js");
+    { sandboxMovementConfig, movementSubsteps } = await import(
+      "../src/sandbox/PhysicsSandbox.js"
+    );
   function integrated(values) {
     const rig = new Stickman(),
       animator = new CharacterAnimator(rig),

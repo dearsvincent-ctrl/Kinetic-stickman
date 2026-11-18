@@ -1,5 +1,10 @@
 import { Quaternion, Vector3 } from "three";
-import { StrikePoseSampler, BODY_PIVOT } from "./TechniqueGeometry.js";
+import {
+  StrikePoseSampler,
+  BODY_PIVOT,
+  techniqueStrikeStyle,
+  sampleKickPose,
+} from "./TechniqueGeometry.js";
 import {
   strikeAim,
   strikeAlignmentQuaternion,
@@ -52,6 +57,8 @@ export class StrikeHitDetector {
     this.alignment = new Quaternion();
     this.rootA = point();
     this.rootB = point();
+    this.kickFrom = {};
+    this.kickTo = {};
   }
   sweep(
     technique,
@@ -99,12 +106,27 @@ export class StrikeHitDetector {
       orientationStart && orientationEnd
         ? orientationStart.angleTo(orientationEnd) * (motionTo - motionFrom)
         : Math.abs(turn);
-    const localArc =
-      technique.animation === "backhand"
-        ? ((to - from) /
-            Math.max(0.001, technique.extension + technique.impact)) *
-          1.85
+    const shared = Boolean(technique.adaptive || technique.action);
+    const style = techniqueStrikeStyle(technique);
+    const curved =
+      technique.animation === "backhand" ||
+      technique.strikeStyle === "hook" ||
+      ["roundhouse", "spinning", "sweep", "descending"].includes(style);
+    const spinArc =
+      style === "spinning"
+        ? Math.abs(
+            sampleKickPose(this.kickTo, technique, to).turn -
+              sampleKickPose(this.kickFrom, technique, from).turn,
+          ) *
+          Math.PI *
+          2
         : 0;
+    const localArc = curved
+      ? ((to - from) /
+          Math.max(0.001, technique.extension + technique.impact)) *
+          (style === "spinning" ? 2.12 : 1.85) +
+        spinArc
+      : 0;
     const aim = strikeAim(attack.context, technique);
     const assistArc = aim?.profileRate
       ? (to - from) * aim.profileRate * Math.min(1, aim.strength - 1) * 2
@@ -112,10 +134,10 @@ export class StrikeHitDetector {
     const steps = Math.max(
       1,
       Math.min(
-        32,
+        curved ? 64 : 32,
         Math.max(
           Math.ceil((bodyTurn + localArc + assistArc) / 0.055),
-          aim
+          aim || shared
             ? // A natural arm-length clamp introduces a bend in the curved hand
               // path near full extension. Sample that curve finely enough that
               // a 30 Hz frame does not skip real short crossing contacts.
@@ -136,7 +158,7 @@ export class StrikeHitDetector {
         this.rootA[axis] = lerp(start[axis], end[axis], f0);
         this.rootB[axis] = lerp(start[axis], end[axis], f1);
       }
-      if (technique.adaptive) {
+      if (shared) {
         if (orientationStart && orientationEnd)
           this.orientation.slerpQuaternions(
             orientationStart,
@@ -264,7 +286,7 @@ export class StrikeHitDetector {
               lerp(start.y, end.y, f) -
               technique.originHeight;
             let angle = Math.atan2(-dx, -dz) - heading;
-            if (technique.adaptive) {
+            if (shared) {
               if (orientationStart && orientationEnd)
                 this.orientation.slerpQuaternions(
                   orientationStart,
@@ -287,7 +309,7 @@ export class StrikeHitDetector {
               dy = this.bodyLocal.y - (technique.originHeight - BODY_PIVOT);
               angle = Math.atan2(-dx, -dz);
             }
-            if (aim && technique.adaptive) {
+            if (aim && shared) {
               // The strike direction and its facing guard share the same
               // captured correction/time as the visible limb. Keep radial
               // reach and physical height limits in the original body frame.

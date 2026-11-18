@@ -17,13 +17,23 @@ export class LocomotionAnimator {
     this.movementBlend = 0;
     this.runBlend = 0;
     this.sprintBlend = 0;
+    this.highSpeedBlend = 0;
+    this.aggression = 1;
     this.stride = style.walkStride;
     this.duty = style.walkDuty;
     this.lift = style.walkLift;
     this.cadence = 0;
   }
 
-  update(dt, { speed = 0, combatWeight = 0, cadenceLimit = Infinity } = {}) {
+  update(
+    dt,
+    {
+      speed = 0,
+      actualSpeed = speed,
+      combatWeight = 0,
+      cadenceLimit = Infinity,
+    } = {},
+  ) {
     const s = this.style;
     this.dt = dt;
     speed = Math.max(0, speed);
@@ -46,7 +56,23 @@ export class LocomotionAnimator {
       s.response,
       dt,
     );
+    // Physical speed adds a restrained pose accent after visual speed has
+    // saturated. It never enters stride, contact duty or the cadence clock.
+    const speedRatio = Number.isFinite(actualSpeed)
+      ? Math.max(1, actualSpeed / s.highSpeedStart)
+      : 1;
+    this.highSpeedBlend = MathUtils.damp(
+      this.highSpeedBlend,
+      MathUtils.smoothstep(Math.log2(speedRatio), 0, Math.log2(100)),
+      s.response,
+      dt,
+    );
     this.freeRunBlend = this.runBlend * (1 - combatWeight);
+    const aggression = Number.isFinite(this.aggression)
+      ? MathUtils.clamp(this.aggression, 0, 1.5)
+      : 1;
+    this.running.highSpeedDrive =
+      this.highSpeedBlend * this.freeRunBlend * this.movementBlend * aggression;
     const walkStride = MathUtils.lerp(
       s.creepStride,
       s.walkStride,
@@ -162,5 +188,17 @@ export class LocomotionAnimator {
         Math.max(0, drive) * 0.12 * weight;
     }
     this.running.applyBody(pose, this, this.phase + phaseOffset, acceleration);
+    const driveWeight = this.running.highSpeedDrive;
+    pose.spinePitch -= s.highSpeedLean * driveWeight;
+    pose.spineYaw -= pose.hipYaw * s.highSpeedShoulderCounter * driveWeight;
+    // Add force along the existing opposing pump, yielding to its brief
+    // launch/flight trail rather than widening the arms into a flail.
+    for (let i = 0; i < 2; i++) {
+      const drive = Math.cos(
+        (this.phase + phaseOffset + i * 0.5 - 0.22) * Math.PI * 2,
+      );
+      pose.arms[i].x +=
+        drive * s.highSpeedArm * driveWeight * (1 - this.running.trail);
+    }
   }
 }

@@ -564,8 +564,9 @@ test("200% improves real crossing-target contacts for ground punches, ground kic
     for (const playerSpeed of [0, 520])
       for (const [id, x, z, vx, vz] of [
         ["basic-punch", 0.64, -0.73, -6, -2],
-        ["front-kick", 0.64, -0.65, -6, 0],
-        ["flying-kick", 0.24, -0.49, -6, -2],
+        // Cross the front kick after its real chamber has begun extending.
+        ["front-kick", 0.7, -0.65, -6, 0],
+        ["flying-kick", 0.28, -0.49, -6, -2],
       ]) {
         const counts = [];
         for (const strength of [1, 2]) {

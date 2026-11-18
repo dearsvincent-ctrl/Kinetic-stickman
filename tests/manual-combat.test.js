@@ -267,11 +267,13 @@ test("one strike reports a target once across repeated sweeps; another strike ca
 });
 test("ground and flying kicks use separate real hitboxes, with bounded reach", () => {
   for (const id of ["front-kick", "flying-kick"]) {
+    const t = fixture().combat.techniques.get(id);
     assert.equal(
       sense({
         id,
-        from: 0.13,
-        to: 0.14,
+        // Contact is tested at impact, after the lifted chamber extends.
+        from: t.windup + t.extension,
+        to: t.windup + t.extension + t.impact,
         start: new Vector3(0, id === "flying-kick" ? 0.5 : 0, 5),
         end: new Vector3(0, id === "flying-kick" ? 0.5 : 0, -5),
       }).detector.count,

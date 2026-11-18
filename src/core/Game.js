@@ -32,6 +32,12 @@ import {
 import { BodyRotation } from "../movement/BodyRotation.js";
 import { MomentumRecovery } from "../movement/MomentumRecovery.js";
 import { GroundStreaks } from "../world/GroundStreaks.js";
+import { SpeedEffects } from "../world/SpeedEffects.js";
+import { AttackMagnetism } from "../combat/AttackMagnetism.js";
+import { loadSpeedEffectSettings } from "../sandbox/SpeedEffectsSettings.js";
+import { loadMagnetismSettings } from "../sandbox/AttackMagnetismSettings.js";
+import { loadAnimationSettings } from "../sandbox/AnimationSettings.js";
+import { CombatPolishPanel } from "../ui/CombatPolishPanel.js";
 import { AcrobaticPresenter } from "../character/AcrobaticPresenter.js";
 import { StrikeHitDetector } from "../combat/StrikeHitDetector.js";
 import {
@@ -93,6 +99,20 @@ export class Game {
     this.recoveryPrevious = new THREE.Vector3();
     this.streaks = new GroundStreaks();
     this.scene.add(this.streaks.mesh);
+    this.speedEffects = new SpeedEffects();
+    this.scene.add(this.speedEffects.group);
+    this.effectFeet = [
+      { position: new THREE.Vector3(), contact: false },
+      { position: new THREE.Vector3(), contact: false },
+    ];
+    this.speedEffectContext = {
+      position: this.character.root.position,
+      velocity: new THREE.Vector3(),
+      feet: this.effectFeet,
+      grounded: true,
+      floorHeight: 0,
+    };
+    this.attackMagnetism = new AttackMagnetism();
     this.streakOrigin = new THREE.Vector3();
     this.lastPlantSequence = 0;
     this.limbSelector = new ContextualLimbSelector({
@@ -107,7 +127,7 @@ export class Game {
       selectTechnique: (context, eligible) =>
         this.limbSelector.choose(context, eligible),
       prepareAttackContext: (context, technique) =>
-        this.punchAim.prepare(context, technique),
+        this.prepareManualAttack(context, technique),
     });
     this.attackScheduler = new AttackScheduler(this.combat);
     this.targets = [];
@@ -118,6 +138,13 @@ export class Game {
       dummy: this.dummy.target,
       enabled: new URLSearchParams(location.search).get("practice") !== "1",
     });
+    this.magnetismContext = {
+      combat: this.combat,
+      blocking: false,
+      mode: this.battle.mode,
+      input: this.input,
+      world: this.controller.world,
+    };
     this.enemyViews = new EnemyViews(this.scene, this.battle.enemies);
     this.punchAim.targets = this.battle.enemies;
     this.punchAimDebug = new PunchAimDebug(this.scene, this.punchAim);
@@ -155,6 +182,10 @@ export class Game {
     // Camera preferences also load in ordinary play. They never share the
     // physics/AI/aim/layout saves or modify the player's movement parameters.
     this.cameraPreferences = new CameraPreferences(cameraStorage);
+    this.speedEffects.configure(loadSpeedEffectSettings(cameraStorage) ?? {});
+    this.attackMagnetism.configure(loadMagnetismSettings(cameraStorage) ?? {});
+    this.animationPreferences =
+      loadAnimationSettings(cameraStorage) ?? undefined;
     this.followCamera.configure(this.cameraPreferences.get(this.battle.mode));
     this.cameraVelocity = new THREE.Vector3();
     this.cameraContext = {
@@ -170,6 +201,12 @@ export class Game {
       cameraPosition: this.camera.position,
     };
     this.cameraTelemetry = { velocity: [0, 0, 0], cameraPosition: [0, 0, 0] };
+    this.polishTelemetry = {
+      effects: {},
+      magnetism: {},
+      strike: { point: [0, 0, 0] },
+    };
+    this.polishStrikePoint = new THREE.Vector3();
     this.helpOpen = false;
     this.controlsOpen = false;
     this.contextLost = false;
@@ -242,6 +279,13 @@ export class Game {
         if (mode === this.battle.mode) this.followCamera.configure(settings);
       },
     });
+    this.combatPolishPanel = new CombatPolishPanel({
+      effects: this.speedEffects,
+      magnetism: this.attackMagnetism,
+      animator: this.animator,
+      animation: this.animationPreferences,
+      storage: cameraStorage,
+    });
     this.accumulator = 0;
     this.lastTime = null;
     this.resize = this.resize.bind(this);
@@ -289,6 +333,8 @@ export class Game {
     this.attackScheduler.reset();
     this.momentumRecovery.reset();
     this.streaks.reset();
+    this.speedEffects?.reset();
+    this.attackMagnetism?.cancel("input-reset");
     this.cameraVelocity?.set(0, 0, 0);
     // Pause/release input without erasing a flip or recovery configuration.
     if (this.controller.jump.grounded && this.bodyRotation.phase === "idle")
@@ -337,6 +383,7 @@ export class Game {
     this.input.reset();
     this.combat.reset();
     this.attackScheduler.reset();
+    this.attackMagnetism?.cancel("mode");
     this.defeated = false;
     this.contactFeedbackRemaining = 0;
     this.punchAim.targets = mode === "tag" ? [] : this.battle.enemies;
@@ -386,6 +433,98 @@ export class Game {
     context.world = this.controller.world;
     context.cameraPosition = this.camera.position;
     return context;
+  }
+
+  prepareManualAttack(context, technique) {
+    const alignment = this.attackMagnetism?.begin(
+      this.controller,
+      this.battle?.enemies ?? [],
+      technique,
+      this.battle?.mode ?? "combat",
+      this.controller.world,
+      {
+        accepted: true,
+        context,
+        input: this.input,
+        cameraYaw: this.followCamera?.yaw ?? 0,
+        orientation: this.bodyRotation?.orientation,
+        sequence: (this.combat?.attack.sequence ?? 0) + 1,
+      },
+    );
+    // Only one correction owns a captured strike. The unchanged aim system is
+    // the complete fallback when magnetism is disabled or finds no safe target.
+    return alignment
+      ? {
+          ...context,
+          punchAim: technique.action === "punch" ? alignment : null,
+          kickAim: technique.action === "kick" ? alignment : null,
+          strikeAim: alignment,
+        }
+      : this.punchAim.prepare(context, technique);
+  }
+
+  updateSpeedEffects(dt) {
+    if (!this.speedEffects) return;
+    const jump = this.controller.jump,
+      context = this.speedEffectContext;
+    context.velocity.copy(this.cameraVelocity);
+    context.grounded = jump.canActOnGround || jump.ready;
+    context.floorHeight = jump.floorHeight ?? 0;
+    context.verticalVelocity = context.velocity.y;
+    context.landingSpeed = jump.phase === "landing" ? jump.landingSpeed : 0;
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? "left" : "right",
+        foot = this.effectFeet[i];
+      this.character.joints[`${side}Ankle`].getWorldPosition(foot.position);
+      foot.contact =
+        context.grounded &&
+        this.animator.feet[side].planted &&
+        foot.position.y <= context.floorHeight + 0.24;
+    }
+    this.speedEffects.update(dt, context);
+  }
+
+  refreshPolishTelemetry() {
+    const out = this.polishTelemetry;
+    if (!out) return;
+    const fx = this.speedEffects,
+      magnetism = this.attackMagnetism;
+    Object.assign(out.effects, {
+      dustEmissions: fx.dustEmissions,
+      sonicBursts: fx.sonicBursts,
+      activeDust: fx.activeDust,
+      activeRings: fx.activeRings,
+      activeStreaks: fx.activeStreaks,
+      sonicArmed: fx.sonicArmed,
+      actualSpeed: fx.actualSpeed,
+      horizontalSpeed: fx.horizontalSpeed,
+      config: fx.config,
+    });
+    magnetism.snapshot(out.magnetism);
+    out.magnetism.config = magnetism.config;
+    const t = this.combat.currentTechnique,
+      attack = this.combat.attack;
+    Object.assign(out.strike, {
+      id: t?.id ?? null,
+      style: t?.strikeStyle ?? null,
+      action: t?.action ?? null,
+      side: t?.side ?? null,
+      active: attack.active,
+      phase: attack.phase,
+      sequence: attack.sequence,
+      reach: t?.reach ?? 0,
+      hitRadius: t?.hitRadius ?? 0,
+      contacts: this.hitDetector.count,
+      lastContactTargetId: this.hitDetector.lastContact?.targetId ?? null,
+      combo: this.limbSelector.combo ?? null,
+    });
+    if (t) {
+      this.character.joints[
+        `${t.side}${t.action === "kick" ? "Ankle" : "Hand"}`
+      ].getWorldPosition(this.polishStrikePoint);
+      this.polishStrikePoint.toArray(out.strike.point);
+    }
+    out.sprintAggression = this.animator.locomotion.aggression;
   }
 
   refreshCameraTelemetry() {
@@ -490,6 +629,7 @@ export class Game {
           );
         }
         this.streaks.update(STEP);
+        this.updateSpeedEffects?.(STEP);
         this.accumulator -= STEP;
       }
       this.followCamera.update(
@@ -512,7 +652,13 @@ export class Game {
       this.bodyRotation.lift,
     );
     this.refreshCameraTelemetry();
-    this.battleHud.update(dt, this.battle, this.cameraTelemetry);
+    this.refreshPolishTelemetry();
+    this.battleHud.update(
+      dt,
+      this.battle,
+      this.cameraTelemetry,
+      this.polishTelemetry,
+    );
     if (!this.contextLost) this.renderer.render(this.scene, this.camera);
     this.hud.update(
       Math.max(0.001, elapsed),
@@ -542,6 +688,15 @@ export class Game {
       this.recoveryPrevious.copy(this.controller.velocity);
     this.controller.update(dt, this.input, this.followCamera.yaw);
     this.battle?.movePlayerImpulse(dt);
+    if (this.attackMagnetism) {
+      const context = this.magnetismContext;
+      context.blocking = this.input.blocking;
+      context.mode = this.battle?.mode ?? "combat";
+      context.input = this.input;
+      context.world = this.controller.world;
+      context.combat = this.combat;
+      this.attackMagnetism.update(dt, this.controller, context);
+    }
     this.controller.syncSupport?.();
     this.updateCameraMotion?.(dt);
     const jumpEvent = this.controller.jumpEvent;
@@ -597,6 +752,10 @@ export class Game {
       Math.cos(this.controller.heading - heading),
     );
     while (elapsed < dt - 1e-9) {
+      // Selection timestamps follow the actual combat boundary, including a
+      // held repeat that begins partway through this fixed physics step.
+      if (this.bodyRotation)
+        context.clock = this.bodyRotation.time - dt + elapsed;
       if (
         !this.input.blocking &&
         this.punchAim?.config.strength > 0 &&

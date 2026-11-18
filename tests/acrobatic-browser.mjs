@@ -21,11 +21,12 @@ export async function stick(p, native) {
   let fingers = [];
   const move = async (x, y) => {
     const f = touch(1, { x: centre.x + x * r, y: centre.y - y * r });
-    if (!fingers.length) {
-      fingers = [f];
-      await native("touchStart", fingers);
+    const joystick = fingers.findIndex((finger) => finger.id === 1);
+    if (joystick < 0) {
+      fingers.unshift(f);
+      await native("touchStart", fingers, [f]);
     } else {
-      fingers[0] = f;
+      fingers[joystick] = f;
       await native("touchMove", fingers, [f]);
     }
   };

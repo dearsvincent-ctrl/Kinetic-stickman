@@ -176,6 +176,7 @@ export class CharacterAnimator {
     const dashBound = dash?.active && !dash.cruising;
     gait.update(dt, {
       speed: dashBound ? Math.min(visualSpeed, 2.6) : visualSpeed,
+      actualSpeed: dashBound ? Math.min(speed, 2.6) : speed,
       combatWeight: this.locomotionCombatWeight,
       cadenceLimit: dashBound ? this.style.locomotion.dashCadence : Infinity,
     });

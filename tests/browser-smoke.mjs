@@ -14,6 +14,7 @@ import { checkTagMode } from "./tag-mode-browser.mjs";
 import { checkEnemyAbilities } from "./enemy-abilities-browser.mjs";
 import { checkSliderLocks } from "./slider-locks-browser.mjs";
 import { checkCamera } from "./camera-browser.mjs";
+import { checkV087Polish } from "./v087-polish-browser.mjs";
 
 const run = await openBrowser(
   (process.env.TEST_URL || "http://127.0.0.1:5173") + "/?debug",
@@ -46,6 +47,7 @@ try {
   await checkEnemyAbilities(active.page, active.native);
   await checkSliderLocks(active.page, active.native);
   await checkCamera(active.page, active.native);
+  await checkV087Polish(active.page, active.native);
   assert.deepEqual(
     active.errors,
     [],

@@ -28,22 +28,31 @@ export class RunningGait {
     this.style = style;
     this.flight = 0;
     this.trail = 0;
+    this.highSpeedDrive = 0;
   }
 
   sampleFoot(t, stride, swingTravel, sprint, out) {
     const s = this.style;
-    const lift = MathUtils.lerp(s.runLift, s.sprintLift, sprint);
+    const lift =
+      MathUtils.lerp(s.runLift, s.sprintLift, sprint) +
+      s.highSpeedRecovery * this.highSpeedDrive;
     const kneeLift = MathUtils.lerp(s.runKneeLift, s.sprintKneeLift, sprint);
     const rear = stride * 0.5;
-    const knee = MathUtils.lerp(s.runKneeForward, s.sprintKneeForward, sprint);
+    const knee =
+      MathUtils.lerp(s.runKneeForward, s.sprintKneeForward, sprint) +
+      s.highSpeedExtension * 0.5 * this.highSpeedDrive;
+    // Extend behind the hip at toe-off, then fold the heel more decisively.
+    // Keep knee height and both contact endpoints unchanged to avoid a march
+    // or a discontinuity when the planted-foot planner takes ownership.
+    const heel = rear * 0.6 + s.highSpeedExtension * this.highSpeedDrive;
     if (t < s.heelFraction) {
       const p = clamp01(t / s.heelFraction);
-      out.z = curve(p, s.heelFraction, rear, rear * 0.6, swingTravel, -1);
+      out.z = curve(p, s.heelFraction, rear, heel, swingTravel, -1);
       out.y = curve(p, s.heelFraction, 0, lift * 0.9);
     } else if (t < s.kneeFraction) {
       const length = s.kneeFraction - s.heelFraction;
       const p = clamp01((t - s.heelFraction) / length);
-      out.z = curve(p, length, rear * 0.6, -knee, -1, -1);
+      out.z = curve(p, length, heel, -knee, -1, -1);
       out.y = curve(p, length, lift * 0.9, kneeLift);
     } else {
       const length = 1 - s.kneeFraction;

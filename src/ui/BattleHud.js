@@ -23,12 +23,14 @@ export class BattleHud {
       button.addEventListener("click", onRespawn);
     this.elapsed = 1;
   }
-  update(dt, battle, cameraTelemetry = null) {
+  update(dt, battle, cameraTelemetry = null, polishTelemetry = null) {
     this.elapsed += dt;
     if (this.elapsed < 0.08) return;
     this.elapsed = 0;
     if (cameraTelemetry)
       this.root.dataset.camera = JSON.stringify(cameraTelemetry);
+    if (polishTelemetry)
+      this.root.dataset.polish = JSON.stringify(polishTelemetry);
     const p = battle.player;
     const tag = battle.mode === "tag";
     this.mode.value = tag ? "tag" : "combat";

@@ -18,6 +18,7 @@ import { checkTagMode } from "./tag-mode-browser.mjs";
 import { checkEnemyAbilities } from "./enemy-abilities-browser.mjs";
 import { checkSliderLocks } from "./slider-locks-browser.mjs";
 import { checkCamera } from "./camera-browser.mjs";
+import { checkV087Polish } from "./v087-polish-browser.mjs";
 import { resolvePagesBase } from "../build/pagesBase.js";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
@@ -132,6 +133,7 @@ try {
     await checkEnemyAbilities(run.page, run.native);
     await checkSliderLocks(run.page, run.native);
     await checkCamera(run.page, run.native);
+    await checkV087Polish(run.page, run.native);
     for (const request of run.requests) {
       const url = new URL(request);
       assert.equal(url.origin, origin);

@@ -1,4 +1,9 @@
-import { Vector3 } from "three";
+import { Quaternion, Vector3 } from "three";
+import {
+  sampleKickPose,
+  techniqueStrikeStyle,
+} from "../combat/TechniqueGeometry.js";
+const UP = new Vector3(0, 1, 0);
 /** Ground support/weight transfer only. Attack timing and input availability
  * stay owned by combat; incoming techniques retain the existing pose crossfade. */
 export class GroundCombatBalance {
@@ -13,6 +18,9 @@ export class GroundCombatBalance {
     this.side = "left";
     this.action = null;
     this.drive = 0;
+    this.kickPose = {};
+    this.supportYaw = new Quaternion();
+    this.strikeStyle = "front";
   }
   plan(dt, combat, jump, speed, feet) {
     const floor = (jump?.floorHeight ?? 0) + 0.1;
@@ -23,10 +31,20 @@ export class GroundCombatBalance {
         a?.context?.environment !== "air";
     const active = ground && a?.active && !a.cancelled && !combat.blocking;
     this.weight += ((active ? 1 : 0) - this.weight) * (1 - Math.exp(-22 * dt));
+    if (active && t?.action === "kick")
+      sampleKickPose(this.kickPose, t, a.elapsed);
     this.drive +=
-      ((active ? a.extension : 0) - this.drive) * (1 - Math.exp(-24 * dt));
-    if (active) this.action = t?.action;
-    else if (this.weight < 0.001) this.action = null;
+      ((active
+        ? t?.action === "kick"
+          ? this.kickPose.extension
+          : a.extension
+        : 0) -
+        this.drive) *
+      (1 - Math.exp(-24 * dt));
+    if (active) {
+      this.action = t?.action;
+      this.strikeStyle = techniqueStrikeStyle(t);
+    } else if (this.weight < 0.001) this.action = null;
     if (!active) return;
     if (a.sequence !== this.sequence) {
       this.sequence = a.sequence;
@@ -56,6 +74,26 @@ export class GroundCombatBalance {
       this.plantElapsed = 0;
     }
     const support = feet[this.side];
+    if (t.action === "kick" || ["cross", "hook"].includes(this.strikeStyle)) {
+      const pivot =
+        t.action === "punch"
+          ? this.strikeStyle === "hook"
+            ? 0.24
+            : 0.16
+          : this.strikeStyle === "front"
+            ? 0.08
+            : this.strikeStyle === "side"
+              ? 0.7
+              : 0.42;
+      const turn = t.action === "kick" ? this.kickPose.turn * Math.PI * 2 : 0;
+      this.supportYaw.setFromAxisAngle(
+        UP,
+        (t.side === "left" ? -1 : 1) * (pivot * this.drive + turn),
+      );
+      support.yaw
+        .copy(this.character.root.quaternion)
+        .multiply(this.supportYaw);
+    }
     if (speed < 0.12) {
       // The guard may reposition the free foot, but a stationary strike retains
       // one real contact under its weight transfer, for either attack family.

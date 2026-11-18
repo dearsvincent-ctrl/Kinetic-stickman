@@ -150,7 +150,7 @@ export async function checkPunchAim(page, native) {
     waitUntil: "networkidle",
   });
   await advance(page, 450);
-  assert.equal(await page.locator(".version b").textContent(), "0.8.6");
+  assert.equal(await page.locator(".version b").textContent(), "0.8.7");
   assert.equal(
     (await read(page)).sequence,
     "0",

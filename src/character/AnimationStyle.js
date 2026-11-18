@@ -14,13 +14,13 @@ const definitions = {
     runDuty: 0.44,
     sprintDuty: 0.28,
     walkLift: 0.03,
-    runLift: 0.34,
+    runLift: 0.35,
     sprintLift: 0.52,
     walkLean: 0.035,
-    runLean: 0.18,
+    runLean: 0.2,
     sprintLean: 0.49,
     walkArm: 0.18,
-    runArm: 0.58,
+    runArm: 0.62,
     sprintArm: 0.98,
     runElbow: 0.78,
     sprintElbow: 1.12,
@@ -30,6 +30,12 @@ const definitions = {
     walkToeAngle: 0.16,
     sprintTwist: 0.11,
     shoulderCounter: 0.95,
+    highSpeedStart: 5.2,
+    highSpeedLean: 0.075,
+    highSpeedArm: 0.12,
+    highSpeedShoulderCounter: 0.14,
+    highSpeedExtension: 0.04,
+    highSpeedRecovery: 0.035,
     guardStride: 0.6,
     guardDuty: 0.3,
     guardLift: 0.105,
@@ -42,7 +48,7 @@ const definitions = {
     dashCadence: 1.6,
     heelFraction: 0.22,
     kneeFraction: 0.56,
-    runKneeForward: 0.16,
+    runKneeForward: 0.175,
     runKneeLift: 0.1,
     sprintKneeLift: 0.28,
     sprintKneeForward: 0.24,
@@ -202,7 +208,8 @@ export function resolveAnimationStyle(overrides = {}) {
   }
   if (
     style.locomotion.runFull <= style.locomotion.runStart ||
-    style.locomotion.sprintFull <= style.locomotion.sprintStart
+    style.locomotion.sprintFull <= style.locomotion.sprintStart ||
+    style.locomotion.highSpeedStart <= 0
   )
     throw new RangeError("Animation speed thresholds must increase");
   for (const key of ["walkDuty", "runDuty", "sprintDuty", "guardDuty"])

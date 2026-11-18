@@ -19,6 +19,7 @@ export class AttackAnimator {
     this.releaseWeight = 0;
     this.releaseTime = 0;
     this.side = "right";
+    this.strikeStyle = "straight";
     this.phase = "idle";
     this.cancelled = false;
     this.recoveryReach = 0;
@@ -39,6 +40,7 @@ export class AttackAnimator {
       previousChamber = this.chamber;
     if (active) {
       this.side = combat.currentTechnique?.side ?? "right";
+      this.strikeStyle = combat.currentTechnique?.strikeStyle ?? "straight";
       const entering = attack.sequence !== this.sequence;
       if (entering) {
         this.entryTime = entryTime;
@@ -108,10 +110,12 @@ export class AttackAnimator {
     const s = this.style,
       drive = this.reach,
       coil = this.chamber;
-    const cross = this.side === "left",
-      sign = cross ? -1 : 1;
-    const guard = pose.arms[cross ? 1 : 0],
-      strike = pose.arms[cross ? 0 : 1];
+    const left = this.side === "left",
+      sign = left ? -1 : 1,
+      cross = this.strikeStyle === "cross" || left,
+      hook = this.strikeStyle === "hook";
+    const guard = pose.arms[left ? 1 : 0],
+      strike = pose.arms[left ? 0 : 1];
     guard.x = MathUtils.lerp(guard.x, 1.1 + drive * 0.05, w);
     guard.y = MathUtils.lerp(guard.y, -0.06 * sign, w);
     guard.z = MathUtils.lerp(guard.z, 0.18 * sign, w);
@@ -133,13 +137,13 @@ export class AttackAnimator {
     );
     strike.elbow = MathUtils.lerp(
       strike.elbow,
-      MathUtils.lerp(1.84, 0.18, drive) + coil * 0.04,
+      MathUtils.lerp(1.84, hook ? 1.12 : 0.18, drive) + coil * 0.04,
       w,
     );
     // Shift the visual pelvis over the existing support legs. Their world
     // contacts stay planted and IK absorbs the load; the actor root stays put.
     if (!upperBodyOnly) {
-      pose.hipX -= sign * drive * (cross ? 0.035 : 0.025) * w;
+      pose.hipX -= sign * drive * (hook ? 0.045 : cross ? 0.035 : 0.025) * w;
       pose.hipY -= (drive + coil * 0.4) * s.compression * w;
       pose.hipZ =
         (pose.hipZ ?? 0) +
@@ -147,14 +151,24 @@ export class AttackAnimator {
           drive * (cross ? s.crossWeightTransfer : s.weightTransfer)) *
           w;
       pose.hipYaw +=
-        (drive * (cross ? s.crossHipTwist : s.hipTwist) -
-          coil * s.anticipationTwist) *
+        (drive *
+          (hook
+            ? s.crossHipTwist * 1.2
+            : cross
+              ? s.crossHipTwist
+              : s.hipTwist) -
+          coil * s.anticipationTwist * (hook ? 1.5 : 1)) *
         sign *
         w;
     }
     pose.spineYaw +=
-      (drive * (cross ? s.crossShoulderDrive : s.shoulderDrive) -
-        coil * s.anticipationTwist -
+      (drive *
+        (hook
+          ? s.crossShoulderDrive * 1.3
+          : cross
+            ? s.crossShoulderDrive
+            : s.shoulderDrive) -
+        coil * s.anticipationTwist * (hook ? 1.5 : 1) -
         this.recoil * s.recoil) *
       sign *
       w;
