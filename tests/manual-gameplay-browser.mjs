@@ -239,9 +239,14 @@ export async function checkGameplay(page, native) {
   await advance(page, 600);
   assert.equal(await contacts(page), 1);
   await tap(page, native, "kick", 32);
-  await advance(page, 240);
+  // This follow-up is now a roundhouse: its real active sweep ends at 275 ms,
+  // followed by up to 80 ms before the contact HUD refreshes. Do not require
+  // an early hit while the chamber/arc is still physically clear of the prop.
+  await advance(page, 400);
   assert.equal(await contacts(page), 2);
+  assert.equal(await sequence(page), 2, "The follow-up tap starts one strike");
   await advance(page, 650);
+  assert.equal(await contacts(page), 2, "Recovery cannot repeat the contact");
   await page.keyboard.down("s");
   await advance(page, 500);
   await page.keyboard.up("s");
