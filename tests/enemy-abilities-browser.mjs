@@ -197,13 +197,37 @@ export async function checkEnemyAbilities(page, native) {
     await page.locator("#stance-label").getAttribute("data-action"),
     "punch",
   );
+  const punchSequence = Number(
+    await page.locator("#stance-label").getAttribute("data-sequence"),
+  );
   await controls.enter("block");
   await advance(page, 80);
+  assert.equal(
+    await page.locator("#block-button").getAttribute("aria-pressed"),
+    "true",
+  );
   await controls.enter("kick");
-  await advance(page, 100);
+  // Canceled Punch recovery is 160 ms; after the 80 ms guard hold, allow its
+  // remainder plus the 80 ms HUD refresh and a render frame for the held Kick.
+  for (let elapsed = 0; elapsed < 240; elapsed += 20) {
+    if (
+      (await page.locator("#stance-label").getAttribute("data-action")) ===
+      "kick"
+    )
+      break;
+    await advance(page, 20);
+  }
   assert.equal(
     await page.locator("#stance-label").getAttribute("data-action"),
     "kick",
+  );
+  assert.equal(
+    Number(await page.locator("#stance-label").getAttribute("data-sequence")),
+    punchSequence + 1,
+  );
+  assert.equal(
+    await page.locator("#block-button").getAttribute("aria-pressed"),
+    "false",
   );
   await controls.stop();
   state = await read(page);
