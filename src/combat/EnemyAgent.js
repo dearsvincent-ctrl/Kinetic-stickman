@@ -164,11 +164,18 @@ export class EnemyAgent {
         walkSpeed: Math.min(8000, p.runSpeed * (2.1 / 3.6) * settings.speed),
         sprintSpeed: this.runSpeed,
         movementConfig: {
+          abilities: {
+            airAcceleration: p.aerialControl,
+            airBraking: p.aerialControl,
+            wallTraversal: 1,
+            wallJump: 1,
+          },
           analogue: {
             accelerationResponse: p.acceleration * settings.acceleration,
             decelerationResponse: p.deceleration * settings.acceleration,
           },
           jump: {
+            airSpeedLimit: 5.2 * p.aerialControl,
             height: p.jumpHeight,
             maxJumps: p.maxJumps,
             gravity: 18,
@@ -189,6 +196,7 @@ export class EnemyAgent {
       this.controller.parkour ??= new ParkourState(this.world);
       this.controller.parkour.config = Object.freeze({
         ...this.controller.parkour.config,
+        wallSpeed: p.climbSpeed * (5.2 / 3.6),
         climbSpeed: p.climbSpeed,
         descentSpeed: Math.max(3, p.climbSpeed * 0.8),
       });

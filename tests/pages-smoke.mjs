@@ -19,6 +19,7 @@ import { checkEnemyAbilities } from "./enemy-abilities-browser.mjs";
 import { checkSliderLocks } from "./slider-locks-browser.mjs";
 import { checkCamera } from "./camera-browser.mjs";
 import { checkV087Polish } from "./v087-polish-browser.mjs";
+import { checkMovementAbilities } from "./v089-browser.mjs";
 import { resolvePagesBase } from "../build/pagesBase.js";
 
 // Exercise the production bundle with Pages-style routing. Serving ONLY under
@@ -95,6 +96,7 @@ try {
       await run.page.evaluate(() => typeof window.__KINETIC__),
       "undefined",
     );
+    await checkMovementAbilities(run.page, run.native);
     await checkParkour(run.page, run.native);
     await checkAnimationFluidity(run.page, run.native);
     await checkGameplay(run.page, run.native);

@@ -1,3 +1,7 @@
+import { agilityResponse } from "./MovementAbilities.js";
+import { MOVEMENT_DEFAULTS } from "./MovementConfig.js";
+import { createAnalogueProfile } from "./AnalogueLocomotion.js";
+const AIR_PROFILE = createAnalogueProfile(MOVEMENT_DEFAULTS.locomotion);
 import { Vector3 } from "three";
 import {
   intendedJumpFacing,
@@ -47,6 +51,7 @@ export class CharacterController {
     this.previous = new Vector3();
     this.next = new Vector3();
     this.dashDirection = new Vector3();
+    this.airDelta = new Vector3();
     this.groundDash = new DashState(this.config.groundDash);
     this.groundDash.mode = "ground";
     this.airDash = new DashState(this.config.aerialDash);
@@ -163,7 +168,9 @@ export class CharacterController {
       Number.isFinite(motionDriver?.velocity?.x) &&
       Number.isFinite(motionDriver?.velocity?.z) &&
       Number.isFinite(motionDriver?.heading) &&
-      !this.jumpRequested && !this.dashRequested && !this.dash.active &&
+      !this.jumpRequested &&
+      !this.dashRequested &&
+      !this.dash.active &&
       !this.parkour?.attached
         ? motionDriver
         : null;
@@ -171,10 +178,16 @@ export class CharacterController {
     const y = input.move.y;
     const magnitude = Math.min(1, Math.hypot(x, y));
     const extension = input.movementMagnitude ?? magnitude;
+    this.airMaximum = speedForMagnitude(extension, AIR_PROFILE);
     // Optional AI velocity intent; human analogue input follows its original path.
     const maximum = Number.isFinite(input.locomotionSpeed)
       ? Math.max(0, Math.min(this.sprintSpeed, input.locomotionSpeed))
       : speedForMagnitude(extension, this.config.analogue);
+    if (Number.isFinite(input.locomotionSpeed))
+      this.airMaximum = Math.min(
+        maximum,
+        this.jump.config.airSpeedLimit ?? maximum,
+      );
     const sin = Math.sin(cameraYaw),
       cos = Math.cos(cameraYaw);
     // Forward points away from the camera; right is screen-right on the floor.
@@ -219,7 +232,7 @@ export class CharacterController {
           Math.max(0, this.velocity.dot(this.dashDirection)),
           airborne
             ? Math.max(
-                maximum,
+                this.airMaximum,
                 this.velocity.length(),
                 this.config.aerialDash.exitSpeed,
               )
@@ -418,18 +431,59 @@ export class CharacterController {
       this.updateDriven(dt);
       return;
     }
-    const response =
-      maximum > 0.01 ? this.jump.config.airControl : this.jump.config.airDrag;
-    const blend = dampFactor(response, dt);
-    // Integrate the exponential horizontal response analytically. A centred
-    // stick retains takeoff momentum instead of applying ground braking.
-    const contribution = response > 0 ? blend / response : dt;
-    this.displacement
+    const abilities = this.config.abilities;
+    const speed = this.velocity.length();
+    const hasIntent = maximum > 0.01;
+    const target = this.dashDirection.copy(this.desired);
+    const dot =
+      speed > 1e-6 && target.lengthSq() > 1e-8
+        ? this.velocity.dot(target) / (speed * target.length())
+        : 1;
+    // Ground speed never supplies airborne propulsion. Preserve inherited
+    // momentum while steering; opposite input deliberately brakes it.
+    const airLimit =
+      (this.airMaximum ?? maximum) * Math.sqrt(abilities.airAcceleration);
+    if (hasIntent && target.lengthSq() > 1e-8)
+      target.setLength(speed > airLimit && dot >= 0 ? speed : airLimit);
+    const response = hasIntent
+      ? dot > 0.999
+        ? 3.5
+        : this.jump.config.airControl
+      : this.jump.config.airDrag * abilities.airBraking;
+    const acceleration =
+      (!hasIntent || dot < 0
+        ? 24 * abilities.airBraking
+        : 24 *
+          abilities.airAcceleration *
+          (dot > 0.999 ? 1 : this.jump.config.airControl / 3.5)) *
+      agilityResponse(abilities.agility);
+    const delta = this.airDelta.subVectors(target, this.velocity);
+    const distance = delta.length();
+    // Exact bounded first-order integration: constant acceleration until the
+    // error is small enough for an exponential tail. No frame-size clamp.
+    const linear =
+      response > 0 && acceleration > 0
+        ? Math.min(
+            dt,
+            Math.max(0, (distance - acceleration / response) / acceleration),
+          )
+        : 0;
+    this.displacement.copy(this.velocity).multiplyScalar(linear);
+    if (distance > 1e-12 && linear > 0) {
+      delta.multiplyScalar(acceleration / distance);
+      this.displacement.addScaledVector(delta, 0.5 * linear * linear);
+      this.velocity.addScaledVector(delta, linear);
+    }
+    const rest = dt - linear;
+    const blend = dampFactor(response, rest);
+    const contribution = response > 0 ? blend / response : rest;
+    delta
       .copy(this.velocity)
-      .sub(this.desired)
+      .sub(target)
       .multiplyScalar(contribution)
-      .addScaledVector(this.desired, dt);
-    this.velocity.lerp(this.desired, blend);
+      .addScaledVector(target, rest);
+    this.displacement.add(delta);
+    this.velocity.lerp(target, blend);
     this.move(dt);
   }
 
@@ -442,8 +496,14 @@ export class CharacterController {
       this.desired,
       dampFactor(
         maximum > 0.01
-          ? this.config.analogue.accelerationResponse
-          : this.config.analogue.decelerationResponse,
+          ? this.config.analogue.accelerationResponse *
+              this.config.abilities.groundAcceleration *
+              agilityResponse(this.config.abilities.agility)
+          : this.config.analogue.decelerationResponse *
+              agilityResponse(this.config.abilities.agility) *
+              (this.jump.phase === "landing"
+                ? Math.sqrt(this.config.abilities.landingStability)
+                : 1),
         dt,
       ),
     );
@@ -454,7 +514,11 @@ export class CharacterController {
   }
 
   updateDriven(dt) {
-    this.velocity.set(this.motionDriver.velocity.x, 0, this.motionDriver.velocity.z);
+    this.velocity.set(
+      this.motionDriver.velocity.x,
+      0,
+      this.motionDriver.velocity.z,
+    );
     this.displacement.copy(this.velocity).multiplyScalar(dt);
     this.move(dt);
   }
@@ -465,9 +529,11 @@ export class CharacterController {
     this.world.move(this.previous, this.displacement, this.radius, this.next);
     // The flat world adapter resolves XZ collisions; JumpState owns elevation.
     this.next.y = this.previous.y;
-    if (this.motionDriver &&
-        Math.hypot(this.next.x - this.previous.x, this.next.z - this.previous.z) >
-          Math.hypot(this.displacement.x, this.displacement.z) + 1e-5) {
+    if (
+      this.motionDriver &&
+      Math.hypot(this.next.x - this.previous.x, this.next.z - this.previous.z) >
+        Math.hypot(this.displacement.x, this.displacement.z) + 1e-5
+    ) {
       // An adapter may recover an externally introduced overlap. A captured
       // approach must never turn that recovery into an unbudgeted teleport.
       this.next.copy(this.previous);
@@ -535,7 +601,7 @@ export class CharacterController {
       this.heading = dampAngle(
         this.heading,
         this.blockedInputHeading ?? Math.atan2(-actualX, -actualZ),
-        13,
+        13 * agilityResponse(this.config.abilities.agility),
         dt,
       );
       this.root.rotation.y = this.heading;

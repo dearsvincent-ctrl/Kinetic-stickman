@@ -1,3 +1,4 @@
+import { ABILITY_PARAMETERS } from "../movement/MovementAbilities.js";
 import { speedForMagnitude } from "../movement/AnalogueLocomotion.js";
 import {
   MOVEMENT_DEFAULTS,
@@ -9,7 +10,7 @@ export const SANDBOX_STORAGE_KEY = "kinetic.physics-sandbox.v1";
 // Numerical guardrails, not balance rules. Each multiplier is independent.
 export const PHYSICS_PARAMETERS = Object.freeze(
   [
-    ["movement", "Movement speed"],
+    ["movement", "Ground movement speed"],
     ["jumpHeight", "Jump height"],
     ["groundSpeed", "Ground dash speed"],
     ["groundDistance", "Ground dash distance"],
@@ -24,6 +25,7 @@ export const PHYSICS_PARAMETERS = Object.freeze(
 export const SANDBOX_PARAMETERS = Object.freeze([
   ...PHYSICS_PARAMETERS,
   ...COMBAT_STRENGTH_PARAMETERS,
+  ...ABILITY_PARAMETERS,
 ]);
 export const NORMAL_PHYSICS = Object.freeze(
   Object.fromEntries(SANDBOX_PARAMETERS.map(({ id }) => [id, 1])),
@@ -40,6 +42,38 @@ export const SANDBOX_PRESETS = Object.freeze({
     airDistance: 3,
     airControl: 3,
     gravity: 1,
+  }),
+  Balanced: NORMAL_PHYSICS,
+  Speedster: Object.freeze({
+    ...NORMAL_PHYSICS,
+    movement: 100,
+    airControl: 0.3,
+    airAcceleration: 0.3,
+    airBraking: 2,
+  }),
+  Acrobat: Object.freeze({
+    ...NORMAL_PHYSICS,
+    movement: 3,
+    jumpHeight: 3,
+    agility: 9,
+    airControl: 8,
+    airAcceleration: 8,
+    airBraking: 5,
+    wallTraversal: 5,
+    wallAdhesion: 5,
+    landingStability: 5,
+  }),
+  "Superhuman Leaper": Object.freeze({
+    ...NORMAL_PHYSICS,
+    movement: 5,
+    jumpHeight: 50,
+    agility: 9,
+    airControl: 10,
+    airAcceleration: 15,
+    airBraking: 10,
+    wallTraversal: 8,
+    wallJump: 8,
+    landingStability: 8,
   }),
   Extreme: Object.freeze({
     ...NORMAL_PHYSICS,
@@ -73,6 +107,7 @@ export function sandboxMovementConfig(values) {
     d = MOVEMENT_DEFAULTS;
   return resolveMovementConfig({
     movementConfig: {
+      abilities: v,
       locomotion: Object.fromEntries(
         Object.entries(d.locomotion).map(([key, n]) => [key, n * v.movement]),
       ),
@@ -83,7 +118,7 @@ export function sandboxMovementConfig(values) {
       aerialDash: {
         speed: d.aerialDash.speed * v.airSpeed,
         distance: d.aerialDash.distance * v.airDistance,
-        exitSpeed: d.aerialDash.exitSpeed * v.movement,
+        exitSpeed: d.aerialDash.exitSpeed,
       },
       jump: {
         height: d.jump.height * v.jumpHeight,

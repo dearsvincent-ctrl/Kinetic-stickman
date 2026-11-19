@@ -42,7 +42,8 @@ export class MomentumRecovery {
   }
   update(dt, previousVelocity, movement, input, cameraYaw) {
     if (!Number.isFinite(dt) || dt <= 0) return;
-    this.elapsed += dt;
+    this.elapsed +=
+      dt * Math.min(2.5, Math.sqrt(movement.config?.abilities?.agility ?? 1));
     const c = this.config,
       x = input.move.x,
       y = input.move.y,

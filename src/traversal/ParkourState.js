@@ -1,3 +1,4 @@
+import { agilityResponse } from "../movement/MovementAbilities.js";
 import { Vector3 } from "three";
 import { dampAngle } from "../core/math.js";
 export const PARKOUR_DEFAULTS = Object.freeze({
@@ -5,6 +6,7 @@ export const PARKOUR_DEFAULTS = Object.freeze({
   minIntent: 0.23,
   approachDot: 0.4,
   climbSpeed: 3.6,
+  wallSpeed: 5.2,
   descentSpeed: 3,
   response: 18,
   wallJumpOut: 5,
@@ -125,16 +127,26 @@ export class ParkourState {
     const vertical = Math.max(
       0,
       c.jump.verticalVelocity,
-      Math.min(this.config.maxSpeed, approach),
+      // Impact speed is dissipated against the wall, never converted to lift.
     );
     this.velocity
       .copy(c.velocity)
       .addScaledVector(this.normal, -c.velocity.dot(this.normal));
-    this.velocity.y = vertical;
+    this.velocity.clampLength(
+      0,
+      Math.min(
+        this.config.maxSpeed,
+        this.config.wallSpeed * (c.config.abilities?.wallTraversal ?? 1),
+      ),
+    );
+    this.velocity.y = Math.min(
+      vertical,
+      this.config.climbSpeed * (c.config.abilities?.wallTraversal ?? 1),
+    );
     c.jump.phase = "airborne";
     c.jump.floorHeight = 0;
     c.jump.height = c.root.position.y;
-    c.jump.verticalVelocity = vertical;
+    c.jump.verticalVelocity = this.velocity.y;
     c.jump.jumpCount = Math.max(1, c.jump.jumpCount);
     c.jump.elapsed = 0;
     if (c.dash.active) c.dash.finish("parkour-contact");
@@ -189,7 +201,8 @@ export class ParkourState {
     this.direction.set(x * cos - y * sin, 0, -x * sin - y * cos);
     const inputLength = Math.min(1, this.direction.length());
     if (inputLength > 0) this.direction.normalize();
-    const outward = Math.max(this.config.wallJumpOut, c.sprintSpeed * 0.7);
+    const outward =
+      this.config.wallJumpOut * (c.config.abilities?.wallJump ?? 1);
     const tangent = this.direction.dot(this.tangent) * outward * inputLength;
     const polePerch = this.surface.kind === "pole" && this.mode === "perch";
     this.velocity.addScaledVector(
@@ -202,7 +215,10 @@ export class ParkourState {
         .copy(inputLength > 0.15 ? this.direction : this.normal)
         .multiplyScalar(outward);
     this.velocity.clampLength(0, this.config.maxSpeed);
-    this.velocity.y = c.jump.launchVelocity * this.config.jumpFactor;
+    this.velocity.y =
+      c.jump.launchVelocity *
+      this.config.jumpFactor *
+      Math.sqrt(c.config.abilities?.wallJump ?? 1);
     this.release(c, "wall-jump");
     c.jump.jumpCount = 1;
     c.jump.sequence++;
@@ -220,7 +236,21 @@ export class ParkourState {
     if (!this.attached) return false;
     let remaining = dt;
     while (remaining > 1e-9 && this.attached) {
-      const step = Math.min(remaining, 1 / 120);
+      const budgetStep = dt / 32;
+      const travelStep =
+        0.18 /
+        Math.max(
+          1,
+          this.velocity.length(),
+          Math.min(
+            this.config.maxSpeed,
+            this.config.wallSpeed * (c.config.abilities?.wallTraversal ?? 1),
+          ),
+        );
+      const step = Math.min(
+        remaining,
+        Math.max(budgetStep, Math.min(1 / 120, travelStep)),
+      );
       this.stepMoved = false;
       this.advance(step, c, magnitude);
       if (this.attached || this.stepMoved) remaining -= step;
@@ -271,13 +301,21 @@ export class ParkourState {
           s.kind === "pole" ? this.inputTangent : this.tangent,
         ) * magnitude;
     if (toward < -0.6 && magnitude > cfg.detachMagnitude) {
-      this.velocity.addScaledVector(this.normal, c.sprintSpeed * 0.4);
+      this.velocity.addScaledVector(
+        this.normal,
+        Math.min(2, cfg.wallJumpOut * 0.4),
+      );
       this.release(c, "away");
       return;
     }
     if (this.mode === "perch") {
       if (magnitude > 0.2 && toward < 0.6) {
-        this.velocity.copy(c.desired);
+        this.velocity
+          .copy(c.desired)
+          .clampLength(
+            0,
+            cfg.wallSpeed * (c.config.abilities?.wallTraversal ?? 1),
+          );
         this.release(c, "perch-step");
         return;
       }
@@ -286,13 +324,12 @@ export class ParkourState {
       c.speed = 0;
       return;
     }
-    const scale = Math.max(1, c.sprintSpeed / 5.2),
-      rise = Math.min(
-        cfg.maxSpeed,
-        Math.max(cfg.climbSpeed, c.sprintSpeed * 0.7),
-      );
+    const abilities = c.config.abilities;
+    const scale = abilities?.wallTraversal ?? 1,
+      wallSpeed = Math.min(cfg.maxSpeed, cfg.wallSpeed * scale),
+      rise = Math.min(cfg.maxSpeed, cfg.climbSpeed * scale);
     let vy = toward >= 0 ? toward * rise : toward * cfg.descentSpeed * scale;
-    let tangentSpeed = lateral * c.sprintSpeed;
+    let tangentSpeed = lateral * wallSpeed;
     if (this.mode === "ledge") {
       vy = clamp((this.hangHeight - p.y) * 12, -2, 2);
       tangentSpeed = lateral * Math.min(3 * scale, cfg.maxSpeed);
@@ -311,23 +348,11 @@ export class ParkourState {
           Math.abs(tangentSpeed) > Math.abs(vy) * 0.7 ? "wall-run" : "climb",
         );
       if (p.y >= s.top - cfg.hangDrop) {
-        if (this.velocity.y > cfg.mantleRise * 2) {
-          // A high-speed ascent runs through the crest rather than entering a
-          // near-stationary hand catch. Wait for foot clearance, then retain
-          // vertical momentum and push continuously toward the roof/air.
-          if (p.y >= s.top + 0.025) {
-            this.velocity.addScaledVector(
-              this.normal,
-              -Math.min(c.sprintSpeed, 40),
-            );
-            this.release(c, "crest-flight");
-            return;
-          }
-        } else {
-          this.hangHeight = p.y;
-          this.velocity.y = Math.min(this.velocity.y, cfg.mantleRise);
-          this.setMode(s.kind === "pole" ? "pole-mantle" : "ledge");
-        }
+        // Every ascent uses a collision-resolved crest transition. High wall
+        // speed does not silently turn contact into another ballistic jump.
+        this.hangHeight = p.y;
+        this.velocity.y = Math.min(this.velocity.y, cfg.mantleRise);
+        this.setMode(s.kind === "pole" ? "pole-mantle" : "ledge");
       }
     }
     const mounting =
@@ -394,7 +419,7 @@ export class ParkourState {
             this.normal,
             -Math.min(
               cfg.maxSpeed,
-              Math.max(cfg.mantleSpeed, c.sprintSpeed) * Math.max(0, toward),
+              Math.max(cfg.mantleSpeed, wallSpeed) * Math.max(0, toward),
             ),
           );
         if (s.kind === "box" && this.world.supportHeight(p, 0) >= s.top - EPS) {
@@ -418,8 +443,18 @@ export class ParkourState {
       }
     }
     this.goal.y = vy;
+    // Adhesion closes small gaps through the same swept movement query. It
+    // never snaps the actor or creates a vertical/outward impulse.
+    if (!mounting && this.sample.gap > 0)
+      this.goal.addScaledVector(
+        this.normal,
+        -Math.min(this.sample.gap / dt, 4 * (abilities?.wallAdhesion ?? 1)),
+      );
     this.velocity
-      .lerp(this.goal, 1 - Math.exp(-cfg.response * dt))
+      .lerp(
+        this.goal,
+        1 - Math.exp(-cfg.response * agilityResponse(abilities?.agility) * dt),
+      )
       .clampLength(0, cfg.maxSpeed);
     if (s.kind === "pole" && this.mode === "pole-climb") {
       const radius = Math.hypot(p.x - s.x, p.z - s.z),

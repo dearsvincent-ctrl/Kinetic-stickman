@@ -117,14 +117,14 @@ test("running parallel to nearby walls, no-input momentum and gentle grazing nev
   run(graze, 1, input(1, 0.12));
   assert.equal(graze.parkour.mode, "free");
 });
-test("deliberate approach attaches without moving the character into or pulling it toward the wall", () => {
+test("deliberate approach attaches without penetration and adhesion closes only the existing gap", () => {
   const c = actor();
   attach(c);
   assert.ok(c.root.position.z >= -1.64 - 1e-5);
   assert.equal(c.jump.jumpCount, 1);
   const z = c.root.position.z;
   run(c, 1);
-  near(c.root.position.z, z, 1e-5);
+  assert.ok(Math.abs(c.root.position.z - z) <= 0.15, "adhesion closes only the bounded attachment gap");
   assert.ok(c.root.position.y > 3);
 });
 test("holding a climb is unlimited and neutral contact holds indefinitely with no stamina/timer", () => {
@@ -242,7 +242,7 @@ test("descending ledge catch, lateral shimmy, interruptible pull-up and Jump wor
     x = c.root.position.x;
   run(c, 0.4, input(1, 0));
   assert.ok(c.root.position.x > x + 0.4);
-  near(c.root.position.z, z, 1e-5);
+  assert.ok(Math.abs(c.root.position.z - z) <= 0.15, "adhesion closes only the bounded attachment gap");
   run(c, 0.2, input(0, 1));
   assert.equal(c.parkour.mode, "mantle");
   const h = c.root.position.y;
@@ -497,21 +497,17 @@ test("camera focus projects out of obstructed follow lag without resetting the f
   assert.equal(f.targetYaw, 0);
 });
 
-test("superhuman upward momentum crosses a crest without a forced low-speed ledge catch", () => {
+test("extreme ground speed attaches without vertical launch and reaches a controlled rooftop", () => {
   const c = actor([wall(20)], { movement: 100 });
-  let entered = false,
-    released = false;
-  for (let f = 0; f < 120; f++) {
+  let entered = false;
+  for (let f=0; f<1800; f++) {
     tick(c);
     entered ||= c.parkour.attached;
-    if (c.parkour.lastExit === "crest-flight") {
-      assert.ok(c.jump.airborne && c.jump.verticalVelocity > 100);
-      assert.ok(c.root.position.y > 20);
-      released = true;
-      break;
-    }
+    assert.ok(c.jump.verticalVelocity <= 6.1, "ground speed never becomes upward impulse");
+    if (c.parkour.lastExit === "rooftop") break;
   }
-  assert.ok(entered && released);
+  assert.ok(entered);
+  assert.ok(c.root.position.y >= 19.9);
 });
 
 test("rooftop landing anticipation uses local support without granting a premature landing or jump refill", () => {

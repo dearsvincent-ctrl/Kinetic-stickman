@@ -667,7 +667,7 @@ export async function checkSpeedEffects(page, native) {
 export async function checkV087Polish(page, native) {
   await page.setViewportSize({ width: 844, height: 390 });
   await fresh(page, { practice: true });
-  assert.equal(await page.locator(".version b").textContent(), "0.8.8");
+  assert.equal(await page.locator(".version b").textContent(), "0.8.9");
   const independent = await unrelated(page);
   await checkSettings(page, native);
   console.log("PASS: v0.8.8 polish settings locks, native panning/multitouch and independent ordinary-play persistence");

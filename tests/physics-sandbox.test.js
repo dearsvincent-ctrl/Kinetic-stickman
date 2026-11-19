@@ -56,7 +56,7 @@ test("Normal sandbox resolves the exact original movement profiles", () => {
     resolveMovementConfig(),
   );
   assert.equal(PHYSICS_PARAMETERS.length, 8);
-  assert.equal(SANDBOX_PARAMETERS.length, 10);
+  assert.equal(SANDBOX_PARAMETERS.length, 18);
   for (const values of Object.values(SANDBOX_PRESETS))
     assert.deepEqual(sanitizePhysics(values), values);
 });

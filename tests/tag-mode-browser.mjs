@@ -386,11 +386,27 @@ export async function checkTagMode(page, native) {
     await page.locator("#block-button").getAttribute("aria-pressed"),
     "true",
   );
+  const beforeKick = Number(
+    await page.locator("#stance-label").getAttribute("data-sequence"),
+  );
   await relocated.enter("kick");
-  await advance(page, 110);
+  // Block cancels into the existing short recovery; the HUD samples at 80ms.
+  // Verify a single accepted held entry after recovery, not a stale Punch row.
+  for (let elapsed = 0; elapsed < 280; elapsed += 20) {
+    await advance(page, 20);
+    if (
+      (await page.locator("#stance-label").getAttribute("data-action")) ===
+      "kick"
+    )
+      break;
+  }
   assert.equal(
     await page.locator("#stance-label").getAttribute("data-action"),
     "kick",
+  );
+  assert.equal(
+    Number(await page.locator("#stance-label").getAttribute("data-sequence")),
+    beforeKick + 1,
   );
   assert.equal(
     await page.locator("#block-button").getAttribute("aria-pressed"),

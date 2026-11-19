@@ -52,6 +52,18 @@ export class PhysicsSandboxPanel {
       "Player strikes only · damage and impact are independent. 0× disables that effect; 1× preserves the original. Included in physics Save/Load and Reset.";
     strengthFields.append(legend, note);
     fields.after(strengthFields);
+    const advanced = document.createElement("details");
+    advanced.id = "movement-abilities";
+    const summary = document.createElement("summary");
+    summary.textContent = "Movement Abilities / Advanced Parkour";
+    const abilityFields = document.createElement("fieldset");
+    const abilityNote = document.createElement("p");
+    abilityNote.className = "physics-note";
+    abilityNote.textContent =
+      "Ground movement speed, Jump height and Air steering above remain independent. These controls share physics Save/Load. Ground speed does not boost air propulsion or wall launches. Agility changes response, not speed. Profiles below are editable test presets.";
+    abilityFields.append(abilityNote);
+    advanced.append(summary, abilityFields);
+    strengthFields.after(advanced);
     for (const parameter of SANDBOX_PARAMETERS) {
       const row = document.createElement("label");
       row.className = "physics-row";
@@ -71,7 +83,12 @@ export class PhysicsSandboxPanel {
       slider.setAttribute("aria-label", parameter.label);
       output.htmlFor = slider.id;
       row.append(label, output, slider);
-      (parameter.group === "combat" ? strengthFields : fields).appendChild(row);
+      (parameter.group === "abilities"
+        ? abilityFields
+        : parameter.group === "combat"
+          ? strengthFields
+          : fields
+      ).appendChild(row);
       this.rows.set(parameter.id, { output, slider, parameter });
       slider.addEventListener("input", () => {
         const raw = parameter.log

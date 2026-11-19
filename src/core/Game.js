@@ -50,7 +50,7 @@ import { PhysicsSandboxPanel } from "../ui/PhysicsSandboxPanel.js";
 import {
   movementSubsteps,
   sandboxMovementConfig,
-  PHYSICS_PARAMETERS,
+  SANDBOX_PARAMETERS,
 } from "../sandbox/PhysicsSandbox.js";
 import { ControlLayoutEditor } from "../ui/ControlLayoutEditor.js";
 
@@ -269,8 +269,8 @@ export class Game {
         this.battle.configureStrength(values);
         // Keep the normal camera angle and user orbit. Bound follow lag only in
         // the explicit sandbox, so a fast launch cannot outrun the view.
-        this.sandboxModified = PHYSICS_PARAMETERS.some(
-          ({ id }) => values[id] !== 1,
+        this.sandboxModified = SANDBOX_PARAMETERS.some(
+          ({ id, group }) => group !== "combat" && values[id] !== 1,
         );
         this.followCamera.maxLag = this.sandboxModified ? 0.65 : Infinity;
       },

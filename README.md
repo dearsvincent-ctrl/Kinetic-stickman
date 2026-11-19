@@ -1,10 +1,25 @@
-# Kinetic — Movement Lab v0.8.8
+# Kinetic — Movement Lab v0.8.9
 
-A mobile-first Three.js/Vite stickman prototype. Version 0.8.8 adds attack-driven freeflow approaches, directional target switching, ground/aerial combinations and bicycle kicks. Sonic barriers now create layered expanding pressure fronts, radial dust, speed streaks and brief camera impact. Combat-only near misses and direct high-speed collisions stagger or displace enemies without adding contact damage. **Manual, Assisted and Dynamic camera modes**, optional dynamic field of view and independently saved Combat/Tag camera profiles remain available. The default retains the existing 52° manual view. Configurable Standard/Acrobat/Leaper/Heavy enemies, ability-aware traversal and individual developer slider locks remain available. **Tag Mode** retains fleeing AI, swept contact tags, counters and delayed respawning. **Combat Mode** retains pursuit, manual Punch/Kick, health, damage, waves, aim assistance and strength tuning. The 2,000 × 2,000 city/jungle playground, player parkour, directional double jumps, analogue locomotion and custom mobile HUD remain available in both modes. Enemy route planning is local and bounded.
+A mobile-first Three.js/Vite stickman prototype. Version 0.8.9 separates ground speed, air acceleration/braking, agility and supported wall movement, eliminating speed-driven wall launches. It preserves attack-driven freeflow approaches, directional target switching, ground/aerial combinations and bicycle kicks. Sonic barriers now create layered expanding pressure fronts, radial dust, speed streaks and brief camera impact. Combat-only near misses and direct high-speed collisions stagger or displace enemies without adding contact damage. **Manual, Assisted and Dynamic camera modes**, optional dynamic field of view and independently saved Combat/Tag camera profiles remain available. The default retains the existing 52° manual view. Configurable Standard/Acrobat/Leaper/Heavy enemies, ability-aware traversal and individual developer slider locks remain available. **Tag Mode** retains fleeing AI, swept contact tags, counters and delayed respawning. **Combat Mode** retains pursuit, manual Punch/Kick, health, damage, waves, aim assistance and strength tuning. The 2,000 × 2,000 city/jungle playground, player parkour, directional double jumps, analogue locomotion and custom mobile HUD remain available in both modes. Enemy route planning is local and bounded.
+
+## Movement abilities and controlled parkour (v0.8.9)
+
+Ground speed no longer supplies airborne propulsion, vertical wall-contact velocity, climb speed, wall-jump impulse or automatic outward detachment force. Surface contact dissipates the incoming normal component and retains a bounded tangent component. Roofs use continuous ledge/mantle transitions instead of automatic high-speed crest launches. Jump strength and gravity still determine the two equal vertical launches.
+
+In **DEV → Movement Abilities / Advanced Parkour**, tune Ground acceleration, Agility, Air acceleration, Air braking, Wall adhesion, Wall traversal speed, Wall-jump impulse and Landing stability. Reuse **Movement speed**, **Jump height** and **Air steering / control** above; there are no duplicate sliders. Every slider has an individual lock. These multipliers are included in physics Save/Load/Reset under the existing version-1 key; old saves keep their original values and default new fields to 1×.
+
+Air steering changes directional response, while acceleration and braking bound velocity changes in metres/second². Inherited speed is never clamped at takeoff. Additional propulsion is limited relative to baseline aerial speed and the acceleration ability, independently of running speed; steering cannot grow that inherited speed indefinitely. Neutral input uses drag with separately configurable braking. Agility uses a bounded square-root response curve for steering, recovery and parkour transitions; it does not multiply jump height or gravity. Ground acceleration tunes the ground velocity-response rate. Landing stability tunes braking during physical landing without locking controls.
+
+Wall traversal scales supported climb/descent/tangent speeds. Wall adhesion closes only the existing small attachment gap through swept movement. Wall-jump strength affects only explicit Jump launches; detachment and rooftop transitions do not borrow running speed. Enemy traversal retains its own profile's climb and wall-running speed, independent of player sandbox values.
+
+Editable development presets: **Balanced** retains normal movement; **Speedster** selects 100× running with modest jumps and limited air redirection; **Acrobat** raises agility, air control and wall traversal; **Superhuman Leaper** combines 50× jump height with strong deliberate aerial control. They are tuning examples, not character classes. Existing Normal/Enhanced/Extreme presets remain available.
+
+Root causes fixed: wall impact speed was copied into vertical velocity; climb, descent, tangent, wall-jump and detach velocities read sprint speed; the air controller chased the ground-speed target with exponential acceleration proportional to velocity error; aerial-dash exit tuning also inherited the ground-speed multiplier. Swept world collision remains authoritative. Parkour uses bounded adaptive surface steps, and air acceleration uses an analytic linear-to-exponential integration to avoid frame-rate-dependent impulse accumulation. Freeflow remains a separate attack-driven motion owner.
+
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.8** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.8**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.8.9** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.8.9**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -27,9 +42,9 @@ Sliding between **Punch, Kick, Block and Jump** uses the same central action rou
 
 **Dash is removed from the normal HUD, keyboard bindings and layout editor.** Its physical ground/aerial implementations remain in the code for future movement abilities. Developer mode retains E and a **Test preserved dash** utility inside the physics panel, so its existing dash sliders remain testable on a phone. Dash still moves continuously, steers, collides, permits ground-dash-to-jump transitions and tracks its aerial allowance independently.
 
-## Freeflow and superhuman impact (v0.8.8)
+## Freeflow and superhuman impact (v0.8.9)
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.8**, tap **DEV**, then expand **Freeflow Combat**, **Superhuman Speed Effects** or **Animation Presentation**. Every range retains its own lock and vertical scrolling. Preferences save independently and load in ordinary play. Reset affects only its section; camera, physics, enemy, aim and HUD settings remain separate.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.9**, tap **DEV**, then expand **Freeflow Combat**, **Superhuman Speed Effects** or **Animation Presentation**. Every range retains its own lock and vertical scrolling. Preferences save independently and load in ordinary play. Reset affects only its section; camera, physics, enemy, aim and HUD settings remain separate.
 
 Freeflow defaults to a **14 m** ground acquisition radius, **12 m** aerial radius, **18 m** maximum physical approach, **80 m/s** speed and **600 m/s²** acceleration. Range, budget, approach speed/acceleration, alignment, directional bias, switching responsiveness and aerial assistance are configurable. Aerial assistance adjusts vertical reach and lift; horizontal ground/air approaches share the speed and acceleration controls. These are movement assists, not larger hitboxes. The controller retains continuous world/body collision, jump counts and gravity. An unreachable target is rejected, and failed approaches cancel rather than hitting through geometry. Disabling Freeflow restores manual movement and aim assistance; v0.8.7 magnetism saves remain untouched but are superseded by the independent `kinetic.freeflow.v1` settings.
 
@@ -56,7 +71,7 @@ Animation asset research remains in [docs/ANIMATION_ASSETS.md](docs/ANIMATION_AS
 
 ## Camera profiles and assistance (v0.8.6)
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.8**, tap **DEV**, then expand **Camera Settings**. Choose the Combat or Tag profile to edit; changing that selector displays its saved controls without changing the gameplay mode. The top-left MODE selector applies the matching camera profile and updates the editor. Changes apply live to the active gameplay profile and save automatically on this browser. Camera preferences also reload in ordinary play, where the developer editor stays hidden.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.9**, tap **DEV**, then expand **Camera Settings**. Choose the Combat or Tag profile to edit; changing that selector displays its saved controls without changing the gameplay mode. The top-left MODE selector applies the matching camera profile and updates the editor. Changes apply live to the active gameplay profile and save automatically on this browser. Camera preferences also reload in ordinary play, where the developer editor stays hidden.
 
 **Manual** retains direct orbit control and the existing low-angle view: 52° base FOV, 4.8 m follow distance and 0.23-radian pitch. **Assisted** subtly reframes relevant visible actors; **Dynamic** allows a wider correction. Both stay within bounded angles around the manually chosen view, reject actors behind that view and hold a context briefly to reduce rapid switching. Solid structures block context selection. Dragging the right side always gives manual camera control; assistance waits for the configured override delay after the drag ends, then resumes gradually. Dynamic FOV is a separate checkbox, off by default, that responds to smoothed three-dimensional movement speed in any camera mode. Its maximum is always at least the base FOV. Reset View remains available.
 
@@ -78,7 +93,7 @@ For the Android playtest, first check the unchanged Manual default. Compare Assi
 
 ## Enemy profiles and selection (v0.8.5)
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.8**, tap **DEV**, then expand **Enemy Settings** for the Combat roster or **Tag Mode** for the fleeing roster. The two rosters are independent. Ordinary waves and Tag population controls remain the default: **Use custom archetype group** starts off. Enable it, choose the types and set their counts to make a mixed group or a single-type encounter. Editing a type/count also enables its custom group. Uncheck the custom-group option to return to the original controls.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.9**, tap **DEV**, then expand **Enemy Settings** for the Combat roster or **Tag Mode** for the fleeing roster. The two rosters are independent. Ordinary waves and Tag population controls remain the default: **Use custom archetype group** starts off. Enable it, choose the types and set their counts to make a mixed group or a single-type encounter. Editing a type/count also enables its custom group. Uncheck the custom-group option to return to the original controls.
 
 | Archetype | Base running speed | Jump height / allowance | Distinct abilities                                                                   |
 | --------- | ------------------ | ----------------------- | ------------------------------------------------------------------------------------ |
@@ -138,7 +153,7 @@ The fixed city contains 20 blocks of varied size/height, towers up to **320 unit
 
 All **141 new structures** share their exact dimensions with solid collision/parkour surfaces; the existing nine test structures are retained. Static instances are grouped in spatial chunks with shared primitive geometry/materials and frustum culling. Scenery has no update loop or expensive extra shadow maps. A shared static spatial index bounds collision, support, camera and surface queries; continuous box/cylinder sweeps still cover high-speed motion. Standard enemies commit to local ground routes around obstacles; capable v0.8.5 profiles can use supported vertical routes. None of the profiles solve arbitrary city-wide multi-obstacle mazes. Open approaches/plazas remain useful for high-speed combat and pursuit.
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.8**, tap **DEV**, and scroll to **Superhuman strength**:
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.9**, tap **DEV**, and scroll to **Superhuman strength**:
 
 | Control            | Default | Range  | Applies to                                       |
 | ------------------ | ------- | ------ | ------------------------------------------------ |
@@ -161,7 +176,7 @@ For the Android playtest: try all four directions plus neutral, redirect travel 
 
 ## Enemy pursuit settings (v0.8.2)
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.8**, tap **DEV**, then expand **Enemy Settings**. Ordinary play ignores saved developer enemy settings. No gameplay buttons or saved control positions change.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.9**, tap **DEV**, then expand **Enemy Settings**. Ordinary play ignores saved developer enemy settings. No gameplay buttons or saved control positions change.
 
 | Control                | Default                      | Experimental bounds                            |
 | ---------------------- | ---------------------------- | ---------------------------------------------- |
@@ -316,7 +331,7 @@ Positions are normalized to the playable viewport and saved under `kinetic.contr
 
 ## Developer physics sandbox
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.8** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?sandbox=1&v=0.8.9** and tap **DEV**. The panel is opt-in, collapsible and scrollable; it does not pause gameplay. Other fingers retain joystick/action/camera ownership while a slider is adjusted. Normal play ignores saved developer multipliers. This tool is separate from any future progression system.
 
 The original eight sliders still support **0.1×–100×**, with precise stops near 1×, 10×, 20×, 50× and 100×:
 
@@ -392,7 +407,7 @@ GITHUB_REPOSITORY=dearsvincent-ctrl/Kinetic-stickman npm run test:pages
 
 For a normal local build use `npm run build` and `npm run preview`. For a Pages-specific preview use the same `GITHUB_PAGES`/`GITHUB_REPOSITORY` variables with `npm run preview`, then open `http://localhost:4173/Kinetic-stickman/`.
 
-The v0.8.8 tests additionally cover 6–12 m attack-driven approaches, extreme incoming velocity, directional switching, swept world rejection, input cancellation, inverted/aerial contact, bicycle-kick geometry, approach contact-time gating, pressure-front expansion, camera recovery and mode-aware speed impulses. Existing regressions cover actual rendered hand/ankle agreement with the active contact sampler, natural bone lengths and knee planes, chamber/rechamber continuity, full spinning/support-foot turns, interrupted strikes at 100× speed, manual combo branches and exact held-recovery timing. They also cover fixed effect pools, ground-only dust, sonic crossing/rearming, independent preferences, optional approach budgets and collision/Block/Tag gates. Native browser checks exercise both finger orders (action first or joystick first), slide transitions, moving/aerial combinations, live-enemy approach and physical Kick contact, all new slider locks and safe vertical scrolling. Profile screenshots show chamber, extension and recovery; they are visual evidence, while the separate rig/contact tests verify collision alignment.
+The v0.8.9 tests additionally cover 6–12 m attack-driven approaches, extreme incoming velocity, directional switching, swept world rejection, input cancellation, inverted/aerial contact, bicycle-kick geometry, approach contact-time gating, pressure-front expansion, camera recovery and mode-aware speed impulses. Existing regressions cover actual rendered hand/ankle agreement with the active contact sampler, natural bone lengths and knee planes, chamber/rechamber continuity, full spinning/support-foot turns, interrupted strikes at 100× speed, manual combo branches and exact held-recovery timing. They also cover fixed effect pools, ground-only dust, sonic crossing/rearming, independent preferences, optional approach budgets and collision/Block/Tag gates. Native browser checks exercise both finger orders (action first or joystick first), slide transitions, moving/aerial combinations, live-enemy approach and physical Kick contact, all new slider locks and safe vertical scrolling. Profile screenshots show chamber, extension and recovery; they are visual evidence, while the separate rig/contact tests verify collision alignment.
 
 The v0.8.6 camera tests cover exact defaults and bounds, independent Combat/Tag persistence, invalid or unavailable storage, actual projection changes, nonlinear velocity-driven FOV and recovery, target scoring and persistence, awareness independent of AI, held manual override, bounded vertical framing, wide-lens obstruction clearance, stable collision recovery and actual collision-resolved Game integration. Production browser checks exercise individual locks and native touch scrolling, simultaneous joystick input, both mode profiles, refresh/reset, speed/vertical FOV response and manual takeover of live enemy framing.
 

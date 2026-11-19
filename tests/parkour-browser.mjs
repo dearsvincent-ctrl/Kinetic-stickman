@@ -53,7 +53,7 @@ async function fresh(page, url) {
   await advance(page, 450);
   await page.evaluate(() => document.activeElement?.blur());
 }
-async function navigateX(page, s, destination) {
+export async function navigateX(page, s, destination) {
   await movement(page, 3);
   await s.move(1, 0);
   await until(page, (a) => a.position[0] >= destination - 1.8, 7000);

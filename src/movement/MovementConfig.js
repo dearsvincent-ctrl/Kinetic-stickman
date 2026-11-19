@@ -1,3 +1,4 @@
+import { resolveAbilities } from "./MovementAbilities.js";
 import { DASH_CONFIG } from "./DashState.js";
 import { JUMP_CONFIG } from "./JumpState.js";
 import {
@@ -76,6 +77,7 @@ export function resolveMovementConfig(options = {}) {
   if (!Number.isInteger(maxAerialDashes) || maxAerialDashes < 0)
     throw new RangeError("maxAerialDashes must be a nonnegative integer");
   return Object.freeze({
+    abilities: resolveAbilities(config.abilities),
     locomotion: Object.freeze(locomotion),
     analogue: createAnalogueProfile(locomotion, config.analogue),
     groundDash: dashProfile(
