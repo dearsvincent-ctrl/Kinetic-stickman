@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -27,6 +28,7 @@ export const SPEED_EFFECT_LIMITS = Object.freeze({
 });
 const EMPTY_CONTEXT = Object.freeze({});
 const TAU = Math.PI * 2;
+const BOOM_FOLLOW_TIME = 0.12;
 const finite = (n, fallback = 0) => (Number.isFinite(n) ? n : fallback);
 const bound = (n, fallback = 0) =>
   Math.max(-1e7, Math.min(1e7, finite(n, fallback)));
@@ -48,6 +50,17 @@ export class SpeedEffects {
     this._up = new Vector3(0, 1, 0);
     this._frameUp = new Vector3(0, 1, 0);
     this._color = new Color();
+    this._actorPosition = new Vector3();
+    // Consumers compare sequence after update(); neither the event nor either
+    // vector is replaced, including across reset. Positions are body-centred.
+    this.lastBoom = {
+      sequence: 0,
+      position: new Vector3(),
+      velocity: new Vector3(),
+      speed: 0,
+      radius: 0,
+      intensity: 0,
+    };
     this._disposed = false;
 
     this.dustPositions = new Float32Array(SPEED_EFFECT_LIMITS.dust * 3);
@@ -114,45 +127,104 @@ export class SpeedEffects {
       floor: 0,
       size: 0,
       opacity: 0,
+      radial: false,
     }));
 
-    // Ring planes face travel direction; a shallow ellipsoid supplies a faint
-    // pressure shell. These meshes remain at their crossing's world position.
-    this.ringGeometry = new RingGeometry(0.955, 1, 56);
-    this.shellGeometry = new SphereGeometry(1, 18, 10);
+    // A body-centred pressure front, with nested broad bands and curved shells.
+    // It follows the runner for 120ms, then expands at its release position.
+    // Every mesh/material is pooled; no texture or per-burst geometry is used.
+    this.ringGeometry = new RingGeometry(0.905, 1, 64);
+    this.shellGeometry = new SphereGeometry(1, 24, 14);
     this.rings = Array.from({ length: SPEED_EFFECT_LIMITS.rings }, () => {
       const mesh = new Group();
-      const ring = new Mesh(
-        this.ringGeometry,
-        new MeshBasicMaterial({
-          color: 0xc4e7e8,
+      mesh.name = "sonicPressureFront";
+      const bands = Array.from({ length: 3 }, (_, i) => {
+        const band = new Mesh(this.ringGeometry, new MeshBasicMaterial({
+          color: i === 0 ? 0xe3ffff : 0x9ddde7,
           transparent: true,
           opacity: 0,
           depthWrite: false,
           side: DoubleSide,
-        }),
-      );
-      const shell = new Mesh(
-        this.shellGeometry,
-        new MeshBasicMaterial({
-          color: 0x9dcdd1,
+          blending: AdditiveBlending,
+        }));
+        const size = 1 - i * 0.135;
+        band.scale.set(size, size, 1);
+        band.position.z = i * -0.1;
+        return band;
+      });
+      const shells = Array.from({ length: 2 }, (_, i) => {
+        const shell = new Mesh(this.shellGeometry, new ShaderMaterial({
           transparent: true,
-          opacity: 0,
           depthWrite: false,
-        }),
-      );
-      shell.scale.set(1, 1, 0.16);
-      mesh.add(ring, shell);
+          side: DoubleSide,
+          blending: AdditiveBlending,
+          uniforms: {
+            tint: { value: new Color(i === 0 ? 0xa0e4f1 : 0xd4faff) },
+            alpha: { value: 0 },
+          },
+          vertexShader: `
+            varying vec3 viewNormal;
+            varying vec3 viewDirection;
+            void main() {
+              vec4 view = modelViewMatrix * vec4(position, 1.0);
+              viewNormal = normalize(normalMatrix * normal);
+              viewDirection = -view.xyz;
+              gl_Position = projectionMatrix * view;
+            }
+          `,
+          fragmentShader: `
+            uniform vec3 tint;
+            uniform float alpha;
+            varying vec3 viewNormal;
+            varying vec3 viewDirection;
+            void main() {
+              float rim = 1.0 - abs(dot(normalize(viewNormal), normalize(viewDirection)));
+              float a = alpha * (0.025 + 0.975 * pow(rim, 2.4));
+              if (a < 0.002) discard;
+              gl_FragColor = vec4(tint, a);
+              #include <tonemapping_fragment>
+              #include <colorspace_fragment>
+            }
+          `,
+        }));
+        shell.scale.set(1 - i * 0.13, 1 - i * 0.13, 0.42 + i * 0.18);
+        return shell;
+      });
+      const ground = new Mesh(this.ringGeometry, new MeshBasicMaterial({
+        color: 0xd6c8ac,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: DoubleSide,
+      }));
+      ground.name = "sonicGroundSweep";
+      ground.rotation.x = -Math.PI / 2;
+      ground.visible = false;
+      mesh.add(...bands, ...shells);
       mesh.visible = false;
-      this.group.add(mesh);
+      this.group.add(mesh, ground);
       return {
         mesh,
-        ring,
-        shell,
+        ring: bands[0],
+        shell: shells[0],
+        bands,
+        shells,
+        ground,
         active: false,
         age: 0,
         life: 0.72,
         strength: 1,
+        speed: 0,
+        radius: 0,
+        startRadius: 0,
+        currentRadius: 0,
+        following: false,
+        grounded: false,
+        floor: 0,
+        sequence: 0,
+        originX: 0,
+        originY: 0,
+        originZ: 0,
       };
     });
 
@@ -174,9 +246,10 @@ export class SpeedEffects {
       new MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
-        opacity: 0.28,
+        opacity: 0.42,
         depthWrite: false,
         side: DoubleSide,
+        blending: AdditiveBlending,
       }),
       SPEED_EFFECT_LIMITS.streaks,
     );
@@ -202,6 +275,16 @@ export class SpeedEffects {
       width: 0,
       length: 0,
       strength: 0,
+      radialX: 0,
+      radialY: 0,
+      radialZ: 0,
+      spread: 0,
+      travel: 0,
+      parent: 0,
+      sequence: 0,
+      followX: 0,
+      followY: 0,
+      followZ: 0,
     }));
 
     // This object is stable, frozen and directly serializable in debugState.
@@ -230,6 +313,12 @@ export class SpeedEffects {
       },
       get sonicArmed() {
         return effect._sonicArmed;
+      },
+      get boomSequence() {
+        return effect.lastBoom.sequence;
+      },
+      get shockwaveRadius() {
+        return effect._shockwaveRadius;
       },
     });
     this.reset();
@@ -285,6 +374,7 @@ export class SpeedEffects {
     const spread = 0.05 + this._random() * 0.28;
     const drift = (0.3 + this._random() * 0.9) * (0.55 + force * 0.25);
     p.active = true;
+    p.radial = radial;
     p.age = 0;
     p.life = 0.3 + this._random() * 0.28;
     p.x = x + Math.cos(angle) * spread;
@@ -304,6 +394,7 @@ export class SpeedEffects {
       (0.1 + force * 0.075) * this.settings.dustIntensity,
     );
     this._dustEmissions++;
+    return p;
   }
 
   _groundBurst(x, y, z, force, amount) {
@@ -313,19 +404,67 @@ export class SpeedEffects {
     for (let i = 0; i < count; i++) this._emitDust(x, y, z, 0, 0, force, true);
   }
 
+  _groundPressure(x, floor, z, radius, strength, speedScale) {
+    if (this.settings.dustIntensity <= 0 || this.settings.dustDensity <= 0)
+      return;
+    const count = Math.min(
+      36,
+      Math.ceil((16 + strength * 6) * this.settings.dustDensity),
+    );
+    // Angular strata keep a complete 360-degree skirt even at low density.
+    for (let i = 0; i < count; i++) {
+      const angle = ((i + this._random() * 0.35) / count) * TAU;
+      const dx = Math.cos(angle);
+      const dz = Math.sin(angle);
+      const start = radius * (0.6 + this._random() * 0.2);
+      const p = this._emitDust(x, floor, z, 0, 0, strength, true);
+      p.x = x + dx * start;
+      p.z = z + dz * start;
+      const push = (6 + this._random() * 5) * speedScale;
+      p.vx = dx * push;
+      p.vz = dz * push;
+      p.vy = 0.4 + this._random() * 0.7;
+      p.life = 0.5 + this._random() * 0.25;
+      p.size = (0.6 + this._random() * 0.6) * Math.min(2, speedScale);
+      p.opacity = Math.min(0.5, (0.22 + strength * 0.08) * this.settings.dustIntensity);
+    }
+  }
+
   _emitSonic(x, y, z, vx, vy, vz, floor, grounded) {
-    const strength = this.settings.sonicIntensity;
-    const r = this.rings[this._ringCursor];
+    const speed = Math.hypot(vx, vy, vz);
+    // Resolved world speed controls the scale, independently of the selected
+    // crossing threshold: turning a slider down cannot simulate faster travel.
+    const speedScale = Math.max(0.75, Math.min(2.5, Math.sqrt(speed / 40)));
+    const strength = this.settings.sonicIntensity * (0.7 + speedScale * 0.3);
+    const index = this._ringCursor;
+    const r = this.rings[index];
     this._ringCursor = (this._ringCursor + 1) % SPEED_EFFECT_LIMITS.rings;
     this._direction.set(vx, vy, vz).normalize();
     r.active = true;
     r.age = 0;
-    r.life = 0.66 + 0.08 * Math.min(2, strength);
+    r.life = 0.64 + 0.08 * speedScale + 0.04 * Math.min(3, strength);
     r.strength = strength;
-    r.mesh.position.set(x, y + 1, z).addScaledVector(this._direction, -0.3);
+    r.speed = speed;
+    r.radius = this.settings.shockwaveSize * speedScale;
+    r.startRadius = Math.min(r.radius * 0.8, Math.max(1.2, r.radius * 0.26));
+    r.following = true;
+    r.grounded = grounded;
+    r.floor = floor;
+    r.originX = x;
+    r.originY = y + 1;
+    r.originZ = z;
+    r.mesh.position.set(x, y + 1, z);
     r.mesh.quaternion.setFromUnitVectors(this._normal, this._direction);
     r.mesh.visible = true;
+    r.ground.position.set(x, floor + 0.055, z);
+    r.ground.visible = grounded;
     this._sonicBursts++;
+    r.sequence = ++this.lastBoom.sequence;
+    this.lastBoom.position.copy(r.mesh.position);
+    this.lastBoom.velocity.set(vx, vy, vz);
+    this.lastBoom.speed = speed;
+    this.lastBoom.radius = r.radius;
+    this.lastBoom.intensity = strength;
 
     // Build an orthonormal travel frame even for a vertical dash or freefall.
     this._side
@@ -344,12 +483,12 @@ export class SpeedEffects {
       this._streakCursor =
         (this._streakCursor + 1) % SPEED_EFFECT_LIMITS.streaks;
       const angle = (i / count) * TAU + this._random() * 0.3;
-      const radius = 0.55 + this._random() * 0.75;
+      const radius = r.startRadius * (0.65 + this._random() * 0.3);
       const side = Math.cos(angle) * radius;
       const up = Math.sin(angle) * radius;
       p.active = true;
       p.age = 0;
-      p.life = 0.2 + this._random() * 0.16;
+      p.life = 0.27 + this._random() * 0.17;
       p.x =
         x +
         this._side.x * side +
@@ -369,12 +508,20 @@ export class SpeedEffects {
       p.dx = this._direction.x;
       p.dy = this._direction.y;
       p.dz = this._direction.z;
-      p.width = 0.018 + strength * 0.013;
-      p.length = 1.2 + this._random() * 1.6 + Math.min(2, strength) * 0.5;
+      p.width = (0.05 + strength * 0.025) * speedScale;
+      p.length = (2 + this._random() * 2 + Math.min(2, strength)) * speedScale;
       p.strength = Math.min(1, 0.5 + strength * 0.2);
+      p.radialX = this._side.x * Math.cos(angle) + this._frameUp.x * Math.sin(angle);
+      p.radialY = this._side.y * Math.cos(angle) + this._frameUp.y * Math.sin(angle);
+      p.radialZ = this._side.z * Math.cos(angle) + this._frameUp.z * Math.sin(angle);
+      p.spread = r.radius * 0.32;
+      p.travel = 4 * speedScale;
+      p.parent = index;
+      p.sequence = r.sequence;
+      p.followX = p.followY = p.followZ = 0;
     }
     if (grounded)
-      this._groundBurst(x, floor, z, 0.8 + strength * 0.4, 5 + strength * 2);
+      this._groundPressure(x, floor, z, r.startRadius, strength, speedScale);
   }
 
   update(dt, context = EMPTY_CONTEXT) {
@@ -392,6 +539,7 @@ export class SpeedEffects {
     const floor = bound(context.floorHeight);
     const horizontal = Math.hypot(vx, vz);
     const actual = Math.hypot(horizontal, vy);
+    this._actorPosition.set(x, y + 1, z);
     this._horizontalSpeed = horizontal;
     this._actualSpeed = actual;
     const dx = horizontal > 0.001 ? vx / horizontal : this._previousDX;
@@ -522,22 +670,43 @@ export class SpeedEffects {
     this.dustMesh.visible = this._activeDust > 0;
 
     this._activeRings = 0;
+    this._shockwaveRadius = 0;
     for (let i = 0; i < this.rings.length; i++) {
       const p = this.rings[i];
+      const previousAge = p.age;
       p.age += dt;
       if (!p.active || p.age >= p.life) {
         p.active = false;
+        p.following = false;
         p.mesh.visible = false;
+        p.ground.visible = false;
         continue;
       }
       this._activeRings++;
+      if (p.following) {
+        const fraction = dt > 0 ? clamp01((BOOM_FOLLOW_TIME - previousAge) / dt) : 1;
+        p.mesh.position.lerp(this._actorPosition, fraction);
+        p.ground.position.set(p.mesh.position.x, p.floor + 0.055, p.mesh.position.z);
+        if (p.age >= BOOM_FOLLOW_TIME) p.following = false;
+      }
       const t = p.age / p.life;
       const spread =
-        0.6 + (1 - (1 - t) ** 2) * (3.5 + Math.min(3, p.strength) * 1.2);
-      const fade = Math.sin(Math.PI * Math.min(1, t * 1.3)) * (1 - t);
+        p.startRadius + (1 - (1 - t) ** 3) * (p.radius - p.startRadius);
+      const fade = Math.min(1, 0.5 + t * 9) * (1 - t) ** 1.35;
+      p.currentRadius = spread;
+      this._shockwaveRadius = Math.max(this._shockwaveRadius, spread);
       p.mesh.scale.setScalar(spread);
-      p.ring.material.opacity = Math.min(0.55, 0.22 * p.strength) * fade;
-      p.shell.material.opacity = Math.min(0.09, 0.03 * p.strength) * fade;
+      for (let band = 0; band < p.bands.length; band++) {
+        p.bands[band].material.opacity =
+          Math.min(0.7, 0.28 * p.strength) * fade * (1 - band * 0.22);
+      }
+      for (let shell = 0; shell < p.shells.length; shell++) {
+        p.shells[shell].material.uniforms.alpha.value =
+          Math.min(0.4, 0.16 * p.strength) * fade * (1 - shell * 0.3);
+      }
+      p.ground.scale.setScalar(spread * 1.05);
+      p.ground.material.opacity = Math.min(0.24, p.strength * 0.12) * fade;
+      p.ground.visible = p.grounded;
     }
 
     this._activeStreaks = 0;
@@ -551,10 +720,16 @@ export class SpeedEffects {
         this._activeStreaks++;
         const t = p.age / p.life;
         const fade = (1 - t) * (1 - t);
+        const parent = this.rings[p.parent];
+        if (parent.sequence === p.sequence) {
+          p.followX = parent.mesh.position.x - parent.originX;
+          p.followY = parent.mesh.position.y - parent.originY;
+          p.followZ = parent.mesh.position.z - parent.originZ;
+        }
         this._scratch.position.set(
-          p.x + p.dx * t * 1.5,
-          p.y + p.dy * t * 1.5,
-          p.z + p.dz * t * 1.5,
+          p.x + p.followX + p.dx * t * p.travel + p.radialX * t * p.spread,
+          p.y + p.followY + p.dy * t * p.travel + p.radialY * t * p.spread,
+          p.z + p.followZ + p.dz * t * p.travel + p.radialZ * t * p.spread,
         );
         this._direction.set(p.dx, p.dy, p.dz);
         this._scratch.quaternion.setFromUnitVectors(
@@ -593,6 +768,7 @@ export class SpeedEffects {
     this._dustRemainder = 0;
     this._horizontalSpeed = 0;
     this._actualSpeed = 0;
+    this._shockwaveRadius = 0;
     this._previousHorizontal = 0;
     this._previousVY = 0;
     this._previousDX = 0;
@@ -601,6 +777,11 @@ export class SpeedEffects {
     this._wasGrounded = null;
     this._sonicArmed = true;
     this._seed = 0x4b1d;
+    this._actorPosition.set(0, 0, 0);
+    this.lastBoom.sequence = 0;
+    this.lastBoom.position.set(0, 0, 0);
+    this.lastBoom.velocity.set(0, 0, 0);
+    this.lastBoom.speed = this.lastBoom.radius = this.lastBoom.intensity = 0;
     for (let i = 0; i < this.dust.length; i++) this.dust[i].active = false;
     for (let i = 0; i < this.rings.length; i++) this.rings[i].active = false;
     for (let i = 0; i < this.streaks.length; i++)
@@ -618,8 +799,10 @@ export class SpeedEffects {
     this.ringGeometry.dispose();
     this.shellGeometry.dispose();
     for (let i = 0; i < this.rings.length; i++) {
-      this.rings[i].ring.material.dispose();
-      this.rings[i].shell.material.dispose();
+      const p = this.rings[i];
+      for (const band of p.bands) band.material.dispose();
+      for (const shell of p.shells) shell.material.dispose();
+      p.ground.material.dispose();
     }
     this.streakMesh.geometry.dispose();
     this.streakMesh.material.dispose();

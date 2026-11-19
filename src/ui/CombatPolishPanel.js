@@ -10,18 +10,18 @@ import {
   saveSpeedEffectSettings,
 } from "../sandbox/SpeedEffectsSettings.js";
 import {
-  MAGNETISM_DEFAULTS,
-  MAGNETISM_PARAMETERS,
-  saveMagnetismSettings,
-} from "../sandbox/AttackMagnetismSettings.js";
+  FREEFLOW_DEFAULTS,
+  FREEFLOW_PARAMETERS,
+  saveFreeflowSettings,
+} from "../sandbox/FreeflowSettings.js";
 
 /** Small independent editors. SliderLocks observes new ranges automatically;
  * these controls never share the physics/aim/camera/layout storage keys. */
 export class CombatPolishPanel {
-  constructor({ effects, magnetism, animator, animation, storage }) {
+  constructor({ effects, freeflow, animator, animation, storage }) {
     this.storage = storage;
     this.effects = effects;
-    this.magnetism = magnetism;
+    this.freeflow = freeflow;
     this.animator = animator;
     this.animation = sanitizeAnimationSettings(animation);
     animator.locomotion.aggression = this.animation.sprintAggression;
@@ -44,23 +44,23 @@ export class CombatPolishPanel {
       id: "speed-effects",
       title: "Superhuman Speed Effects",
       parameters: SPEED_EFFECT_PARAMETERS,
-      note: "Dust follows actual ground contacts and speed. The visual sonic barrier triggers once, then rearms below 80% of its speed threshold. No camera shake or sound.",
-      toggle: ["sonicEnabled", "Sonic pressure wave enabled"],
+      note: "Dust follows actual ground contacts and speed. The visual sonic barrier triggers once, then rearms below 80% of its speed threshold. Layered pressure waves and brief camera impact work in both modes. Enemy speed reactions apply only in Combat Mode; no health damage is added.",
+      toggles: [["sonicEnabled", "Sonic pressure wave enabled"], ["shakeEnabled", "Brief sonic camera impact"], ["nearMissEnabled", "Combat near-miss stagger"]],
       get: () => effects.config,
       apply: (values) => effects.configure(values),
       defaults: SPEED_EFFECT_DEFAULTS,
       save: saveSpeedEffectSettings,
     });
     this.addSection({
-      id: "attack-magnetism",
-      title: "Combat Attack Magnetism",
-      parameters: MAGNETISM_PARAMETERS,
-      note: "Optional short, collision-aware approach on a manual Combat strike. Off preserves the original movement and aim assist. Tag Mode never approaches runners. The captured strike uses one alignment correction, not stacked aim assists.",
-      toggle: ["enabled", "Attack magnetism enabled"],
-      get: () => magnetism.config,
-      apply: (values) => magnetism.configure(values),
-      defaults: MAGNETISM_DEFAULTS,
-      save: saveMagnetismSettings,
+      id: "freeflow-combat",
+      title: "Freeflow Combat",
+      parameters: FREEFLOW_PARAMETERS,
+      note: "Manual Punch/Kick triggers a rapid, collision-aware approach in Combat Mode. Joystick intent selects targets. Off restores manual movement and aim assist. Tag Mode never approaches runners. These values are independent of camera assistance.",
+      toggle: ["enabled", "Attack-driven freeflow enabled"],
+      get: () => freeflow.config,
+      apply: (values) => freeflow.configure(values),
+      defaults: FREEFLOW_DEFAULTS,
+      save: saveFreeflowSettings,
     });
   }
 
@@ -70,6 +70,7 @@ export class CombatPolishPanel {
     parameters,
     note,
     toggle,
+    toggles,
     get,
     apply,
     defaults,
@@ -88,7 +89,7 @@ export class CombatPolishPanel {
     description.textContent = note;
     fields.append(legend, description);
     const rows = [];
-    let checkbox;
+    const checkboxes = [];
     const status = document.createElement("p");
     status.className = "physics-note";
     status.id = `${id}-status`;
@@ -100,7 +101,7 @@ export class CombatPolishPanel {
         output.value = `${Number(values[p.id].toFixed(2))}${p.unit ?? "×"}`;
         input.setAttribute("aria-valuetext", output.value);
       }
-      if (checkbox) checkbox.checked = values[toggle[0]];
+      for (const { checkbox, key } of checkboxes) checkbox.checked = values[key];
     };
     const commit = (values) => {
       apply(values);
@@ -109,16 +110,17 @@ export class CombatPolishPanel {
         ? "Applied live · saved independently on this browser"
         : "Applied live · storage unavailable";
     };
-    if (toggle) {
+    for (const [key, text] of toggles ?? (toggle ? [toggle] : [])) {
       const label = document.createElement("label");
       label.className = "aim-debug-label";
-      checkbox = document.createElement("input");
+      const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
-      checkbox.id = `${id}-${toggle[0]}`;
-      label.append(checkbox, document.createTextNode(toggle[1]));
+      checkbox.id = `${id}-${key}`;
+      label.append(checkbox, document.createTextNode(text));
       fields.append(label);
+      checkboxes.push({ checkbox, key });
       checkbox.addEventListener("change", () =>
-        commit({ ...get(), [toggle[0]]: checkbox.checked }),
+        commit({ ...get(), [key]: checkbox.checked }),
       );
     }
     for (const p of parameters) {

@@ -136,7 +136,7 @@ test("v087 optional magnetism has exactly one strike-alignment owner and preserv
       return fallback;
     },
   };
-  game.attackMagnetism = {
+  game.freeflow = {
     begin(...args) {
       beginCalls++;
       assert.equal(args[3], "combat");
@@ -151,7 +151,7 @@ test("v087 optional magnetism has exactly one strike-alignment owner and preserv
   );
   assert.equal(fallbackCalls, 1);
   assert.equal(beginCalls, 1);
-  game.attackMagnetism.begin = () => alignment;
+  game.freeflow.begin = () => alignment;
   const punch = game.prepareManualAttack(context, { action: "punch" });
   assert.equal(punch.punchAim, alignment);
   assert.equal(punch.kickAim, null);

@@ -5,7 +5,11 @@ export const COMBO_LIMITS = Object.freeze({
 
 /** A short record of accepted manual strikes, never a list of future attacks.
  * The continuation window begins after authored recovery, so input cadence
- * stays useful for both a recovery interrupt and an ordinary held repeat. */
+ * stays useful for both a recovery interrupt and an ordinary held repeat.
+ * Ground/air changes retain accepted input history; the current technique's
+ * eligibility still decides which limb family can execute in that environment.
+ * Block, interrupted movement and reset change the epoch and break the chain;
+ * the short takeoff anticipation suppresses execution without erasing history. */
 export class ComboFlow {
   constructor() {
     this.history = [];
@@ -20,7 +24,6 @@ export class ComboFlow {
       clock = Number.isFinite(context.clock) ? context.clock : null,
       last = this.history.at(-1);
     if (
-      environment !== this.environment ||
       epoch !== this.epoch ||
       clock === null ||
       (this.clock !== null && clock < this.clock - 1e-9) ||

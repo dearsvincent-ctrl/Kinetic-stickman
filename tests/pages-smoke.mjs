@@ -39,7 +39,7 @@ const configuredBase = process.env.GITHUB_REPOSITORY
 const base = process.env.PAGES_TEST_BASE || configuredBase;
 const suite = process.env.PAGES_TEST_SUITE || "all";
 assert.ok(
-  ["all", "movement", "encounter"].includes(suite),
+  ["all", "movement", "encounter", "polish"].includes(suite),
   "Unknown Pages test suite",
 );
 assert.match(
@@ -89,7 +89,7 @@ try {
     server.listen(0, "127.0.0.1", ready);
   });
   const origin = `http://127.0.0.1:${server.address().port}`;
-  if (suite !== "encounter") {
+  if (suite === "all" || suite === "movement") {
     run = await openBrowser(`${origin}${base}`, { practice: true });
     assert.equal(
       await run.page.evaluate(() => typeof window.__KINETIC__),
@@ -125,15 +125,18 @@ try {
       await run.page.evaluate(() => typeof window.__KINETIC__),
       "undefined",
     );
-    await checkActiveBattle(run.page, run.native);
-    await checkPunchAim(run.page, run.native);
-    await checkEnemySettings(run.page, run.native);
-    await checkCombatStrength(run.page, run.native);
-    await checkTagMode(run.page, run.native);
-    await checkEnemyAbilities(run.page, run.native);
-    await checkSliderLocks(run.page, run.native);
-    await checkCamera(run.page, run.native);
-    await checkV087Polish(run.page, run.native);
+    if (suite !== "polish") {
+      await checkActiveBattle(run.page, run.native);
+      await checkPunchAim(run.page, run.native);
+      await checkEnemySettings(run.page, run.native);
+      await checkCombatStrength(run.page, run.native);
+      await checkTagMode(run.page, run.native);
+      await checkEnemyAbilities(run.page, run.native);
+      await checkSliderLocks(run.page, run.native);
+      await checkCamera(run.page, run.native);
+    }
+    if (suite === "all" || suite === "polish")
+      await checkV087Polish(run.page, run.native);
     for (const request of run.requests) {
       const url = new URL(request);
       assert.equal(url.origin, origin);

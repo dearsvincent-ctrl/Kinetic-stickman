@@ -33,9 +33,10 @@ import { BodyRotation } from "../movement/BodyRotation.js";
 import { MomentumRecovery } from "../movement/MomentumRecovery.js";
 import { GroundStreaks } from "../world/GroundStreaks.js";
 import { SpeedEffects } from "../world/SpeedEffects.js";
-import { AttackMagnetism } from "../combat/AttackMagnetism.js";
+import { FreeflowCombat } from "../combat/FreeflowCombat.js";
+import { SpeedImpact } from "../combat/SpeedImpact.js";
 import { loadSpeedEffectSettings } from "../sandbox/SpeedEffectsSettings.js";
-import { loadMagnetismSettings } from "../sandbox/AttackMagnetismSettings.js";
+import { loadFreeflowSettings } from "../sandbox/FreeflowSettings.js";
 import { loadAnimationSettings } from "../sandbox/AnimationSettings.js";
 import { CombatPolishPanel } from "../ui/CombatPolishPanel.js";
 import { AcrobaticPresenter } from "../character/AcrobaticPresenter.js";
@@ -112,7 +113,11 @@ export class Game {
       grounded: true,
       floorHeight: 0,
     };
-    this.attackMagnetism = new AttackMagnetism();
+    this.freeflow = new FreeflowCombat();
+    this.speedImpact = new SpeedImpact();
+    this.lastBoomSequence = 0;
+    this.impactIncomingVelocity = new THREE.Vector3();
+    this.speedImpactContext = { start: null, end: null, incomingVelocity: this.impactIncomingVelocity };
     this.streakOrigin = new THREE.Vector3();
     this.lastPlantSequence = 0;
     this.limbSelector = new ContextualLimbSelector({
@@ -138,7 +143,7 @@ export class Game {
       dummy: this.dummy.target,
       enabled: new URLSearchParams(location.search).get("practice") !== "1",
     });
-    this.magnetismContext = {
+    this.freeflowContext = {
       combat: this.combat,
       blocking: false,
       mode: this.battle.mode,
@@ -183,7 +188,7 @@ export class Game {
     // physics/AI/aim/layout saves or modify the player's movement parameters.
     this.cameraPreferences = new CameraPreferences(cameraStorage);
     this.speedEffects.configure(loadSpeedEffectSettings(cameraStorage) ?? {});
-    this.attackMagnetism.configure(loadMagnetismSettings(cameraStorage) ?? {});
+    this.freeflow.configure(loadFreeflowSettings(cameraStorage) ?? {});
     this.animationPreferences =
       loadAnimationSettings(cameraStorage) ?? undefined;
     this.followCamera.configure(this.cameraPreferences.get(this.battle.mode));
@@ -203,7 +208,9 @@ export class Game {
     this.cameraTelemetry = { velocity: [0, 0, 0], cameraPosition: [0, 0, 0] };
     this.polishTelemetry = {
       effects: {},
-      magnetism: {},
+      freeflow: {},
+      impacts: {},
+      cameraImpact: {},
       strike: { point: [0, 0, 0] },
     };
     this.polishStrikePoint = new THREE.Vector3();
@@ -281,7 +288,7 @@ export class Game {
     });
     this.combatPolishPanel = new CombatPolishPanel({
       effects: this.speedEffects,
-      magnetism: this.attackMagnetism,
+      freeflow: this.freeflow,
       animator: this.animator,
       animation: this.animationPreferences,
       storage: cameraStorage,
@@ -334,7 +341,10 @@ export class Game {
     this.momentumRecovery.reset();
     this.streaks.reset();
     this.speedEffects?.reset();
-    this.attackMagnetism?.cancel("input-reset");
+    this.lastBoomSequence = 0;
+    this.freeflow?.reset();
+    this.speedImpact?.reset();
+    this.followCamera?.impact?.reset();
     this.cameraVelocity?.set(0, 0, 0);
     // Pause/release input without erasing a flip or recovery configuration.
     if (this.controller.jump.grounded && this.bodyRotation.phase === "idle")
@@ -383,7 +393,8 @@ export class Game {
     this.input.reset();
     this.combat.reset();
     this.attackScheduler.reset();
-    this.attackMagnetism?.cancel("mode");
+    this.freeflow?.reset();
+    this.speedImpact?.reset();
     this.defeated = false;
     this.contactFeedbackRemaining = 0;
     this.punchAim.targets = mode === "tag" ? [] : this.battle.enemies;
@@ -436,7 +447,7 @@ export class Game {
   }
 
   prepareManualAttack(context, technique) {
-    const alignment = this.attackMagnetism?.begin(
+    const alignment = this.freeflow?.begin(
       this.controller,
       this.battle?.enemies ?? [],
       technique,
@@ -452,15 +463,27 @@ export class Game {
       },
     );
     // Only one correction owns a captured strike. The unchanged aim system is
-    // the complete fallback when magnetism is disabled or finds no safe target.
+    // the complete fallback when freeflow is disabled or finds no safe target.
     return alignment
       ? {
           ...context,
+          freeflow: alignment,
           punchAim: technique.action === "punch" ? alignment : null,
           kickAim: technique.action === "kick" ? alignment : null,
           strikeAim: alignment,
         }
       : this.punchAim.prepare(context, technique);
+  }
+
+  configureSpeedFeedback(config) {
+    if (config === this.appliedSpeedFeedback || !config) return;
+    this.appliedSpeedFeedback = config;
+    this.followCamera?.impact?.configure({
+      enabled: config.shakeEnabled,
+      strength: config.shakeStrength,
+      duration: config.shakeDuration,
+    });
+    this.speedImpact?.configure(config);
   }
 
   updateSpeedEffects(dt) {
@@ -482,13 +505,20 @@ export class Game {
         foot.position.y <= context.floorHeight + 0.24;
     }
     this.speedEffects.update(dt, context);
+    const fx = this.speedEffects.config ?? {};
+    this.configureSpeedFeedback?.(fx);
+    const boom = this.speedEffects.lastBoom;
+    if (boom?.sequence > 0 && boom.sequence !== this.lastBoomSequence) {
+      this.lastBoomSequence = boom.sequence;
+      this.followCamera.triggerImpact();
+      this.speedImpact.boom(boom, this.battle, { excludeTargetId: this.freeflow?.active ? this.freeflow.targetId : null });
+    }
   }
 
   refreshPolishTelemetry() {
     const out = this.polishTelemetry;
     if (!out) return;
-    const fx = this.speedEffects,
-      magnetism = this.attackMagnetism;
+    const fx = this.speedEffects;
     Object.assign(out.effects, {
       dustEmissions: fx.dustEmissions,
       sonicBursts: fx.sonicBursts,
@@ -500,14 +530,17 @@ export class Game {
       horizontalSpeed: fx.horizontalSpeed,
       config: fx.config,
     });
-    magnetism.snapshot(out.magnetism);
-    out.magnetism.config = magnetism.config;
+    this.freeflow.snapshot(out.freeflow);
+    out.freeflow.config = this.freeflow.config;
+    this.speedImpact.snapshot(out.impacts);
+    this.followCamera.impact.snapshot(out.cameraImpact);
     const t = this.combat.currentTechnique,
       attack = this.combat.attack;
     Object.assign(out.strike, {
       id: t?.id ?? null,
       style: t?.strikeStyle ?? null,
       action: t?.action ?? null,
+      environment: attack.context?.environment ?? "ground",
       side: t?.side ?? null,
       active: attack.active,
       phase: attack.phase,
@@ -580,7 +613,7 @@ export class Game {
             );
           else if (action === "dash") this.controller.requestDash();
         }
-        const playerSteps = this.physicsSandbox.enabled
+        const playerSteps = this.physicsSandbox.enabled || this.freeflow?.active
           ? movementSubsteps(
               this.controller,
               STEP,
@@ -686,16 +719,29 @@ export class Game {
     if (this.bodyRotation) this.bodyStart.copy(this.bodyRotation.orientation);
     if (this.momentumRecovery)
       this.recoveryPrevious.copy(this.controller.velocity);
-    this.controller.update(dt, this.input, this.followCamera.yaw);
+    const flowContext = this.freeflowContext ?? {};
+    flowContext.blocking = this.input.blocking;
+    flowContext.mode = this.battle?.mode ?? "combat";
+    flowContext.input = this.input;
+    flowContext.cameraYaw = this.followCamera.yaw;
+    flowContext.orientation = this.bodyRotation?.orientation;
+    flowContext.world = this.controller.world;
+    flowContext.combat = this.combat;
+    const motion = this.freeflow?.beforeStep(dt, this.controller, flowContext);
+    this.impactIncomingVelocity?.copy(motion?.velocity ?? this.controller.velocity);
+    this.controller.update(dt, this.input, this.followCamera.yaw, null, motion);
     this.battle?.movePlayerImpulse(dt);
-    if (this.attackMagnetism) {
-      const context = this.magnetismContext;
-      context.blocking = this.input.blocking;
-      context.mode = this.battle?.mode ?? "combat";
-      context.input = this.input;
-      context.world = this.controller.world;
-      context.combat = this.combat;
-      this.attackMagnetism.update(dt, this.controller, context);
+    this.freeflow?.afterStep(dt, this.controller, flowContext);
+    this.combat.holdWindup = this.freeflow?.holdWindup ?? false;
+    if (this.speedImpact) {
+    Object.assign(this.speedImpactContext, {
+      start: this.simulationPrevious, end: this.character.root.position,
+      velocity: this.controller.velocity, playerRadius: this.controller.radius,
+      world: this.controller.world, mode: this.battle?.mode,
+      attackTargetId: this.freeflow?.active ? this.freeflow.targetId : null,
+    });
+    this.configureSpeedFeedback?.(this.speedEffects.config);
+    this.speedImpact.update(dt, this.battle, this.speedImpactContext);
     }
     this.controller.syncSupport?.();
     this.updateCameraMotion?.(dt);
@@ -774,7 +820,9 @@ export class Game {
           elapsed / dt,
           dt,
         );
+      context.freeflowRedirect = !!(this.freeflow?.active && this.freeflow.holdWindup);
       this.attackScheduler.prepare(context, this.input.blocking);
+      this.combat.holdWindup = this.freeflow?.holdWindup ?? false;
       const step = Math.min(
         dt - elapsed,
         Math.max(1e-8, this.combat.timeToBoundary),
@@ -800,7 +848,7 @@ export class Game {
         this.combat.currentTechnique,
         this.combat.attack,
         start,
-        start + step,
+        this.combat.sampleEndTime?.(step) ?? start + step,
         this.combatStartRoot,
         this.combatEndRoot,
         heading + turn * t0,
@@ -822,6 +870,7 @@ export class Game {
       this.controller.stop();
       this.attackScheduler.reset();
       this.combat.cancelAttack("defeated");
+      this.freeflow?.cancel("defeated");
     }
   }
 

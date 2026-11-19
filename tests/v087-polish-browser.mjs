@@ -3,19 +3,20 @@ import { stick } from "./acrobatic-browser.mjs";
 import { unlockSlider } from "./slider-test-utils.mjs";
 import { ANIMATION_PARAMETERS } from "../src/sandbox/AnimationSettings.js";
 import { SPEED_EFFECT_PARAMETERS } from "../src/sandbox/SpeedEffectsSettings.js";
-import { ATTACK_MAGNETISM_PARAMETERS } from "../src/sandbox/AttackMagnetismSettings.js";
+import { FREEFLOW_PARAMETERS } from "../src/sandbox/FreeflowSettings.js";
+import { checkFreeflow } from "./v088-freeflow-browser.mjs";
 import { SPEED_EFFECT_LIMITS } from "../src/world/SpeedEffects.js";
 
-const advance = (page, ms = 80) => page.clock.runFor(ms);
+export const advance = (page, ms = 80) => page.clock.runFor(ms);
 const KEYS = [
   "kinetic.animation-presentation.v1",
   "kinetic.speed-effects.v1",
-  "kinetic.attack-magnetism.v1",
+  "kinetic.freeflow.v1",
 ];
 const SECTIONS = [
   ["animation-polish", ANIMATION_PARAMETERS],
   ["speed-effects", SPEED_EFFECT_PARAMETERS],
-  ["attack-magnetism", ATTACK_MAGNETISM_PARAMETERS],
+  ["freeflow-combat", FREEFLOW_PARAMETERS],
 ];
 const touch = (id, p) => ({ id, ...p, radiusX: 7, radiusY: 7, force: 1 });
 const point = async (page, selector) => {
@@ -23,7 +24,7 @@ const point = async (page, selector) => {
   assert.ok(b, `${selector} has a native touch target`);
   return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
 };
-const read = (page) =>
+export const read = (page) =>
   page.evaluate(() => {
     const battle = document.querySelector("#battle-status");
     return {
@@ -47,7 +48,7 @@ const unrelated = (page) =>
       ),
     KEYS,
   );
-async function fresh(page, { sandbox = true, practice = false } = {}) {
+export async function fresh(page, { sandbox = true, practice = false } = {}) {
   const url = new URL(page.url());
   url.search = sandbox ? "?sandbox=1" : "";
   if (practice) url.searchParams.set("practice", "1");
@@ -59,14 +60,14 @@ async function fresh(page, { sandbox = true, practice = false } = {}) {
     "v087 acceptance uses the production UI without a debug state hook",
   );
 }
-async function open(page, section) {
+export async function open(page, section) {
   if (await page.locator("#physics-panel").evaluate((node) => node.hidden))
     await page.locator("#physics-toggle").click();
   if (!(await page.locator(`#${section}`).evaluate((node) => node.open)))
     await page.locator(`#${section} > summary`).click();
   await advance(page);
 }
-async function close(page) {
+export async function close(page) {
   if (!(await page.locator("#physics-panel").evaluate((node) => node.hidden)))
     await page.locator("#physics-close").click();
   await advance(page);
@@ -81,7 +82,7 @@ const locked = (page, section) =>
           (input) => input.disabled && input.dataset.sliderLocked === "true",
         ),
     );
-async function until(page, predicate, label, { limit = 2000, step = 20 } = {}) {
+export async function until(page, predicate, label, { limit = 2000, step = 20 } = {}) {
   for (let elapsed = 0; elapsed <= limit; elapsed += step) {
     const state = await read(page);
     if (predicate(state)) return state;
@@ -92,12 +93,12 @@ async function until(page, predicate, label, { limit = 2000, step = 20 } = {}) {
 
 /** Real range keyboard operation after an individual unlock. PageUp/Down
  * covers large logarithmic ranges; arrow keys finish at the nearest step. */
-async function setRange(page, section, parameter, value) {
+export async function setRange(page, section, parameter, value) {
   if (section === "physics") {
     if (await page.locator("#physics-panel").evaluate((node) => node.hidden))
       await page.locator("#physics-toggle").click();
   } else await open(page, section);
-  const id = `${section}-${parameter.id}`;
+  const id = `${parameter.prefix ?? section}-${parameter.id}`;
   const slider = await unlockSlider(page, id);
   const bounds = await slider.evaluate((input) => ({
     min: Number(input.min),
@@ -129,7 +130,7 @@ async function setRange(page, section, parameter, value) {
   );
   await advance(page);
 }
-async function resetNew(page) {
+export async function resetNew(page) {
   for (const [section] of SECTIONS) {
     await open(page, section);
     await page.locator(`#${section}-reset`).click();
@@ -166,7 +167,7 @@ async function checkSettings(page, native) {
   const independent = await unrelated(page);
   await fresh(page, { practice: true });
   await resetNew(page);
-  assert.equal((await read(page)).polish.magnetism.enabled, false);
+  assert.equal((await read(page)).polish.freeflow.enabled, true);
   const cdp = await page.context().newCDPSession(page);
   try {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -295,11 +296,11 @@ async function checkSettings(page, native) {
   await page.locator("#speed-effects-sonicEnabled").uncheck();
   await setRange(
     page,
-    "attack-magnetism",
-    ATTACK_MAGNETISM_PARAMETERS.find((p) => p.id === "range"),
+    "freeflow-combat",
+    FREEFLOW_PARAMETERS.find((p) => p.id === "range"),
     4,
   );
-  await page.locator("#attack-magnetism-enabled").check();
+  await page.locator("#freeflow-combat-enabled").uncheck();
   await advance(page);
   const saved = await page.evaluate(
     (keys) => keys.map((key) => JSON.parse(localStorage.getItem(key))),
@@ -309,7 +310,7 @@ async function checkSettings(page, native) {
   assert.equal(saved[0].values.sprintAggression, 0.6);
   assert.equal(saved[1].values.dustIntensity, 1.5);
   assert.equal(saved[1].values.sonicEnabled, false);
-  assert.equal(saved[2].values.enabled, true);
+  assert.equal(saved[2].values.enabled, false);
   assert.equal(saved[2].values.range, 4);
   assert.deepEqual(
     await unrelated(page),
@@ -320,7 +321,7 @@ async function checkSettings(page, native) {
   const ordinary = await read(page);
   assert.equal(
     await page
-      .locator("#animation-polish,#speed-effects,#attack-magnetism")
+      .locator("#animation-polish,#speed-effects,#freeflow-combat")
       .count(),
     0,
   );
@@ -331,8 +332,8 @@ async function checkSettings(page, native) {
   );
   assert.equal(ordinary.polish.effects.config.dustIntensity, 1.5);
   assert.equal(ordinary.polish.effects.config.sonicEnabled, false);
-  assert.equal(ordinary.polish.magnetism.config.enabled, true);
-  assert.equal(ordinary.polish.magnetism.config.range, 4);
+  assert.equal(ordinary.polish.freeflow.config.enabled, false);
+  assert.equal(ordinary.polish.freeflow.config.range, 4);
   await fresh(page, { practice: true });
   await resetNew(page);
   await open(page, "speed-effects");
@@ -392,9 +393,9 @@ export async function checkManualFlow(page, native) {
     );
     assert.equal(completed.stance.phase, "idle");
     assert.equal(
-      completed.polish.magnetism.queries,
-      0,
-      "Default-off magnetism does no target acquisition work",
+      completed.polish.freeflow.selectedTargetId,
+      null,
+      "The isolated practice fixture has no active enemy acquisition",
     );
     await controls.stop();
   }
@@ -661,256 +662,27 @@ export async function checkSpeedEffects(page, native) {
   await close(page);
 }
 
-const nearest = (s) =>
-  s.enemies
-    .filter((enemy) => enemy.health > 0)
-    .sort(
-      (a, b) =>
-        Math.hypot(
-          a.position[0] - s.position[0],
-          a.position[2] - s.position[2],
-        ) -
-        Math.hypot(
-          b.position[0] - s.position[0],
-          b.position[2] - s.position[2],
-        ),
-    )[0];
-async function toward(controls, state, target, magnitude) {
-  const dx = target.position[0] - state.position[0],
-    dz = target.position[2] - state.position[2];
-  const distance = Math.hypot(dx, dz),
-    yaw = state.camera.yaw;
-  await controls.move(
-    ((dx * Math.cos(yaw) - dz * Math.sin(yaw)) / Math.max(0.001, distance)) *
-      magnitude,
-    ((-dx * Math.sin(yaw) - dz * Math.cos(yaw)) / Math.max(0.001, distance)) *
-      magnitude,
-  );
-  return distance;
-}
-export async function checkMagnetism(page, native) {
-  await fresh(page);
-  await advance(page, 750);
-  let state = await read(page);
-  assert.equal(
-    state.polish.magnetism.enabled,
-    false,
-    "Optional attack magnetism starts off",
-  );
-  assert.equal(
-    state.stance.sequence,
-    "0",
-    "Enemy proximity cannot start a manual player attack",
-  );
-  assert.equal(state.polish.magnetism.queries, 0);
-  await open(page, "attack-magnetism");
-  await page.locator("#attack-magnetism-enabled").check();
-  await close(page);
-  await fresh(page, { sandbox: false });
-  assert.equal(
-    (await read(page)).polish.magnetism.enabled,
-    true,
-    "The opt-in is applied in ordinary play",
-  );
-  let controls = await stick(page, native);
-  let positioned = false;
-  for (let n = 0; n < 65; n++) {
-    state = await read(page);
-    const target = nearest(state);
-    assert.ok(target && Number(state.health) > 0);
-    const distance = Math.hypot(
-      target.position[0] - state.position[0],
-      target.position[2] - state.position[2],
-    );
-    if (distance < 2.7 && distance > 1.4) {
-      positioned = true;
-      break;
-    }
-    await toward(controls, state, target, distance > 3.5 ? 0.6 : 0.25);
-    await advance(page, 80);
-  }
-  assert.ok(
-    positioned,
-    "Native movement brings a real pursuing enemy within a short approach distance",
-  );
-  await controls.move(0, 0);
-  await advance(page, 80);
-  state = await read(page);
-  const queriesBefore = state.polish.magnetism.queries;
-  assert.equal(state.stance.sequence, "0");
-  await controls.tap("kick");
-  let acquired = false,
-    physical = false,
-    cancelledDuringApproach = false;
-  let selected;
-  for (let n = 0; n < 18; n++) {
-    await advance(page, 20);
-    state = await read(page);
-    const magnetism = state.polish.magnetism;
-    assert.ok(state.position.every(Number.isFinite));
-    assert.ok(
-      magnetism.traveled >= 0 && magnetism.traveled <= magnetism.budget + 1e-7,
-    );
-    assert.ok(
-      magnetism.budget <= magnetism.config.maxApproach &&
-        magnetism.duration <= 0.28 + 1e-8,
-      "Manual approach retains its configured distance and short duration bounds",
-    );
-    if (magnetism.selectedTargetId) {
-      acquired = true;
-      selected ??= magnetism.selectedTargetId;
-      assert.equal(
-        magnetism.selectedTargetId,
-        selected,
-        "A captured strike never switches its target during execution",
-      );
-      assert.ok(
-        state.enemies.some((enemy) => enemy.id === selected),
-        "Magnetism selects an actual active enemy",
-      );
-    }
-    physical ||= magnetism.traveled > 0.005;
-    if (magnetism.active && physical) {
-      await controls.enter("block");
-      await advance(page, 100);
-      state = await read(page);
-      assert.equal(
-        state.polish.magnetism.active,
-        false,
-        "Block ends a currently active physical approach",
-      );
-      assert.equal(
-        await page.locator("#stance-label").textContent(),
-        "BLOCKING",
-      );
-      cancelledDuringApproach = true;
-      break;
-    }
-  }
-  assert.ok(
-    acquired && physical,
-    "A manually initiated Kick makes a small physical approach to a real target",
-  );
-  assert.ok(
-    cancelledDuringApproach,
-    "Block is tested while the short approach is still active",
-  );
-  assert.equal(
-    state.polish.magnetism.queries,
-    queriesBefore + 1,
-    "One accepted tap captures one target query",
-  );
-  assert.equal(state.stance.sequence, "1");
-  await controls.stop();
-
-  // A real contact screenshot also verifies that the new Kick presentation
-  // still reaches collision-tested moving enemies rather than awarding hits.
-  await fresh(page, { sandbox: false });
-  controls = await stick(page, native);
-  await controls.enter("kick");
-  let contact = false;
-  for (let n = 0; n < 200; n++) {
-    state = await read(page);
-    const contactCount = state.contacts;
-    assert.ok(
-      Number(state.health) > 0,
-      "Manual attacks remain usable during the live encounter",
-    );
-    const target = nearest(state);
-    if (target) {
-      const distance = Math.hypot(
-        target.position[0] - state.position[0],
-        target.position[2] - state.position[2],
-      );
-      await toward(
-        controls,
-        state,
-        target,
-        distance > 1.15 ? 0.6 : distance > 0.75 ? 0.23 : 0.1,
-      );
-    }
-    await advance(page, 40);
-    state = await read(page);
-    const damaged =
-      state.enemies.some((enemy) => enemy.health > 0 && enemy.health < 72) ||
-      Number(state.defeated) > 0;
-    const hitRealEnemy = state.enemies.some(
-      (enemy) => enemy.id === state.polish.strike.lastContactTargetId,
-    );
-    if (
-      damaged &&
-      hitRealEnemy &&
-      state.contacts > contactCount &&
-      state.stance.action === "kick" &&
-      ["extension", "impact"].includes(state.stance.phase)
-    ) {
-      await page.screenshot({
-        path: "test-results/v087-kick-live-contact.png",
-      });
-      contact = true;
-      break;
-    }
-  }
-  assert.ok(
-    contact,
-    "Manual native Kicks visibly contact and damage real moving targets",
-  );
-  await controls.stop();
-
-  await fresh(page, { sandbox: false });
-  await page.locator("#game-mode").selectOption("tag");
-  await advance(page, 180);
-  state = await read(page);
-  const tagQueries = state.polish.magnetism.queries;
-  const tagHealth = state.enemies.map((enemy) => [enemy.id, enemy.health]);
-  controls = await stick(page, native);
-  await controls.tap("kick");
-  await advance(page, 180);
-  state = await read(page);
-  assert.equal(state.mode, "tag");
-  assert.equal(state.polish.magnetism.active, false);
-  assert.equal(
-    state.polish.magnetism.queries,
-    tagQueries,
-    "Opted-in Combat assistance never acquires Tag runners",
-  );
-  assert.equal(
-    state.polish.magnetism.traveled,
-    0,
-    "Tag Mode never receives an attack approach",
-  );
-  assert.deepEqual(
-    state.enemies.map((enemy) => [enemy.id, enemy.health]),
-    tagHealth,
-    "A remote manual Kick cannot award damage to Tag runners",
-  );
-  assert.equal(state.tags, "0", "Manual attacks never award a remote Tag");
-  await controls.stop();
-  await fresh(page);
-  await resetNew(page);
-}
-
-/** v0.8.7 acceptance: native touch/keyboard UI, read-only production telemetry.
+/** v0.8.8 acceptance: native touch/keyboard UI, read-only production telemetry.
  * No actor writes, synthetic DOM input events, storage seeding or debug hooks. */
 export async function checkV087Polish(page, native) {
   await page.setViewportSize({ width: 844, height: 390 });
   await fresh(page, { practice: true });
-  assert.equal(await page.locator(".version b").textContent(), "0.8.7");
+  assert.equal(await page.locator(".version b").textContent(), "0.8.8");
   const independent = await unrelated(page);
   await checkSettings(page, native);
-  console.log("PASS: v0.8.7 polish settings locks, native panning/multitouch and independent ordinary-play persistence");
+  console.log("PASS: v0.8.8 polish settings locks, native panning/multitouch and independent ordinary-play persistence");
   await checkManualFlow(page, native);
-  console.log("PASS: v0.8.7 native tap/held/slide/recovery combos, Block and moving/aerial strikes");
+  console.log("PASS: v0.8.8 native tap/held/slide/recovery combos, Block and moving/aerial strikes");
   await checkSpeedEffects(page, native);
-  console.log("PASS: v0.8.7 actual-speed grounded dust and one-shot/rearmed sonic effects");
-  await checkMagnetism(page, native);
-  console.log("PASS: v0.8.7 optional bounded manual Combat approach, physical Kick contact and Tag isolation");
+  console.log("PASS: v0.8.8 actual-speed grounded dust and one-shot/rearmed sonic effects");
+  await checkFreeflow(page, native);
+  console.log("PASS: v0.8.8 strong manual Combat freeflow approach, physical Kick contact and Tag isolation");
   assert.deepEqual(
     await unrelated(page),
     independent,
-    "v087 acceptance preserves every unrelated preference byte",
+    "v088 acceptance preserves every unrelated preference byte",
   );
   console.log(
-    "PASS: v0.8.7 native Punch/Kick taps, held/recovery combos and slides, moving/aerial strikes and Block; independent saved polish settings, slider locks/scroll/multitouch; physical-speed dust and one-shot/rearmed sonic waves; optional bounded manual Combat approach and Tag isolation. No physical Android device tested.",
+    "PASS: v0.8.8 native Punch/Kick taps, held/recovery combos and slides, moving/aerial strikes and Block; independent saved polish settings, slider locks/scroll/multitouch; physical-speed dust and one-shot/rearmed sonic waves; strong manual Combat freeflow approach and Tag isolation. No physical Android device tested.",
   );
 }

@@ -138,7 +138,7 @@ test("disabled magnetism returns the exact existing aim result without target qu
   let calls = 0;
   const result = Game.prototype.prepareManualAttack.call(
     {
-      attackMagnetism: f.magnetism,
+      freeflow: f.magnetism,
       controller: f.controller,
       battle: { mode: "combat", enemies: f.targets },
       input: { move: { x: 1, y: 1 } },
@@ -228,7 +228,7 @@ test("manual Punch and Kick install one captured alignment through the existing 
     };
     const result = Game.prototype.prepareManualAttack.call(
       {
-        attackMagnetism: f.magnetism,
+        freeflow: f.magnetism,
         controller: f.controller,
         battle: { mode: "combat", enemies: f.targets },
         input: { move: { x: 0, y: 0 } },

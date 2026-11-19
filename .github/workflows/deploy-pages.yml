@@ -19,12 +19,12 @@ jobs:
     name: Test and build game (${{ matrix.suite }})
     runs-on: ubuntu-latest
     # Independent fresh-browser suites keep all software-WebGL regressions
-    # within the job budget. Deployment waits for both matrix jobs.
+    # within the job budget, including the larger freeflow/effects suite. Deployment waits for every matrix job.
     timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
-        suite: [movement, encounter]
+        suite: [movement, encounter, polish]
     env:
       # GITHUB_REPOSITORY is supplied by Actions (owner/repository).
       GITHUB_PAGES: "true"

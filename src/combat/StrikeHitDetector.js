@@ -111,7 +111,7 @@ export class StrikeHitDetector {
     const curved =
       technique.animation === "backhand" ||
       technique.strikeStyle === "hook" ||
-      ["roundhouse", "spinning", "sweep", "descending"].includes(style);
+      ["roundhouse", "spinning", "sweep", "descending", "bicycle"].includes(style);
     const spinArc =
       style === "spinning"
         ? Math.abs(

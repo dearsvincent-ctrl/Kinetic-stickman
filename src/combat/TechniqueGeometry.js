@@ -9,6 +9,7 @@ const footRotation = new Quaternion();
 const footAxis = new Vector3();
 
 export function techniqueStrikeStyle(technique) {
+  if (technique?.animation === "bicycle-kick") return "bicycle";
   if (technique?.animation === "whip-kick") return "spinning";
   if (technique?.animation === "descending-sweep") return "descending";
   return technique?.strikeStyle ?? "front";
@@ -102,7 +103,77 @@ function kickPoint(out, technique, extension, arc, chamber = false) {
 }
 const kickEnd = new Vector3();
 const kickChamber = new Vector3();
+const bicycleWaypoint = new Vector3();
+/** The striking foot pedals forward, folds into chamber, then drives out.
+ * The other foot counter-pedals instead of remaining in a static air tuck.
+ * Every point stays inside the rig's unscaled two-bone leg length. */
+function bicyclePoint(out, technique, elapsed, side) {
+  const sign = side === "left" ? -1 : 1;
+  const primary = side === technique.side;
+  const end = technique.windup + technique.extension + technique.impact;
+  const recovery = clamp((elapsed - end) / Math.max(1e-6, technique.recovery));
+  const windup = clamp(elapsed / Math.max(1e-6, technique.windup));
+  if (primary) {
+    if (elapsed < technique.windup) {
+      out.set(sign * 0.19, 0.76, -0.2);
+      if (windup < 0.55)
+        return out
+          .set(sign * 0.16, 0.1, 0.03)
+          .lerp(
+            bicycleWaypoint.set(sign * 0.17, 0.66, -0.43),
+            smooth(windup / 0.55),
+          );
+      return out.lerp(
+        bicycleWaypoint.set(sign * 0.17, 0.66, -0.43),
+        1 - smooth((windup - 0.55) / 0.45),
+      );
+    }
+    if (recovery > 0) {
+      kickPoint(kickEnd, technique, 1, 1);
+      kickPoint(kickChamber, technique, 0, 0, true);
+      if (recovery < 0.42)
+        return out.copy(kickEnd).lerp(kickChamber, smooth(recovery / 0.42));
+      return out.copy(kickChamber).lerp(
+        bicycleWaypoint.set(sign * 0.16, 0.1, 0.03),
+        smooth((recovery - 0.42) / 0.58),
+      );
+    }
+    const state = sampleKickPose(kickState, technique, elapsed);
+    return kickPoint(out, technique, state.extension, state.activeProgress);
+  }
+  if (elapsed < technique.windup) {
+    if (windup < 0.45)
+      return out.set(sign * 0.16, 0.1, 0.03).lerp(
+        bicycleWaypoint.set(sign * 0.17, 0.4, 0.27),
+        smooth(windup / 0.45),
+      );
+    return out.set(sign * 0.17, 0.4, 0.27).lerp(
+      bicycleWaypoint.set(sign * 0.18, 0.9, -0.32),
+      smooth((windup - 0.45) / 0.55),
+    );
+  }
+  if (recovery > 0) {
+    if (recovery < 0.42)
+      return out.set(sign * 0.17, 0.46, 0.25).lerp(
+        bicycleWaypoint.set(sign * 0.18, 0.76, -0.2),
+        smooth(recovery / 0.42),
+      );
+    return out.set(sign * 0.18, 0.76, -0.2).lerp(
+      bicycleWaypoint.set(sign * 0.16, 0.1, 0.03),
+      smooth((recovery - 0.42) / 0.58),
+    );
+  }
+  const drive = smooth(
+    clamp((elapsed - technique.windup) / Math.max(1e-6, technique.extension)),
+  );
+  return out.set(sign * 0.18, 0.9, -0.32).lerp(
+    bicycleWaypoint.set(sign * 0.17, 0.46, 0.25),
+    drive,
+  );
+}
 function sampleKick(out, technique, elapsed) {
+  if (techniqueStrikeStyle(technique) === "bicycle")
+    return bicyclePoint(out, technique, elapsed, technique.side);
   const state = sampleKickPose(kickState, technique, elapsed);
   const sign = technique.side === "left" ? -1 : 1;
   kickPoint(kickChamber, technique, 0, 0, true);
@@ -137,7 +208,11 @@ export function strikeFootOrientation(
     style = techniqueStrikeStyle(technique);
   const drive = state.extension;
   const yaw =
-    style === "side" ? sign * 1.05 : style === "front" ? 0 : sign * 0.55;
+    style === "side"
+      ? sign * 1.05
+      : style === "front" || style === "bicycle"
+        ? 0
+        : sign * 0.55;
   const roll =
     style === "side"
       ? sign * 0.82
@@ -145,7 +220,7 @@ export function strikeFootOrientation(
         ? sign * 0.65
         : 0;
   const pitch =
-    style === "front"
+    style === "front" || style === "bicycle"
       ? 0.35
       : style === "sweep" || style === "descending"
         ? 0.08
@@ -166,7 +241,12 @@ export function strikeKneePole(out, technique, elapsed) {
   const state = sampleKickPose(kickState, technique, elapsed);
   const sign = technique.side === "left" ? -1 : 1,
     style = techniqueStrikeStyle(technique);
-  const lateral = style === "front" ? 0.12 : style === "side" ? 0.95 : 0.65;
+  const lateral =
+    style === "front" || style === "bicycle"
+      ? 0.12
+      : style === "side"
+        ? 0.95
+        : 0.65;
   // Keep the knee above/outside the ankle path. A forward-only pole can cross
   // the hip-to-ankle direction during side kicks and reverse the bend plane.
   return out
@@ -247,6 +327,23 @@ export function sampleLocalStrike(out, technique, elapsed, context = {}) {
   }
   alignStrikePoint(out, technique, elapsed, context);
   const entry = context.limbs?.[technique.side]?.[hand ? "hand" : "foot"];
+  if (entry?.length === 3 && entry.every(Number.isFinite)) {
+    const duration = context.transition?.action === "kick" ? 0.11 : 0.075;
+    const blend = smooth(clamp(elapsed / duration));
+    out.set(
+      entry[0] + (out.x - entry[0]) * blend,
+      entry[1] + (out.y - entry[1]) * blend,
+      entry[2] + (out.z - entry[2]) * blend,
+    );
+  }
+  return out;
+}
+/** Shared secondary ankle path; only the primary leg owns strike contact. */
+export function sampleBicycleLeg(out, technique, elapsed, side, context = {}) {
+  if (side === technique.side)
+    return sampleLocalStrike(out, technique, elapsed, context);
+  bicyclePoint(out, technique, elapsed, side);
+  const entry = context.limbs?.[side]?.foot;
   if (entry?.length === 3 && entry.every(Number.isFinite)) {
     const duration = context.transition?.action === "kick" ? 0.11 : 0.075;
     const blend = smooth(clamp(elapsed / duration));

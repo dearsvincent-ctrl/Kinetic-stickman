@@ -56,7 +56,7 @@ function advance(f, dt, ctx) {
 }
 test("adaptive registry is a small set of mirrored families with authored reach and recovery", () => {
   const ts = createAdaptiveTechniques();
-  assert.equal(ts.length, 13);
+  assert.equal(ts.length, 14);
   assert.equal(ts.filter((t) => t.gesture).length, 2);
   for (const t of ts) {
     assert.ok(t.adaptive);

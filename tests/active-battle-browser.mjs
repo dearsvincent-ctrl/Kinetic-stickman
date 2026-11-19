@@ -14,7 +14,7 @@ const point = async (p, s) => {
 const touch = (id, p) => ({ id, ...p, radiusX: 7, radiusY: 7, force: 1 });
 export async function checkWaveCombat(page, native) {
   await advance(page, 450);
-  assert.equal(await page.locator(".version b").textContent(), "0.8.7");
+  assert.equal(await page.locator(".version b").textContent(), "0.8.8");
   let state = await read(page);
   assert.equal(state.wave, "1");
   assert.equal(state.alive, "3");
@@ -254,6 +254,10 @@ export async function checkExtremeBattleMovement(page, native) {
   });
   await advance(page, 450);
   await page.locator("#physics-toggle").click();
+  // This subcase measures manual 100x movement invariance. The default wave
+  // encounter above keeps Freeflow on and tests its real approach behavior.
+  await page.locator("#freeflow-combat > summary").click();
+  await page.locator("#freeflow-combat-enabled").uncheck();
   await page.evaluate(() => {
     for (const [id, value] of Object.entries({
       movement: 100,

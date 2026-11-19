@@ -11,9 +11,26 @@ export function createAdaptiveTechniques() {
     }),
   );
   const kick = base.find((t) => t.id === "front-kick"),
+    flying = base.find((t) => t.id === "flying-kick"),
     punch = base[0];
   return [
     ...base,
+    Object.freeze({
+      ...flying,
+      id: "bicycle-kick",
+      label: "Bicycle kick",
+      animation: "bicycle-kick",
+      strikeStyle: "bicycle",
+      reach: 0.83,
+      originHeight: 0.98,
+      minHeight: 0.12,
+      minAirTimeRemaining: 0.24,
+      windup: 0.13,
+      extension: 0.11,
+      impact: 0.045,
+      recovery: 0.29,
+      transitionAfter: 0.19,
+    }),
     Object.freeze({
       ...punch,
       id: "cross-punch",
@@ -175,7 +192,12 @@ export class ContextualLimbSelector {
     )
       id = "rotational-backhand";
     else if (context.environment === "air")
-      id = context.action === "punch" ? "aerial-punch" : "flying-kick";
+      id =
+        context.action === "punch"
+          ? "aerial-punch"
+          : previous?.action === "punch" && eligible.has("bicycle-kick")
+            ? "bicycle-kick"
+            : "flying-kick";
     else if (context.action === "punch") {
       if (previous?.action === "punch")
         id =

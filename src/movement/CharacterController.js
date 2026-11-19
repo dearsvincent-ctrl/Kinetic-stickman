@@ -41,6 +41,7 @@ export class CharacterController {
     this.facingTarget = null;
     this.facingTurnRate = facingTurnRate;
     this.facingResponse = facingResponse;
+    this.motionDriver = null;
     this.desired = new Vector3();
     this.displacement = new Vector3();
     this.previous = new Vector3();
@@ -150,8 +151,22 @@ export class CharacterController {
     return true;
   }
 
-  update(dt, input, cameraYaw, facingTarget = null) {
+  update(dt, input, cameraYaw, facingTarget = null, motionDriver = null) {
     if (!Number.isFinite(dt) || dt <= 0) return;
+    // A fourth-argument velocity intent is also accepted by small adapters;
+    // existing callers retain the original fourth-argument facing target.
+    if (!motionDriver && facingTarget?.velocity) {
+      motionDriver = facingTarget;
+      facingTarget = null;
+    }
+    this.motionDriver =
+      Number.isFinite(motionDriver?.velocity?.x) &&
+      Number.isFinite(motionDriver?.velocity?.z) &&
+      Number.isFinite(motionDriver?.heading) &&
+      !this.jumpRequested && !this.dashRequested && !this.dash.active &&
+      !this.parkour?.attached
+        ? motionDriver
+        : null;
     const x = input.move.x;
     const y = input.move.y;
     const magnitude = Math.min(1, Math.hypot(x, y));
@@ -313,6 +328,7 @@ export class CharacterController {
       const step = Math.min(
         remaining,
         Math.max(1e-8, this.jump.timeToBoundary),
+        this.motionDriver ? 1 / 120 : Infinity,
         this.dash.active ? this.dash.config.maxSubstep : Infinity,
         this.dash.active
           ? Math.max(1e-8, this.dash.config.duration - this.dash.elapsed)
@@ -335,6 +351,15 @@ export class CharacterController {
         this.updateAir(step, maximum);
       else this.updateLocomotion(step, maximum);
       const wasAirborne = this.jump.airborne;
+      if (wasAirborne && this.motionDriver) {
+        const assist = Number.isFinite(this.motionDriver.verticalAssist)
+          ? Math.max(-128, Math.min(128, this.motionDriver.verticalAssist))
+          : 0;
+        // Add bounded acceleration without replacing gravity, jump phase,
+        // launch state or ability counts. JumpState still resolves touchdown.
+        this.jump.verticalVelocity += assist * step;
+        this.jump.height -= 0.5 * assist * step * step;
+      }
       this.jump.advance(step);
       if (wasAirborne && !this.jump.airborne) this.airDashesUsed = 0;
       this.root.position.y = this.jump.height;
@@ -389,6 +414,10 @@ export class CharacterController {
   }
 
   updateAir(dt, maximum) {
+    if (this.motionDriver) {
+      this.updateDriven(dt);
+      return;
+    }
     const response =
       maximum > 0.01 ? this.jump.config.airControl : this.jump.config.airDrag;
     const blend = dampFactor(response, dt);
@@ -405,6 +434,10 @@ export class CharacterController {
   }
 
   updateLocomotion(dt, maximum) {
+    if (this.motionDriver) {
+      this.updateDriven(dt);
+      return;
+    }
     this.velocity.lerp(
       this.desired,
       dampFactor(
@@ -420,12 +453,27 @@ export class CharacterController {
     this.move(dt);
   }
 
+  updateDriven(dt) {
+    this.velocity.set(this.motionDriver.velocity.x, 0, this.motionDriver.velocity.z);
+    this.displacement.copy(this.velocity).multiplyScalar(dt);
+    this.move(dt);
+  }
+
   move(dt) {
     this.previous.copy(this.root.position);
     this.parkour?.observe(this.velocity);
     this.world.move(this.previous, this.displacement, this.radius, this.next);
     // The flat world adapter resolves XZ collisions; JumpState owns elevation.
     this.next.y = this.previous.y;
+    if (this.motionDriver &&
+        Math.hypot(this.next.x - this.previous.x, this.next.z - this.previous.z) >
+          Math.hypot(this.displacement.x, this.displacement.z) + 1e-5) {
+      // An adapter may recover an externally introduced overlap. A captured
+      // approach must never turn that recovery into an unbudgeted teleport.
+      this.next.copy(this.previous);
+      this.velocity.set(0, 0, 0);
+      this.motionDriver.collisionRecovery = true;
+    }
     this.root.position.copy(this.next);
     const contactResolved =
       this.world.resolveVelocity?.(this.velocity) === true;
@@ -455,7 +503,15 @@ export class CharacterController {
       // Retain the last joystick facing through collision-induced residual
       // sliding after release. This is input intent, never opponent auto-aim.
     } else this.blockedInputHeading = null;
-    if (this.facingTarget) {
+    if (this.motionDriver) {
+      const difference = Math.atan2(
+        Math.sin(this.motionDriver.heading - this.heading),
+        Math.cos(this.motionDriver.heading - this.heading),
+      );
+      const maximum = Math.max(0, this.motionDriver.turnRate ?? 24) * dt;
+      this.heading += Math.max(-maximum, Math.min(maximum, difference));
+      this.root.rotation.y = this.heading;
+    } else if (this.facingTarget) {
       // Facing is independent of travel: never steer or pull the root toward
       // a nearby target. Resolve yaw from the collision-corrected position.
       const dx = this.facingTarget.x - this.next.x;
@@ -488,6 +544,7 @@ export class CharacterController {
   }
 
   stop() {
+    this.motionDriver = null;
     this.parkour?.cancel(this);
     this.blockedInputHeading = null;
     this.velocity.set(0, 0, 0);

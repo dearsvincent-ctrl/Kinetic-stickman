@@ -2,6 +2,7 @@ import { Group, Quaternion, Vector3 } from "three";
 import {
   BODY_PIVOT,
   sampleLocalStrike,
+  sampleBicycleLeg,
   worldStrike,
   strikeFootOrientation,
   strikeKneePole,
@@ -147,7 +148,12 @@ export class AcrobaticPresenter {
       // local knee targets are controlled rather than a baked flip timeline.
       for (let i = 0; i < SIDES.length; i++) {
         const side = SIDES[i];
-        if (attack.active && t.action === "kick" && t.side === side) continue;
+        if (
+          attack.active &&
+          t.action === "kick" &&
+          (t.side === side || t.animation === "bicycle-kick")
+        )
+          continue;
         if (
           movement?.jump?.canActOnGround &&
           this.animator.footList[i].planted &&
@@ -311,6 +317,27 @@ export class AcrobaticPresenter {
           ? this.flipPole(side)
           : strikeKneePole(this.strikePole, t, attack.elapsed),
       );
+      if (t.animation === "bicycle-kick") {
+        sampleBicycleLeg(this.local, t, attack.elapsed, opposite, attack.context);
+        worldStrike(
+          this.target,
+          this.local,
+          root.position,
+          this.body,
+          rotation.lift,
+        );
+        j[`${opposite}Ankle`].getWorldPosition(this.support);
+        this.target.lerpVectors(this.support, this.target, recovery);
+        // The counter-pedaling leg follows the same independent body frame as
+        // the contact leg, including a sideways or inverted airborne body.
+        this.animator.ik.solve(
+          opposite,
+          this.target,
+          this.body,
+          this.body,
+          this.strikePole.set(opposite === "left" ? -0.2 : 0.2, 0.9, -1),
+        );
+      }
       if (
         (spinning || t.gesture) &&
         root.position.y <= 0.001 &&

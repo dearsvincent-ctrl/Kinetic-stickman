@@ -23,12 +23,26 @@ const tune = (p, values) =>
       e.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }, values);
+async function setFreeflowEnabled(page, enabled) {
+  const wasClosed = await page.locator("#physics-panel").evaluate((node) => node.hidden);
+  if (wasClosed) await page.locator("#physics-toggle").click();
+  if (!(await page.locator("#freeflow-combat").evaluate((node) => node.open)))
+    await page.locator("#freeflow-combat > summary").click();
+  await page.locator("#freeflow-combat-enabled").setChecked(enabled);
+  assert.equal(await page.locator("#freeflow-combat-enabled").isChecked(), enabled);
+  if (wasClosed) await page.locator("#physics-close").click();
+  await page.evaluate(() => document.activeElement?.blur());
+}
+// This fixture measures the legacy manual aim profile. Freeflow owns its own
+// captured alignment, so it must be explicitly off rather than stacking both.
+const disableFreeflow = (page) => setFreeflowEnabled(page, false);
 export async function checkPunchAim(page, native) {
   await page.setViewportSize({ width: 844, height: 390 });
   await page.goto(new URL("?sandbox=1&practice=1", page.url()).href, {
     waitUntil: "networkidle",
   });
   await advance(page, 450);
+  await disableFreeflow(page);
   await page.locator("#physics-toggle").click();
   assert.equal(await page.locator("#physics-fields .physics-row").count(), 8);
   assert.equal(
@@ -119,6 +133,7 @@ export async function checkPunchAim(page, native) {
   assert.equal(await page.locator("#aim-strength").inputValue(), "175");
   await page.reload({ waitUntil: "networkidle" });
   await advance(page, 450);
+  await disableFreeflow(page);
   await page.locator("#physics-toggle").click();
   for (const [id, v] of Object.entries({
     strength: 175,
@@ -150,7 +165,8 @@ export async function checkPunchAim(page, native) {
     waitUntil: "networkidle",
   });
   await advance(page, 450);
-  assert.equal(await page.locator(".version b").textContent(), "0.8.7");
+  await disableFreeflow(page);
+  assert.equal(await page.locator(".version b").textContent(), "0.8.8");
   assert.equal(
     (await read(page)).sequence,
     "0",
@@ -249,6 +265,7 @@ export async function checkPunchAim(page, native) {
   // Fresh health/encounter; saved developer aim loads without changing physics.
   await page.reload({ waitUntil: "networkidle" });
   await advance(page, 450);
+  await disableFreeflow(page);
   const c2 = await point(page, "#joystick"),
     b2 = await page.locator("#joystick").boundingBox(),
     r2 = Math.min(b2.width, b2.height) * 0.34;
@@ -332,6 +349,7 @@ export async function checkPunchAim(page, native) {
   await page.locator("#aim-reset").click();
   await page.locator("#aim-save").click();
   await page.locator("#physics-close").click();
+  await setFreeflowEnabled(page, true);
   console.log(
     "PASS: default 100%/20° manual Punch acquires moving enemies with bounded physical contacts, no automatic attacks or permanent lock, and 0% restores unassisted strikes",
   );

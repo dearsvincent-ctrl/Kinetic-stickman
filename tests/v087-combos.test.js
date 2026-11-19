@@ -75,7 +75,7 @@ function recover(f) {
 test("v087 extends only the adaptive registry with explicit animation style contracts", () => {
   const adaptive = createAdaptiveTechniques(),
     manual = createManualTechniques();
-  assert.equal(adaptive.length, 13);
+  assert.equal(adaptive.length, 14);
   assert.equal(manual.length, 4, "enemy/manual registry retains its defaults");
   for (const original of manual) {
     const t = adaptive.find((entry) => entry.id === original.id);

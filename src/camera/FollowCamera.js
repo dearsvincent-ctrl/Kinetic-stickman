@@ -2,6 +2,7 @@ import { Vector3 } from "three";
 import { clamp, dampAngle, dampFactor } from "../core/math.js";
 import { sanitizeCameraSettings } from "../sandbox/CameraSettings.js";
 import { DynamicCameraDirector } from "./DynamicCameraDirector.js";
+import { CameraImpact } from "./CameraImpact.js";
 
 const wrapAngle = (angle) => Math.atan2(Math.sin(angle), Math.cos(angle));
 const finiteVector = (v) =>
@@ -12,6 +13,9 @@ export class FollowCamera {
     this.camera = camera;
     this.settings = sanitizeCameraSettings(settings);
     this.director = new DynamicCameraDirector(this.settings);
+    this.impact = new CameraImpact();
+    this.impactOffset = new Vector3();
+    this.impactBasePosition = new Vector3();
     this.distance = 4.8;
     this.maxLag = Infinity;
     this.lag = new Vector3();
@@ -76,6 +80,8 @@ export class FollowCamera {
   }
 
   recenter(position) {
+    this.impact.reset();
+    this.impactOffset.set(0, 0, 0);
     // Preserve the visible orbit when resetting an autonomous target or speed.
     const yawOffset = wrapAngle(this.renderYaw - this.yaw);
     const pitchOffset = this.renderPitch - this.pitch;
@@ -175,13 +181,14 @@ export class FollowCamera {
     );
     this.camera.position.copy(this.target).add(this.offset);
     this.camera.position.y = Math.max(0.3, this.camera.position.y);
+    let margin = 0.2;
     if (this.world) {
       // A wide lens exposes more of its near plane at corners. Keep the old
       // 20 cm clearance at the default lens and cap the conservative envelope.
       const near = Number.isFinite(this.camera.near) ? this.camera.near : 0.1;
       const aspect = Number.isFinite(this.camera.aspect) ? this.camera.aspect : 1;
       const plane = Math.tan((this.camera.fov * Math.PI) / 360);
-      const margin = Math.min(
+      margin = Math.min(
         0.5,
         Math.max(0.2, near * Math.sqrt(1 + plane * plane * (1 + aspect * aspect))),
       );
@@ -217,14 +224,42 @@ export class FollowCamera {
     // Clipping can shorten a boom toward an unusually low focus point.
     this.camera.position.y = Math.max(0.3, this.camera.position.y);
     this.camera.lookAt(this.target);
+    this.impactBasePosition.copy(this.camera.position);
+    this.impactOffset.copy(this.impact.update(dt));
+    if (this.impactOffset.lengthSq() > 0) {
+      // Translation uses the normal rendered camera basis. Its rotation and
+      // manual/assisted orbit remain untouched, including during manual input.
+      this.impactOffset.applyQuaternion(this.camera.quaternion);
+      this.camera.position.add(this.impactOffset);
+      this.camera.position.y = Math.max(0.3, this.camera.position.y);
+      if (this.world) {
+        // Sweep only this tiny displacement from the already safe base view.
+        // This cannot alter boom recovery or enlarge the impact at a corner.
+        this.world.clipCamera(
+          this.impactBasePosition,
+          this.camera.position,
+          this.collisionTarget,
+          margin,
+        );
+        this.camera.position.copy(this.collisionTarget);
+      }
+      this.camera.position.y = Math.max(0.3, this.camera.position.y);
+      this.impactOffset.subVectors(this.camera.position, this.impactBasePosition);
+    }
     this.previousPosition.copy(position);
     this.previousSpeed = speed;
   }
 
   reset(heading = 0) {
+    this.impact.reset();
+    this.impactOffset.set(0, 0, 0);
     this.takeManualView();
     this.targetYaw = heading;
     this.targetPitch = 0.23;
     this.director.suspend();
+  }
+
+  triggerImpact(strength, duration) {
+    return this.impact.trigger(strength, duration);
   }
 }

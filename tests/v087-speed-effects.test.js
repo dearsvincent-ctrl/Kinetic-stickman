@@ -49,6 +49,15 @@ test("v087 speed effects defaults and numeric controls are independently sanitiz
     sonicEnabled: true,
     sonicSpeed: 40,
     sonicIntensity: 1,
+    shockwaveSize: 18,
+    shakeEnabled: true,
+    shakeStrength: 0.8,
+    shakeDuration: 0.22,
+    nearMissEnabled: true,
+    nearMissRadius: 2.4,
+    nearMissSpeed: 20,
+    impactStrength: 1,
+    impactSpeed: 25,
   });
   assert.deepEqual(sanitizeSpeedEffectSettings(), SPEED_EFFECT_DEFAULTS);
   assert.deepEqual(sanitizeSpeedEffectSettings(null), SPEED_EFFECT_DEFAULTS);
@@ -60,6 +69,13 @@ test("v087 speed effects defaults and numeric controls are independently sanitiz
     dustDensity: [0, 2],
     sonicSpeed: [5, 1200],
     sonicIntensity: [0, 3],
+    shockwaveSize: [2, 100],
+    shakeStrength: [0, 2],
+    shakeDuration: [0.05, 0.65],
+    nearMissRadius: [0.7, 12],
+    nearMissSpeed: [5, 1000],
+    impactStrength: [0, 20],
+    impactSpeed: [5, 1200],
   };
   assert.deepEqual(
     SPEED_EFFECT_PARAMETERS.map((parameter) => parameter.id).sort(),

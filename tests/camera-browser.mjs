@@ -207,7 +207,7 @@ export async function checkCamera(page, native) {
     await page.evaluate((key) => localStorage.removeItem(key), KEY);
     await page.setViewportSize({ width: 844, height: 390 });
     await fresh(page);
-    assert.equal(await page.locator(".version b").textContent(), "0.8.7");
+    assert.equal(await page.locator(".version b").textContent(), "0.8.8");
     assert.equal(
       await page.evaluate(() => typeof window.__KINETIC__),
       "undefined",

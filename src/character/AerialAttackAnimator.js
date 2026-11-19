@@ -2,6 +2,7 @@ import { MathUtils, Vector3 } from "three";
 import { ANIME_STYLE } from "./AnimationStyle.js";
 import {
   sampleLocalStrike,
+  sampleBicycleLeg,
   sampleKickPose,
   techniqueStrikeStyle,
   strikeFootOrientation,
@@ -35,7 +36,9 @@ export class AerialAttackAnimator {
     this.extended = new Vector3();
     this.kickPose = {};
     this.cancelStart = new Vector3();
+    this.cancelSupportStart = new Vector3();
     this.lastStrikeGoal = new Vector3();
+    this.lastSupportGoal = new Vector3();
     this.cancelCaptured = false;
     this.technique = null;
     this.turn = 0;
@@ -51,7 +54,8 @@ export class AerialAttackAnimator {
       animation === "whip-kick" ||
       animation === "descending-sweep";
     const active = Boolean(
-      attack?.active && (animation === "flying-kick" || groundedKick),
+      attack?.active &&
+        (animation === "flying-kick" || animation === "bicycle-kick" || groundedKick),
     );
     const eligiblePose = groundedKick
       ? !jump || jump.canActOnGround || jump.ready
@@ -119,6 +123,7 @@ export class AerialAttackAnimator {
       // Retain the previous body-local pose. Subtracting the current root from
       // last frame's world goal strands the foot behind 100x travel.
       this.cancelStart.copy(this.lastStrikeGoal);
+      this.cancelSupportStart.copy(this.lastSupportGoal);
       this.cancelCaptured = true;
     }
     for (let i = 0; i < feet.length; i++) {
@@ -140,7 +145,31 @@ export class AerialAttackAnimator {
                 smooth((p - 0.42) / 0.58),
               );
         }
-      } else if (groundedKick) continue;
+      } else if (animation === "bicycle-kick") {
+        if (attack.cancelled) {
+          const p = clamp01(attack.phaseProgress);
+          this.extended.set(foot.sign * 0.17, 0.52, 0.1);
+          if (p < 0.42)
+            this.goal
+              .copy(this.cancelSupportStart)
+              .lerp(this.extended, smooth(p / 0.42));
+          else
+            this.goal
+              .copy(this.extended)
+              .lerp(
+                this.local.set(foot.sign * 0.16, 0.1, 0.03),
+                smooth((p - 0.42) / 0.58),
+              );
+        } else
+          sampleBicycleLeg(
+            this.goal,
+            technique,
+            attack.elapsed,
+            foot.side,
+            attack.context,
+          );
+      }
+      else if (groundedKick) continue;
       else
         this.goal.set(
           foot.sign * 0.17,
@@ -148,6 +177,7 @@ export class AerialAttackAnimator {
           0.15 + this.extension * 0.1,
         );
       if (i === this.side) this.lastStrikeGoal.copy(this.goal);
+      else this.lastSupportGoal.copy(this.goal);
       this.goal.applyQuaternion(root.quaternion).add(root.position);
       foot.target.lerp(this.goal, blend);
       if (i === this.side)
@@ -173,6 +203,7 @@ export class AerialAttackAnimator {
       coil = this.coil;
     const sign = this.side === 1 ? 1 : -1;
     const strikeStyle = techniqueStrikeStyle(this.technique);
+    const bicycle = strikeStyle === "bicycle";
     const sweep = strikeStyle === "sweep" || strikeStyle === "descending";
     const turn =
       strikeStyle === "side"
@@ -203,7 +234,8 @@ export class AerialAttackAnimator {
     }
     pose.spinePitch = MathUtils.lerp(
       pose.spinePitch,
-      drive * (sweep ? -0.16 : s.leanBack) - coil * s.coilLean,
+      drive * (bicycle ? 0.36 : sweep ? -0.16 : s.leanBack) -
+        coil * (bicycle ? 0.06 : s.coilLean),
       w * 0.85,
     );
     pose.spineYaw +=
@@ -222,9 +254,11 @@ export class AerialAttackAnimator {
       const arm = pose.arms[i];
       arm.x = MathUtils.lerp(
         arm.x,
-        i === this.side
-          ? 1.1 - drive * (strikeStyle === "front" ? 0.35 : 0.65)
-          : 1.05 + drive * 0.25,
+        bicycle
+          ? 0.85 + drive * (i === this.side ? -0.2 : 0.3)
+          : i === this.side
+            ? 1.1 - drive * (strikeStyle === "front" ? 0.35 : 0.65)
+            : 1.05 + drive * 0.25,
         w,
       );
       arm.elbow = MathUtils.lerp(
@@ -235,7 +269,8 @@ export class AerialAttackAnimator {
       arm.z = MathUtils.lerp(
         arm.z,
         (i === 0 ? 1 : -1) *
-          (0.2 + drive * (strikeStyle === "front" ? 0.05 : 0.38)),
+          (0.2 +
+            drive * (bicycle ? 0.22 : strikeStyle === "front" ? 0.05 : 0.38)),
         w,
       );
     }

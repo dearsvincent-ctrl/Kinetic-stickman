@@ -496,9 +496,9 @@ export async function checkSandbox(page, native) {
   }
   await page.keyboard.down("g");
   await advance(page, 100);
-  assert.equal(
-    await page.locator("#stance-label").getAttribute("data-technique"),
-    "flying-kick",
+  assert.ok(
+    ["flying-kick", "bicycle-kick"].includes(await page.locator("#stance-label").getAttribute("data-technique")),
+    "Aerial Kick uses the flying or contextual bicycle technique",
   );
   await page.keyboard.up("g");
   await advance(

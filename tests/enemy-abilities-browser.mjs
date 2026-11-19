@@ -72,7 +72,7 @@ export async function checkEnemyAbilities(page, native) {
   });
   await advance(page, 450);
   await page.waitForSelector("#loading", { state: "detached" });
-  assert.equal(await page.locator(".version b").textContent(), "0.8.7");
+  assert.equal(await page.locator(".version b").textContent(), "0.8.8");
   const initial = await read(page);
   assert.equal(initial.alive, "3");
   assert.ok(initial.enemies.every((enemy) => profileId(enemy) === "standard"));

@@ -122,6 +122,10 @@ export class CombatController {
         selectBasicTechnique(context, eligible, this.lastCompletedTechniqueId));
     this.lastCompletedTechniqueId = null;
     this.blocking = false;
+    // Approach motion may keep a strike chambered until physical contact is
+    // possible. Timing still consumes each update; only authored windup time
+    // stops, so animation/contact clocks can never run ahead of arrival.
+    this.holdWindup = false;
     this.attack = {
       active: false,
       phase: "idle",
@@ -159,11 +163,26 @@ export class CombatController {
 
   get timeToBoundary() {
     if (!this.attack.active) return Infinity;
+    if (
+      this.holdWindup &&
+      this.attack.phase === "windup" &&
+      this._phaseElapsed >= this._technique.windup - EPSILON
+    )
+      return Infinity;
     const duration =
       this.attack.phase === "recovery"
         ? this._recoveryDuration
         : this._technique[this.attack.phase];
     return Math.max(0, duration - this._phaseElapsed);
+  }
+
+  // Contact is sampled before update by the simulation. It must see the same
+  // clipped clock as the animation when an approach holds at the windup edge.
+  sampleEndTime(dt) {
+    const end = this.attack.elapsed + (Number.isFinite(dt) && dt > 0 ? dt : 0);
+    return this.attack.active && this.holdWindup && this.attack.phase === "windup"
+      ? Math.min(end, this._technique.windup)
+      : end;
   }
 
   get postureActive() {
@@ -267,7 +286,14 @@ export class CombatController {
               ? this._recoveryExtension * (1 - smoothstep(progress))
               : 0;
 
-      if (phaseDuration - this._phaseElapsed <= EPSILON) this._nextPhase();
+      if (phaseDuration - this._phaseElapsed <= EPSILON) {
+        if (this.holdWindup && this.attack.phase === "windup") {
+          // All remaining wall time belongs to approach motion, not extension.
+          remaining = 0;
+          break;
+        }
+        this._nextPhase();
+      }
     }
     if (!this.attack.active && !this.blocking)
       this._postureRemaining = Math.max(0, this._postureRemaining - remaining);
@@ -305,18 +331,23 @@ export class CombatController {
   transitionAttack(context = {}) {
     const attack = this.attack,
       from = this._technique;
+    const approachRedirect =
+      context.freeflowRedirect === true &&
+      (context.inputKind === "press" || context.inputKind === "gesture") &&
+      attack.phase === "windup";
     if (
       !from?.adaptive ||
       !attack.active ||
       attack.cancelled ||
       this.blocking ||
-      this.transitionCooldown > 0
+      (!approachRedirect && this.transitionCooldown > 0)
     )
       return false;
     const rotational = from.gesture || context.rotationActive;
     if (
-      attack.elapsed < (context.gesture ? 0 : (from.transitionAfter ?? 0.14)) ||
-      (!rotational && attack.phase !== "recovery")
+      !approachRedirect &&
+      (attack.elapsed < (context.gesture ? 0 : (from.transitionAfter ?? 0.14)) ||
+        (!rotational && attack.phase !== "recovery"))
     )
       return false;
     const transition = {
@@ -325,7 +356,7 @@ export class CombatController {
       side: from.side,
       extension: attack.extension,
       phase: attack.phase,
-      kind: context.gesture
+      kind: approachRedirect || context.gesture
         ? "redirection"
         : context.action !== from.action
           ? "continuation"
@@ -337,7 +368,7 @@ export class CombatController {
       attack.active = true;
       return false;
     }
-    this.transitionCooldown = 0.14;
+    this.transitionCooldown = approachRedirect ? 0 : 0.14;
     this.lastTransition = Object.freeze(transition);
     return true;
   }
@@ -361,6 +392,7 @@ export class CombatController {
   }
 
   reset() {
+    this.holdWindup = false;
     this.setBlocking(false);
     this._cancelAttack("cancelled");
   }

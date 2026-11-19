@@ -30,12 +30,11 @@ export class AttackScheduler {
     const combat = this.combat;
     combat.setBlocking(blocking);
     const environment = context.environment ?? "ground",
-      interrupted = blocking || context.canAttack === false;
-    if (
-      (interrupted && !this.comboInterrupted) ||
-      (this.environment !== null && environment !== this.environment)
-    )
-      this.comboEpoch++;
+      // Takeoff briefly suppresses execution while retaining the manual chain
+      // that can continue with an eligible airborne technique after launch.
+      interrupted =
+        blocking || (context.canAttack === false && context.phase !== "takeoff");
+    if (interrupted && !this.comboInterrupted) this.comboEpoch++;
     this.comboInterrupted = interrupted;
     this.environment = environment;
     const technique = combat.currentTechnique;
@@ -43,7 +42,11 @@ export class AttackScheduler {
       combat.attack.active &&
       technique &&
       (context.canAttack === false ||
-        !technique.environments.includes(environment))
+        (!technique.environments.includes(environment) &&
+          !(context.freeflowRedirect === true &&
+            technique.adaptive &&
+            combat.attack.phase === "windup" &&
+            (this.pending || this.gestureRequest))))
     )
       combat.cancelAttack(environment === "ground" ? "landing" : "movement");
     const gesture = this.gestureRequest;
