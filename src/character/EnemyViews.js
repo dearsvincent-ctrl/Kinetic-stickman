@@ -1,3 +1,4 @@
+import { EnemyReactionPresenter } from "./EnemyReactionPresenter.js";
 import * as THREE from "three";
 import { Stickman } from "./Stickman.js";
 import { CharacterAnimator } from "./CharacterAnimator.js";
@@ -72,6 +73,7 @@ export class EnemyViews {
         agent,
         character,
         animator,
+        reaction: new EnemyReactionPresenter(character),
         parkour: new ParkourPresenter(character, animator),
         bodyParts,
         bar,
@@ -142,7 +144,9 @@ export class EnemyViews {
         v.animator.initialized = false;
         v.animator.previousPosition.copy(a.root.position);
         v.parkour.reset();
+        v.reaction.reset();
       }
+      v.reaction.begin();
       if (distance < 65 * 65 || v.elapsed > 0.1) {
         v.animator.update(v.elapsed, {
           speed: a.controller.speed,
@@ -154,14 +158,11 @@ export class EnemyViews {
         v.parkour.apply(v.elapsed, a.controller.parkour, this.body, a.combat);
         v.elapsed = 0;
       }
-      // Additive, short reaction after the authored pose. Root physics stays free.
-      if (!a.body.active) {
-        c.joints.hips.rotation.z = -Math.min(1.5, a.defeatTime * 5);
-        c.joints.hips.position.y = Math.max(0.25, 0.97 - a.defeatTime * 1.5);
-      } else if (a.body.stagger > 0) {
-        c.joints.spine.rotation.x -=
-          Math.sin((a.body.stagger / 0.24) * Math.PI) * 0.32;
-      }
+      v.reaction.apply(a.reaction);
+      v.reaction.capture(a.reaction);
+      v.bar.position.y = a.reaction?.ownsMotion
+        ? Math.max(0.8, a.reaction.bodyHeight + 1)
+        : 2.3;
       v.bar.visible = a.body.active;
       this.inverse.copy(a.root.quaternion).invert();
       v.bar.quaternion.copy(this.inverse).multiply(camera.quaternion);

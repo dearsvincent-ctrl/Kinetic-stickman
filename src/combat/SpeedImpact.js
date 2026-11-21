@@ -1,3 +1,5 @@
+import { physicalResistance } from "./ImpactModel.js";
+import { REACTION_DEFAULTS } from "../sandbox/ReactionSettings.js";
 import { Vector3 } from "three";
 import { TagContactDetector } from "./TagContactDetector.js";
 import {
@@ -16,8 +18,7 @@ const finitePoint = (p) =>
   p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z);
 const clamp01 = (n) => Math.max(0, Math.min(1, n));
 const component = (n) => Math.max(-1e7, Math.min(1e7, n));
-const positive = (n, fallback) =>
-  Number.isFinite(n) && n >= 0 ? n : fallback;
+const positive = (n, fallback) => (Number.isFinite(n) && n >= 0 ? n : fallback);
 const combatEnabled = (battle, mode) =>
   battle &&
   battle.enabled !== false &&
@@ -51,7 +52,10 @@ export class SpeedImpact {
   }
 
   configure(values) {
-    this.settings = sanitizeSpeedEffectSettings({ ...this.settings, ...values });
+    this.settings = sanitizeSpeedEffectSettings({
+      ...this.settings,
+      ...values,
+    });
     return this.settings;
   }
 
@@ -71,8 +75,11 @@ export class SpeedImpact {
 
   strength(battle, enemy) {
     const resistance = Math.max(
-      0.1,
-      positive(enemy.profile?.knockbackResistance, 1),
+      0.01,
+      physicalResistance(
+        enemy.profile,
+        enemy.reaction?.settings ?? REACTION_DEFAULTS,
+      ),
     );
     return Math.min(
       1e6,
@@ -92,10 +99,8 @@ export class SpeedImpact {
     if (amount > 0 && length > 1e-8 && body.impulse) {
       const x = Number.isFinite(body.impulse.x) ? body.impulse.x : 0,
         z = Number.isFinite(body.impulse.z) ? body.impulse.z : 0;
-      body.impulse.x = x +
-        (this.direction.x / length) * amount;
-      body.impulse.z = z +
-        (this.direction.z / length) * amount;
+      body.impulse.x = x + (this.direction.x / length) * amount;
+      body.impulse.z = z + (this.direction.z / length) * amount;
       const magnitude = Math.hypot(body.impulse.x, body.impulse.z);
       if (magnitude > SPEED_IMPACT_LIMITS.impulse) {
         const scale = SPEED_IMPACT_LIMITS.impulse / magnitude;
@@ -107,6 +112,20 @@ export class SpeedImpact {
     body.flash = Math.max(positive(body.flash, 0), 0.12);
     enemy.combat?.cancelAttack(reason);
     this.lastForce = amount;
+    if (enemy.reaction && amount > 0) {
+      const length = Math.hypot(this.direction.x, this.direction.z) || 1;
+      this.reactionEvent ??= {};
+      Object.assign(this.reactionEvent, {
+        force: amount,
+        x: this.direction.x / length,
+        z: this.direction.z / length,
+        location: "body",
+        action: "impact",
+        style: reason,
+        visual: enemy.reaction.settings.intensity,
+      });
+      enemy.reaction.hit(this.reactionEvent);
+    }
   }
 
   update(dt, battle, context = {}) {
@@ -123,17 +142,29 @@ export class SpeedImpact {
         : null;
     // Preserve pre-collision speed when resolution zeroes travel, and allow
     // the first acceleration step to supply a faster resulting velocity.
-    if (finitePoint(context.velocity) && (!playerVelocity ||
-      Math.hypot(context.velocity.x, context.velocity.y, context.velocity.z) >
-      Math.hypot(playerVelocity.x, playerVelocity.y, playerVelocity.z)))
+    if (
+      finitePoint(context.velocity) &&
+      (!playerVelocity ||
+        Math.hypot(context.velocity.x, context.velocity.y, context.velocity.z) >
+          Math.hypot(playerVelocity.x, playerVelocity.y, playerVelocity.z))
+    )
       playerVelocity = context.velocity;
-    const px = component(playerVelocity ? playerVelocity.x : (end.x - start.x) / dt),
-      py = component(playerVelocity ? playerVelocity.y : (end.y - start.y) / dt),
-      pz = component(playerVelocity ? playerVelocity.z : (end.z - start.z) / dt);
+    const px = component(
+        playerVelocity ? playerVelocity.x : (end.x - start.x) / dt,
+      ),
+      py = component(
+        playerVelocity ? playerVelocity.y : (end.y - start.y) / dt,
+      ),
+      pz = component(
+        playerVelocity ? playerVelocity.z : (end.z - start.z) / dt,
+      );
     if (!Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pz))
       return 0;
     this.contact.world = context.world ?? battle.world;
-    const playerRadius = positive(context.playerRadius ?? battle.player?.radius, 0.36);
+    const playerRadius = positive(
+      context.playerRadius ?? battle.player?.radius,
+      0.36,
+    );
     const enemies = battle.enemies ?? [];
     for (let i = 0; i < this.records.length; i++) {
       const enemy = enemies[i],
@@ -164,13 +195,22 @@ export class SpeedImpact {
       const speed = this.relativeVelocity.length();
       if (!Number.isFinite(speed)) continue;
       const directRadius = playerRadius + positive(body.radius, 0.32) + 0.03;
-      const directTime = speed >= this.settings.impactSpeed
-        ? this.contact.contact(start, end, enemyStart, enemyEnd, directRadius)
-        : null;
-      const nearTime = directTime === null && this.settings.nearMissEnabled &&
+      const directTime =
+        speed >= this.settings.impactSpeed
+          ? this.contact.contact(start, end, enemyStart, enemyEnd, directRadius)
+          : null;
+      const nearTime =
+        directTime === null &&
+        this.settings.nearMissEnabled &&
         speed >= this.settings.nearMissSpeed
-        ? this.contact.contact(start, end, enemyStart, enemyEnd, this.settings.nearMissRadius)
-        : null;
+          ? this.contact.contact(
+              start,
+              end,
+              enemyStart,
+              enemyEnd,
+              this.settings.nearMissRadius,
+            )
+          : null;
       if (directTime !== null) {
         if (!record.directContact && record.directCooldown === 0) {
           this.playerAt.lerpVectors(start, end, directTime);
@@ -180,22 +220,41 @@ export class SpeedImpact {
             this.direction.copy(this.relativeVelocity);
           if (Math.hypot(this.direction.x, this.direction.z) < 1e-8)
             this.direction.set(1, 0, 0);
-          const intensity = clamp01((speed - this.settings.impactSpeed) /
-            (this.settings.impactSpeed * 7));
-          this.apply(enemy, battle, 6 + intensity * 74, 0.24 + intensity * 0.36, "speed-impact");
+          const intensity = clamp01(
+            (speed - this.settings.impactSpeed) /
+              (this.settings.impactSpeed * 7),
+          );
+          this.apply(
+            enemy,
+            battle,
+            6 + intensity * 74,
+            0.24 + intensity * 0.36,
+            "speed-impact",
+          );
           this.directHits++;
           this.lastRelativeSpeed = speed;
           this.lastAffected++;
           record.directCooldown = SPEED_IMPACT_LIMITS.directCooldown;
         }
-      } else if (nearTime !== null && !record.nearContact &&
-        record.nearMissCooldown === 0) {
+      } else if (
+        nearTime !== null &&
+        !record.nearContact &&
+        record.nearMissCooldown === 0
+      ) {
         this.playerAt.lerpVectors(start, end, nearTime);
         this.enemyAt.lerpVectors(enemyStart, enemyEnd, nearTime);
         this.direction.subVectors(this.enemyAt, this.playerAt);
-        const intensity = clamp01((speed - this.settings.nearMissSpeed) /
-          (this.settings.nearMissSpeed * 4));
-        this.apply(enemy, battle, intensity * 2, 0.08 + intensity * 0.22, "speed-near-miss");
+        const intensity = clamp01(
+          (speed - this.settings.nearMissSpeed) /
+            (this.settings.nearMissSpeed * 4),
+        );
+        this.apply(
+          enemy,
+          battle,
+          intensity * 2,
+          0.08 + intensity * 0.22,
+          "speed-near-miss",
+        );
         this.nearMisses++;
         this.lastRelativeSpeed = speed;
         this.lastAffected++;
@@ -208,26 +267,38 @@ export class SpeedImpact {
   }
 
   boom(event, battle, options = {}) {
-    if (!event || !Number.isSafeInteger(event.sequence) ||
-      event.sequence <= this.lastBoomSequence || !finitePoint(event.position) ||
-      !Number.isFinite(event.radius) || event.radius <= 0)
+    if (
+      !event ||
+      !Number.isSafeInteger(event.sequence) ||
+      event.sequence <= this.lastBoomSequence ||
+      !finitePoint(event.position) ||
+      !Number.isFinite(event.radius) ||
+      event.radius <= 0
+    )
       return 0;
     this.lastBoomSequence = event.sequence;
     if (!combatEnabled(battle)) return 0;
     this.booms++;
     let affected = 0;
     const speed = positive(event.speed, this.settings.sonicSpeed),
-      intensity = clamp01((speed - this.settings.sonicSpeed) /
-        (this.settings.sonicSpeed * 4)),
+      intensity = clamp01(
+        (speed - this.settings.sonicSpeed) / (this.settings.sonicSpeed * 4),
+      ),
       enemies = battle.enemies ?? [],
       world = battle.world;
     this.boomOrigin.copy(event.position);
     this.boomOrigin.y += positive(battle.player?.height, 2) * 0.45;
     for (let i = 0; i < Math.min(this.records.length, enemies.length); i++) {
-      const enemy = enemies[i], body = enemy?.body;
-      if (!body || enemy.spawned === false || body.active === false ||
+      const enemy = enemies[i],
+        body = enemy?.body;
+      if (
+        !body ||
+        enemy.spawned === false ||
+        body.active === false ||
         !finitePoint(body.position) ||
-        body.id === (options.excludeTargetId ?? event.excludeTargetId)) continue;
+        body.id === (options.excludeTargetId ?? event.excludeTargetId)
+      )
+        continue;
       const distance = body.position.distanceTo(event.position);
       if (!Number.isFinite(distance) || distance > event.radius) continue;
       this.boomTarget.copy(body.position);
@@ -241,8 +312,13 @@ export class SpeedImpact {
           this.direction.set(1, 0, 0);
       }
       const falloff = 1 - clamp01(distance / event.radius);
-      this.apply(enemy, battle, 8 + intensity * falloff * 32,
-        0.16 + intensity * falloff * 0.24, "sonic-boom");
+      this.apply(
+        enemy,
+        battle,
+        8 + intensity * falloff * 32,
+        0.16 + intensity * falloff * 0.24,
+        "sonic-boom",
+      );
       affected++;
     }
     this.boomHits += affected;

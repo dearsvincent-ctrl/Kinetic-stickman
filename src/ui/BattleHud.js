@@ -93,6 +93,7 @@ export class BattleHud {
           velocity: e.controller.velocity.toArray(),
           impulse: e.body.impulse.toArray(),
           alerted: e.alerted,
+          reaction: e.reaction.snapshot(),
         })),
     );
     this.defeatPanel.hidden = p.active;

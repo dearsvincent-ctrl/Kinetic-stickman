@@ -111,7 +111,9 @@ export class StrikeHitDetector {
     const curved =
       technique.animation === "backhand" ||
       technique.strikeStyle === "hook" ||
-      ["roundhouse", "spinning", "sweep", "descending", "bicycle"].includes(style);
+      ["roundhouse", "spinning", "sweep", "descending", "bicycle"].includes(
+        style,
+      );
     const spinArc =
       style === "spinning"
         ? Math.abs(
@@ -228,15 +230,42 @@ export class StrikeHitDetector {
         const hitboxes = target.hitboxes ?? DEFAULT_BOXES;
         for (const box of hitboxes) {
           if (this.hitIds.has(target.id)) break;
+          const offsetX = box?.x ?? 0,
+            offsetZ = box?.z ?? 0;
+          const oldX = box?.previousX ?? offsetX,
+            oldZ = box?.previousZ ?? offsetZ;
+          const oldY =
+            box?.previousHeight ?? box?.height ?? target.strikeHeight ?? 1.4;
           const cy = box?.height ?? target.strikeHeight ?? 1.4,
             bodyRadius = box?.radius ?? target.strikeRadius ?? 0.24,
             radius = bodyRadius + technique.hitRadius;
-          const x = this.a.x - lerp(previous.x, current.x, g0),
-            y = this.a.y - lerp(previous.y ?? 0, current.y ?? 0, g0) - cy,
-            z = this.a.z - lerp(previous.z, current.z, g0);
-          const vx = this.b.x - lerp(previous.x, current.x, g1) - x,
-            vy = this.b.y - lerp(previous.y ?? 0, current.y ?? 0, g1) - cy - y,
-            vz = this.b.z - lerp(previous.z, current.z, g1) - z;
+          const x =
+              this.a.x -
+              lerp(previous.x, current.x, g0) -
+              lerp(oldX, offsetX, g0),
+            y =
+              this.a.y -
+              lerp(previous.y ?? 0, current.y ?? 0, g0) -
+              lerp(oldY, cy, g0),
+            z =
+              this.a.z -
+              lerp(previous.z, current.z, g0) -
+              lerp(oldZ, offsetZ, g0);
+          const vx =
+              this.b.x -
+              lerp(previous.x, current.x, g1) -
+              lerp(oldX, offsetX, g1) -
+              x,
+            vy =
+              this.b.y -
+              lerp(previous.y ?? 0, current.y ?? 0, g1) -
+              lerp(oldY, cy, g1) -
+              y,
+            vz =
+              this.b.z -
+              lerp(previous.z, current.z, g1) -
+              lerp(oldZ, offsetZ, g1) -
+              z;
           const a = vx * vx + vy * vy + vz * vz,
             b = x * vx + y * vy + z * vz,
             c = x * x + y * y + z * z - radius * radius;
@@ -277,12 +306,16 @@ export class StrikeHitDetector {
               heading = startHeading + turn * f,
               global = lerp(motionFrom, motionTo, f);
             let dx =
-              lerp(previous.x, current.x, global) - lerp(start.x, end.x, f);
+              lerp(previous.x, current.x, global) +
+              lerp(oldX, offsetX, global) -
+              lerp(start.x, end.x, f);
             let dz =
-              lerp(previous.z, current.z, global) - lerp(start.z, end.z, f);
+              lerp(previous.z, current.z, global) +
+              lerp(oldZ, offsetZ, global) -
+              lerp(start.z, end.z, f);
             let dy =
               lerp(previous.y ?? 0, current.y ?? 0, global) +
-              cy -
+              lerp(oldY, cy, global) -
               lerp(start.y, end.y, f) -
               technique.originHeight;
             let angle = Math.atan2(-dx, -dz) - heading;
@@ -347,6 +380,20 @@ export class StrikeHitDetector {
                 z: lerp(start.z, end.z, f),
               }),
               heading,
+              location:
+                box?.part ??
+                (cy > 1.55
+                  ? "head"
+                  : lerp(this.a.y, this.b.y, hit) -
+                        lerp(previous.y ?? 0, current.y ?? 0, global) <
+                      0.75
+                    ? "leg"
+                    : "body"),
+              direction: Object.freeze({
+                x: this.b.x - this.a.x,
+                y: this.b.y - this.a.y,
+                z: this.b.z - this.a.z,
+              }),
               targetPosition: Object.freeze({
                 x: lerp(previous.x, current.x, global),
                 y: lerp(previous.y ?? 0, current.y ?? 0, global),

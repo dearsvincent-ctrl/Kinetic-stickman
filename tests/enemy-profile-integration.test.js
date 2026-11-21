@@ -301,7 +301,7 @@ test("Heavy attack damage scales independently from its incoming knockback resis
   near(values.standard.damage, values.heavy.damage);
   near(
     values.standard.impulse / values.heavy.impulse,
-    values.heavy.profile.knockbackResistance,
+    values.heavy.profile.knockbackResistance * values.heavy.profile.mass,
   );
   assert.ok(values.heavy.profile.damage > values.standard.profile.damage);
 });

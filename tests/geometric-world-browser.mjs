@@ -64,7 +64,7 @@ export async function checkGeometricWorld(page, native) {
   );
   await page.goto(url.href, { waitUntil: "networkidle" });
   await advance(page, 450);
-  assert.equal(await page.locator(".version b").textContent(), "0.8.9");
+  assert.equal(await page.locator(".version b").textContent(), "0.9.0");
   let s = await stick(page, native);
   await s.move(0, 0);
   await travel(page, s, -130, 0);

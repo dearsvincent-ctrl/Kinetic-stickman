@@ -126,7 +126,7 @@ export async function checkCombatStrength(page, native) {
   await page.locator("#physics-close").click();
   await page.evaluate(() => document.activeElement?.blur());
   await engage(page, native, "punch", (a) =>
-    a.enemies.some((e) => e.health === 72 && Math.hypot(...e.impulse) > 20),
+    a.enemies.some((e) => e.health === 72 && Math.max(Math.hypot(...e.impulse), Math.hypot(...(e.reaction?.velocity ?? [0,0,0]))) > 20),
   );
   console.log(
     "PASS: native 0x damage / 100x impact yields real enemy impulse with unchanged health; independent live/save/refresh/reset strength and portrait controls",

@@ -1,4 +1,9 @@
 import {
+  REACTION_DEFAULTS,
+  REACTION_PARAMETERS,
+  saveReactions,
+} from "../sandbox/ReactionSettings.js";
+import {
   ANIMATION_DEFAULTS,
   ANIMATION_PARAMETERS,
   saveAnimationSettings,
@@ -18,7 +23,7 @@ import {
 /** Small independent editors. SliderLocks observes new ranges automatically;
  * these controls never share the physics/aim/camera/layout storage keys. */
 export class CombatPolishPanel {
-  constructor({ effects, freeflow, animator, animation, storage }) {
+  constructor({ effects, freeflow, animator, animation, storage, battle }) {
     this.storage = storage;
     this.effects = effects;
     this.freeflow = freeflow;
@@ -27,6 +32,18 @@ export class CombatPolishPanel {
     animator.locomotion.aggression = this.animation.sprintAggression;
     if (new URLSearchParams(globalThis.location?.search).get("sandbox") !== "1")
       return;
+    if (battle)
+      this.addSection({
+        id: "enemy-reactions",
+        title: "Enemy Hit Reactions / Hybrid Ragdoll",
+        parameters: REACTION_PARAMETERS,
+        note: "Angular ragdoll joints keep fixed bone lengths. Physical launch and mass are separate from visual intensity and Attack Power. Thresholds are ordered automatically. Secondary collision damage starts off. Tag Mode never applies combat reactions. Settings save independently.",
+        toggle: ["ragdollEnabled", "Selective ragdoll enabled"],
+        get: () => battle.reactionSettings,
+        apply: (values) => battle.configureReactions(values),
+        defaults: REACTION_DEFAULTS,
+        save: saveReactions,
+      });
     this.addSection({
       id: "animation-polish",
       title: "Animation Presentation",
@@ -45,7 +62,11 @@ export class CombatPolishPanel {
       title: "Superhuman Speed Effects",
       parameters: SPEED_EFFECT_PARAMETERS,
       note: "Dust follows actual ground contacts and speed. The visual sonic barrier triggers once, then rearms below 80% of its speed threshold. Layered pressure waves and brief camera impact work in both modes. Enemy speed reactions apply only in Combat Mode; no health damage is added.",
-      toggles: [["sonicEnabled", "Sonic pressure wave enabled"], ["shakeEnabled", "Brief sonic camera impact"], ["nearMissEnabled", "Combat near-miss stagger"]],
+      toggles: [
+        ["sonicEnabled", "Sonic pressure wave enabled"],
+        ["shakeEnabled", "Brief sonic camera impact"],
+        ["nearMissEnabled", "Combat near-miss stagger"],
+      ],
       get: () => effects.config,
       apply: (values) => effects.configure(values),
       defaults: SPEED_EFFECT_DEFAULTS,
@@ -101,7 +122,8 @@ export class CombatPolishPanel {
         output.value = `${Number(values[p.id].toFixed(2))}${p.unit ?? "×"}`;
         input.setAttribute("aria-valuetext", output.value);
       }
-      for (const { checkbox, key } of checkboxes) checkbox.checked = values[key];
+      for (const { checkbox, key } of checkboxes)
+        checkbox.checked = values[key];
     };
     const commit = (values) => {
       apply(values);

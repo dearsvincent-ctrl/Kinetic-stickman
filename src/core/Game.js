@@ -1,3 +1,4 @@
+import { loadReactions } from "../sandbox/ReactionSettings.js";
 import * as THREE from "three";
 import { createArena } from "../world/createArena.js";
 import { TraversalWorld } from "../world/TraversalWorld.js";
@@ -117,7 +118,11 @@ export class Game {
     this.speedImpact = new SpeedImpact();
     this.lastBoomSequence = 0;
     this.impactIncomingVelocity = new THREE.Vector3();
-    this.speedImpactContext = { start: null, end: null, incomingVelocity: this.impactIncomingVelocity };
+    this.speedImpactContext = {
+      start: null,
+      end: null,
+      incomingVelocity: this.impactIncomingVelocity,
+    };
     this.streakOrigin = new THREE.Vector3();
     this.lastPlantSequence = 0;
     this.limbSelector = new ContextualLimbSelector({
@@ -160,6 +165,10 @@ export class Game {
       onContact: (hit) => {
         this.contactFeedbackRemaining = 0.18;
         this.battle.hitEnemy(hit, this.combat.currentTechnique);
+        const enemy = this.battle.enemies.find(
+          (e) => e.body.id === hit.targetId,
+        );
+        if (enemy?.reaction.ownsMotion) this.freeflow?.cancel("impact-contact");
         if (this.cameraContext) {
           this.cameraContext.recentTargetId = hit.targetId;
           this.cameraContext.recentEngagementRemaining = 2.5;
@@ -187,6 +196,7 @@ export class Game {
     // Camera preferences also load in ordinary play. They never share the
     // physics/AI/aim/layout saves or modify the player's movement parameters.
     this.cameraPreferences = new CameraPreferences(cameraStorage);
+    this.battle.configureReactions(loadReactions(cameraStorage) ?? {});
     this.speedEffects.configure(loadSpeedEffectSettings(cameraStorage) ?? {});
     this.freeflow.configure(loadFreeflowSettings(cameraStorage) ?? {});
     this.animationPreferences =
@@ -288,6 +298,7 @@ export class Game {
     });
     this.combatPolishPanel = new CombatPolishPanel({
       effects: this.speedEffects,
+      battle: this.battle,
       freeflow: this.freeflow,
       animator: this.animator,
       animation: this.animationPreferences,
@@ -511,7 +522,9 @@ export class Game {
     if (boom?.sequence > 0 && boom.sequence !== this.lastBoomSequence) {
       this.lastBoomSequence = boom.sequence;
       this.followCamera.triggerImpact();
-      this.speedImpact.boom(boom, this.battle, { excludeTargetId: this.freeflow?.active ? this.freeflow.targetId : null });
+      this.speedImpact.boom(boom, this.battle, {
+        excludeTargetId: this.freeflow?.active ? this.freeflow.targetId : null,
+      });
     }
   }
 
@@ -613,14 +626,15 @@ export class Game {
             );
           else if (action === "dash") this.controller.requestDash();
         }
-        const playerSteps = this.physicsSandbox.enabled || this.freeflow?.active
-          ? movementSubsteps(
-              this.controller,
-              STEP,
-              undefined,
-              this.input.movementMagnitude,
-            )
-          : 1;
+        const playerSteps =
+          this.physicsSandbox.enabled || this.freeflow?.active
+            ? movementSubsteps(
+                this.controller,
+                STEP,
+                undefined,
+                this.input.movementMagnitude,
+              )
+            : 1;
         this.simulationSteps = Math.max(
           playerSteps,
           this.battle.recommendedSubsteps(STEP),
@@ -728,20 +742,25 @@ export class Game {
     flowContext.world = this.controller.world;
     flowContext.combat = this.combat;
     const motion = this.freeflow?.beforeStep(dt, this.controller, flowContext);
-    this.impactIncomingVelocity?.copy(motion?.velocity ?? this.controller.velocity);
+    this.impactIncomingVelocity?.copy(
+      motion?.velocity ?? this.controller.velocity,
+    );
     this.controller.update(dt, this.input, this.followCamera.yaw, null, motion);
     this.battle?.movePlayerImpulse(dt);
     this.freeflow?.afterStep(dt, this.controller, flowContext);
     this.combat.holdWindup = this.freeflow?.holdWindup ?? false;
     if (this.speedImpact) {
-    Object.assign(this.speedImpactContext, {
-      start: this.simulationPrevious, end: this.character.root.position,
-      velocity: this.controller.velocity, playerRadius: this.controller.radius,
-      world: this.controller.world, mode: this.battle?.mode,
-      attackTargetId: this.freeflow?.active ? this.freeflow.targetId : null,
-    });
-    this.configureSpeedFeedback?.(this.speedEffects.config);
-    this.speedImpact.update(dt, this.battle, this.speedImpactContext);
+      Object.assign(this.speedImpactContext, {
+        start: this.simulationPrevious,
+        end: this.character.root.position,
+        velocity: this.controller.velocity,
+        playerRadius: this.controller.radius,
+        world: this.controller.world,
+        mode: this.battle?.mode,
+        attackTargetId: this.freeflow?.active ? this.freeflow.targetId : null,
+      });
+      this.configureSpeedFeedback?.(this.speedEffects.config);
+      this.speedImpact.update(dt, this.battle, this.speedImpactContext);
     }
     this.controller.syncSupport?.();
     this.updateCameraMotion?.(dt);
@@ -820,7 +839,9 @@ export class Game {
           elapsed / dt,
           dt,
         );
-      context.freeflowRedirect = !!(this.freeflow?.active && this.freeflow.holdWindup);
+      context.freeflowRedirect = !!(
+        this.freeflow?.active && this.freeflow.holdWindup
+      );
       this.attackScheduler.prepare(context, this.input.blocking);
       this.combat.holdWindup = this.freeflow?.holdWindup ?? false;
       const step = Math.min(

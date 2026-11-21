@@ -12,6 +12,34 @@ export const ARCHETYPE_IDS = Object.freeze([
 export const ENEMY_ABILITY_PARAMETERS = Object.freeze(
   [
     {
+      id: "mass",
+      label: "Body mass",
+      min: 0.25,
+      max: 20,
+      default: 1,
+      step: 0.05,
+      unit: "×",
+    },
+    {
+      id: "balance",
+      label: "Balance / stagger resistance",
+      min: 0.25,
+      max: 8,
+      default: 1,
+      step: 0.05,
+      unit: "×",
+    },
+    {
+      id: "recovery",
+      label: "Hit recovery speed",
+      min: 0.25,
+      max: 8,
+      default: 1,
+      step: 0.05,
+      unit: "×",
+    },
+
+    {
       id: "runSpeed",
       label: "Maximum running speed",
       min: 0.5,
@@ -132,6 +160,9 @@ export const ENEMY_ABILITY_TOGGLES = Object.freeze(
 );
 
 const STANDARD = {
+  mass: 1,
+  balance: 1,
+  recovery: 1,
   runSpeed: 3.6,
   acceleration: 11,
   deceleration: 15,
@@ -155,6 +186,8 @@ const BASE_PROFILES = {
     ...STANDARD,
     id: "acrobat",
     name: "Acrobat",
+    balance: 1.6,
+    recovery: 1.5,
     color: 0x56a7a2,
     runSpeed: 5.4,
     acceleration: 16,
@@ -175,6 +208,8 @@ const BASE_PROFILES = {
     ...STANDARD,
     id: "leaper",
     name: "Leaper",
+    balance: 1.25,
+    recovery: 1.35,
     color: 0xd4a844,
     runSpeed: 14,
     acceleration: 32,
@@ -195,6 +230,9 @@ const BASE_PROFILES = {
     ...STANDARD,
     id: "heavy",
     name: "Heavy",
+    mass: 2.5,
+    balance: 1.8,
+    recovery: 0.8,
     color: 0x8c7db2,
     runSpeed: 2.6,
     acceleration: 7,

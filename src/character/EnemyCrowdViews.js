@@ -42,6 +42,8 @@ export class EnemyCrowdViews {
     this.b = new THREE.Vector3();
     this.mid = new THREE.Vector3();
     this.direction = new THREE.Vector3();
+    this.reactionQ = new THREE.Quaternion();
+    this.reactionOffset = new THREE.Vector3();
     this.up = new THREE.Vector3(0, 1, 0);
     this.color = new THREE.Color();
     this.phases = new Float64Array(ENEMY_LIMITS.population);
@@ -54,6 +56,21 @@ export class EnemyCrowdViews {
         0;
   }
   point(out, x, y, z) {
+    if (this.reaction?.ownsMotion) {
+      this.reactionOffset.set(x, y - 0.97, z).applyQuaternion(this.reactionQ);
+      return out
+        .copy(this.p)
+        .add(this.reactionOffset)
+        .setY(this.p.y + this.reactionOffset.y + this.reaction.bodyHeight);
+    }
+    if (this.reaction?.active) {
+      const lean =
+        Math.max(0, y - 0.9) *
+        Math.exp(-this.reaction.age * 7) *
+        Math.min(1, this.reaction.weight);
+      x += this.reaction.localX * lean * 0.25;
+      z += this.reaction.localZ * lean * 0.25;
+    }
     return out.set(
       this.p.x + x * this.cos + z * this.sin,
       this.p.y + y,
@@ -75,6 +92,10 @@ export class EnemyCrowdViews {
   add(agent, dt, camera) {
     if (this.heads.count >= ENEMY_LIMITS.population) return;
     this.p = agent.root.position;
+    this.reaction = agent.reaction;
+    this.reactionQ
+      .setFromAxisAngle(this.up, agent.controller.heading)
+      .multiply(agent.reaction?.orientation ?? this.q.identity());
     this.sin = Math.sin(agent.controller.heading);
     this.cos = Math.cos(agent.controller.heading);
     const traversal = agent.controller.parkour;
@@ -95,7 +116,10 @@ export class EnemyCrowdViews {
     const phase = this.phases[index],
       swing =
         Math.sin(phase) * 0.24 * Math.min(1, agent.controller.speed / 2.6);
-    const fall = agent.body.active ? 0 : Math.min(0.75, agent.defeatTime);
+    const fall =
+      agent.reaction?.ownsMotion || agent.body.active
+        ? 0
+        : Math.min(0.75, agent.defeatTime);
     const landing =
       jump?.phase === "landing"
         ? Math.sin(Math.PI * jump.phaseProgress) * 0.13
@@ -107,9 +131,10 @@ export class EnemyCrowdViews {
     const reachHeight = ledge
       ? Math.max(0.95, Math.min(1.8, traversal.surface.top - this.p.y + 0.04))
       : shoulder + 0.2;
-    const extension = agent.combat.attack.active
-      ? agent.combat.attack.extension
-      : 0;
+    const extension =
+      !agent.reaction?.ownsMotion && agent.combat.attack.active
+        ? agent.combat.attack.extension
+        : 0;
     const punch =
       agent.combat.currentTechnique?.action === "punch" ? extension : 0;
     const kick =

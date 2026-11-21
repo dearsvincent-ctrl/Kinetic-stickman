@@ -62,6 +62,7 @@ export class Combatant {
     atPosition = this.position,
     allowZeroDamage = false,
     impulseLimit = 8,
+    direction = null,
   }) {
     if (
       !this.active ||
@@ -94,8 +95,15 @@ export class Combatant {
     if (!blocked) this.stagger = DAMAGE_CONFIG.stagger;
     const force = knockback * (blocked ? 0.15 : 1);
     // Bounded impulse, independent of sandbox travel speed and attack reach.
-    const nx = length > 1e-8 ? -dx / length : -Math.sin(heading);
-    const nz = length > 1e-8 ? -dz / length : -Math.cos(heading);
+    let nx = length > 1e-8 ? -dx / length : -Math.sin(heading);
+    let nz = length > 1e-8 ? -dz / length : -Math.cos(heading);
+    if (Number.isFinite(direction?.x) && Number.isFinite(direction?.z)) {
+      const d = Math.hypot(direction.x, direction.z);
+      if (d > 1e-8) {
+        nx = direction.x / d;
+        nz = direction.z / d;
+      }
+    }
     if (force > 0) {
       const cap = Math.min(
         1000,

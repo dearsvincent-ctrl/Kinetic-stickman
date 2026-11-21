@@ -233,8 +233,15 @@ export class PunchAimAssist {
         searchDistance + (body.radius ?? 0.32)
       )
         continue;
-      const velocity = candidate.controller?.velocity ?? body.velocity ?? ZERO;
-      const impulse = body.impulse ?? ZERO;
+      const reactionOwned = candidate.reaction?.ownsMotion;
+      const reactionFlight =
+        reactionOwned &&
+        (candidate.reaction.phase === "flight" ||
+          Math.abs(candidate.reaction.velocity.y) > 1e-4);
+      const velocity = reactionOwned
+        ? candidate.reaction.velocity
+        : (candidate.controller?.velocity ?? body.velocity ?? ZERO);
+      const impulse = reactionOwned ? ZERO : (body.impulse ?? ZERO);
       if (
         ![
           velocity.x,
@@ -263,16 +270,44 @@ export class PunchAimAssist {
           const k0 = (1 - Math.exp(-8 * t0)) / 8,
             k1 = (1 - Math.exp(-8 * t1)) / 8;
           const x =
-            p0.x - this.targetOrigin.x - velocity.x * t0 - impulse.x * k0;
-          const y = p0.y - this.targetOrigin.y - box.height - velocity.y * t0;
+            p0.x -
+            this.targetOrigin.x -
+            (box.x ?? 0) -
+            velocity.x * t0 -
+            impulse.x * k0;
+          const y =
+            p0.y -
+            this.targetOrigin.y -
+            box.height -
+            velocity.y * t0 +
+            (reactionFlight ? 9 * t0 * t0 : 0);
           const z =
-            p0.z - this.targetOrigin.z - velocity.z * t0 - impulse.z * k0;
+            p0.z -
+            this.targetOrigin.z -
+            (box.z ?? 0) -
+            velocity.z * t0 -
+            impulse.z * k0;
           const dx =
-            p1.x - this.targetOrigin.x - velocity.x * t1 - impulse.x * k1 - x;
+            p1.x -
+            this.targetOrigin.x -
+            (box.x ?? 0) -
+            velocity.x * t1 -
+            impulse.x * k1 -
+            x;
           const dy =
-            p1.y - this.targetOrigin.y - box.height - velocity.y * t1 - y;
+            p1.y -
+            this.targetOrigin.y -
+            box.height -
+            velocity.y * t1 +
+            (reactionFlight ? 9 * t1 * t1 : 0) -
+            y;
           const dz =
-            p1.z - this.targetOrigin.z - velocity.z * t1 - impulse.z * k1 - z;
+            p1.z -
+            this.targetOrigin.z -
+            (box.z ?? 0) -
+            velocity.z * t1 -
+            impulse.z * k1 -
+            z;
           const length = dx * dx + dy * dy + dz * dz;
           const f =
             length > 1e-12
@@ -289,9 +324,10 @@ export class PunchAimAssist {
           this.targetPoint
             .copy(this.targetOrigin)
             .addScaledVector(velocity, time);
-          this.targetPoint.x += impulse.x * impulseTime;
-          this.targetPoint.z += impulse.z * impulseTime;
-          this.targetPoint.y += box.height;
+          this.targetPoint.x += (box.x ?? 0) + impulse.x * impulseTime;
+          this.targetPoint.z += (box.z ?? 0) + impulse.z * impulseTime;
+          this.targetPoint.y +=
+            box.height - (reactionFlight ? 9 * time * time : 0);
           this.targetPoint.sub(this.root);
           this.targetPoint.y -= BODY_PIVOT + this.lift;
           this.inverse.copy(this.predictedOrientation).invert();
@@ -338,6 +374,9 @@ export class PunchAimAssist {
           selected = {
             targetId: body.id,
             targetHeight: box.height,
+            ...(box.x || box.z
+              ? { targetOffsetX: box.x ?? 0, targetOffsetZ: box.z ?? 0 }
+              : {}),
             axis: this.axis.toArray(),
             angle: correction,
             requestedAngle: angle,
@@ -365,8 +404,15 @@ export class PunchAimAssist {
         this.targetFraction,
       );
     else this.targetOrigin.copy(body.position);
-    const velocity = candidate.controller?.velocity ?? body.velocity ?? ZERO;
-    const impulse = body.impulse ?? ZERO;
+    const reactionOwned = candidate.reaction?.ownsMotion;
+    const reactionFlight =
+      reactionOwned &&
+      (candidate.reaction.phase === "flight" ||
+        Math.abs(candidate.reaction.velocity.y) > 1e-4);
+    const velocity = reactionOwned
+      ? candidate.reaction.velocity
+      : (candidate.controller?.velocity ?? body.velocity ?? ZERO);
+    const impulse = reactionOwned ? ZERO : (body.impulse ?? ZERO);
     const profile = [];
     strikeAlignmentPivot(this.pivot, technique);
     for (let i = 0; i < SAMPLES; i++) {
@@ -376,9 +422,12 @@ export class PunchAimAssist {
       this.predictPose(time);
       this.targetPoint.copy(this.targetOrigin).addScaledVector(velocity, time);
       const impulseTime = (1 - Math.exp(-8 * time)) / 8;
-      this.targetPoint.x += impulse.x * impulseTime;
-      this.targetPoint.z += impulse.z * impulseTime;
-      this.targetPoint.y += selected.targetHeight;
+      this.targetPoint.x +=
+        (selected.targetOffsetX ?? 0) + impulse.x * impulseTime;
+      this.targetPoint.z +=
+        (selected.targetOffsetZ ?? 0) + impulse.z * impulseTime;
+      this.targetPoint.y +=
+        selected.targetHeight - (reactionFlight ? 9 * time * time : 0);
       this.targetPoint.sub(this.root);
       this.targetPoint.y -= BODY_PIVOT + this.lift;
       this.targetPoint.applyQuaternion(

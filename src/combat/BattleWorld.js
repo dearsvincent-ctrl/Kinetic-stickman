@@ -1,3 +1,8 @@
+import { calculateImpact } from "./ImpactModel.js";
+import {
+  REACTION_DEFAULTS,
+  sanitizeReactions,
+} from "../sandbox/ReactionSettings.js";
 import { Vector3 } from "three";
 import { Combatant, DAMAGE_CONFIG } from "./Combatant.js";
 import { EnemyAgent } from "./EnemyAgent.js";
@@ -72,6 +77,11 @@ export class BattleWorld {
     this.tagDetector = new TagContactDetector(world);
     this.tagSettingsRevision = 0;
     this.strength = NORMAL_COMBAT_STRENGTH;
+    this.reactionSettings = REACTION_DEFAULTS;
+    this.impactSample = {};
+    this.targetImpactVelocity = new Vector3();
+    this.reactionIndices = new Int16Array(8);
+    this.reactionDistances = new Float64Array(8);
     this.populationOverride = null;
     this.settingsRevision = 0;
     this.playerVelocity = new Vector3();
@@ -201,6 +211,13 @@ export class BattleWorld {
       const e = this.enemies[i];
       if (!e.spawned && e.tagRespawnRemaining <= 0)
         this.spawnEnemy(e, i, count);
+    }
+  }
+  configureReactions(values) {
+    this.reactionSettings = sanitizeReactions(values);
+    for (const enemy of this.enemies) {
+      enemy.reaction.settings = this.reactionSettings;
+      if (!this.reactionSettings.ragdollEnabled) enemy.reaction.ragdoll = false;
     }
   }
   configureStrength(values) {
@@ -389,6 +406,7 @@ export class BattleWorld {
         speed = Math.max(
           speed,
           e.controller.velocity.length(),
+          e.reaction?.ownsMotion ? e.reaction.velocity.length() : 0,
           Math.abs(e.controller.jump.verticalVelocity),
           e.controller.jumpRequested ? e.controller.jump.launchVelocity : 0,
           e.controller.parkour?.attached
@@ -448,6 +466,40 @@ export class BattleWorld {
       return;
     }
     this.attackGate = Math.max(0, this.attackGate - dt);
+    this.reactionIndices.fill(-1);
+    this.reactionDistances.fill(Infinity);
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (
+        !e.spawned ||
+        (!e.body.active && e.defeatTime >= 2) ||
+        !e.reaction.ownsMotion
+      )
+        continue;
+      const d = e.root.position.distanceToSquared(this.player.position);
+      if (d > 70 * 70) continue;
+      for (let j = 0; j < 8; j++)
+        if (d < this.reactionDistances[j]) {
+          for (let k = 7; k > j; k--) {
+            this.reactionDistances[k] = this.reactionDistances[k - 1];
+            this.reactionIndices[k] = this.reactionIndices[k - 1];
+          }
+          this.reactionDistances[j] = d;
+          this.reactionIndices[j] = i;
+          break;
+        }
+    }
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      e.reaction.settings = this.reactionSettings;
+      e.reaction.detail =
+        e.root.position.distanceToSquared(this.player.position) < 70 * 70 &&
+        (!e.reaction.ownsMotion || this.reactionIndices.includes(i));
+      if (e.collisionDefeated) {
+        this.defeated++;
+        e.collisionDefeated = false;
+      }
+    }
     let attackers = 0;
     for (const e of this.enemies)
       if (e.spawned && e.body.active && e.combat.attack.active) attackers++;
@@ -465,6 +517,7 @@ export class BattleWorld {
         !e.spawned ||
         !e.body.active ||
         e.body.stagger > 0 ||
+        e.reaction.ownsMotion ||
         e.combat.attack.active
       )
         continue;
@@ -541,17 +594,40 @@ export class BattleWorld {
     );
     if (!enemy) return null;
     const effect = playerStrikeImpact(technique?.action, this.strength);
-    const knockback = effect.knockback / enemy.profile.knockbackResistance;
+    this.targetImpactVelocity.copy(
+      enemy.reaction.ownsMotion
+        ? enemy.reaction.velocity
+        : enemy.controller.velocity,
+    );
+    if (!enemy.reaction.ownsMotion && enemy.controller.jump.airborne)
+      this.targetImpactVelocity.y = enemy.controller.jump.verticalVelocity;
+    const impact = calculateImpact(this.impactSample, {
+      hit,
+      technique,
+      damage: effect.damage,
+      knockback: effect.knockback,
+      sourceVelocity: this.playerVelocity,
+      targetVelocity: this.targetImpactVelocity,
+      profile: enemy.profile,
+      settings: this.reactionSettings,
+    });
+    const knockback = impact.force * impact.horizontal;
     const result = enemy.body.receive({
       damage: effect.damage,
       source: hit.source ?? this.player.position,
       heading: hit.heading,
       atPosition: hit.targetPosition ?? enemy.body.position,
       knockback,
+      direction: impact,
       allowZeroDamage: true,
       impulseLimit: Math.max(8, knockback * 2),
     });
     if (result) {
+      if (result.blocked) {
+        impact.force *= 0.15;
+        impact.visual *= 0.3;
+      }
+      enemy.reaction.hit(impact);
       enemy.combat.cancelAttack("hit");
       enemy.controller.parkour?.cancel(enemy.controller);
       if (result.defeated) this.defeated++;

@@ -1,3 +1,4 @@
+import { EnemyReaction } from "./EnemyReaction.js";
 import { Group, Vector3 } from "three";
 import { CharacterController } from "../movement/CharacterController.js";
 import { ArenaBounds } from "../world/ArenaBounds.js";
@@ -78,6 +79,7 @@ export class EnemyAgent {
       navigate: (agent, velocity, target, dt) =>
         this.navigation.update(agent, velocity, target, dt),
     });
+    this.reaction = new EnemyReaction(this);
     this.applyAbilities(this.settings, true);
   }
   spawn(position, wave, generation) {
@@ -85,6 +87,7 @@ export class EnemyAgent {
     this.root.position.copy(position);
     this.body.id = `enemy-${generation}-${this.index}`;
     this.body.reset(Math.min(140, 72 + (wave - 1) * 5));
+    this.reaction.reset();
     this.controller.stop();
     this.controller.velocity.set(0, 0, 0);
     // A tagged airborne actor must not carry its old height into a ground
@@ -109,6 +112,7 @@ export class EnemyAgent {
     this.state = "Idle";
     this.alerted = false;
     this.defeatTime = 0;
+    this.collisionDefeated = false;
     this.attackCount = 0;
   }
   configure(settings) {
@@ -281,6 +285,20 @@ export class EnemyAgent {
     this.body.previousPosition.copy(this.root.position);
     this.startHeading = this.controller.heading;
     this.body.update(dt, false, this.controller.heading);
+    if (this.reaction.active) {
+      if (!this.body.active) {
+        this.defeatTime += dt;
+        if (this.defeatTime >= 2) {
+          this.state = "Defeated";
+          return;
+        }
+      }
+      const owned = this.reaction.update(dt);
+      if (owned) {
+        this.state = this.body.active ? this.reaction.phase : "Defeated";
+        return;
+      }
+    }
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.input.move.x = this.input.move.y = this.input.movementMagnitude = 0;
     this.input.locomotionSpeed = 0;
@@ -399,6 +417,10 @@ export class EnemyAgent {
     this.body.moveImpulse(dt, this.world, this.impulseStep);
   }
   advanceAttack(dt, player) {
+    if (this.reaction.ownsMotion) {
+      this.combat.cancelAttack("reaction");
+      return;
+    }
     this.detector.targets[0] = player;
     let elapsed = 0;
     const endHeading = this.controller.heading;

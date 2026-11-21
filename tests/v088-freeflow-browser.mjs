@@ -226,7 +226,7 @@ export async function checkPassbyAndCollision(page, native) {
     assert.equal(affected.contacts, 0, "Speed reactions do not award limb contacts");
     assert.ok(affected.polish.impacts.lastRelativeSpeed >= 5);
     if (kind === "near-miss") assert.equal(affected.polish.impacts.directHits, 0, "A pass-by can react without direct contact");
-    else assert.ok(affected.polish.impacts.lastForce > 0 && affected.enemies.some((enemy) => Math.hypot(...enemy.impulse) > 0));
+    else assert.ok(affected.polish.impacts.lastForce > 0 && affected.enemies.some((enemy) => Math.max(Math.hypot(...enemy.impulse), Math.hypot(...(enemy.reaction?.velocity ?? [0,0,0]))) > 0));
     assert.deepEqual(affected.enemies.map((enemy) => [enemy.id, enemy.health]), before.enemies.map((enemy) => [enemy.id, enemy.health]), "Movement impulses preserve enemy health");
     await page.screenshot({ path: `test-results/v088-speed-${kind}.png` });
     await controls.stop();
