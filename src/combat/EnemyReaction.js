@@ -42,6 +42,7 @@ export class EnemyReaction {
     this.skeleton = new ReactionSkeleton();
     this.settings = REACTION_DEFAULTS;
     this.velocity = new Vector3();
+    this.consumedImpulse = new Vector3();
     this.angular = new Vector3();
     this.orientation = new Quaternion();
     this.deltaQ = new Quaternion();
@@ -90,6 +91,7 @@ export class EnemyReaction {
     this.contactPoint ??= new Vector3();
     this.contactPoint.set(0, 0, 0);
     this.velocity.set(0, 0, 0);
+    this.consumedImpulse.set(0, 0, 0);
     this.angular.set(0, 0, 0);
     this.orientation.identity();
     this.jointAngles.fill(0);
@@ -145,17 +147,26 @@ export class EnemyReaction {
       s.ragdollEnabled &&
       ((this.ragdoll && this.ownsMotion) ||
         score >= Math.max(s.knockdown, s.ragdoll));
+    const wasOwner = this.ownsMotion;
+    // Combat and pressure contacts can share one simulation tick. The legacy
+    // accumulator stays observable until update; consume only its new delta.
+    if (wasOwner) {
+      this.velocity.add(a.body.impulse).sub(this.consumedImpulse);
+      this.consumedImpulse.copy(a.body.impulse);
+      this.velocity.clampLength(0, IMPACT_LIMITS.velocity);
+    }
     const severe = score >= s.knockdown || !a.body.active;
     if (severe) {
       if (!this.ownsMotion && this.hasPresentedPose) {
         this.jointAngles.set(this.presentedPose);
         this.orientation.copy(this.presentedOrientation);
       }
-      if (this.ownsMotion) this.velocity.add(a.body.impulse);
-      else
+      if (!wasOwner) {
         this.velocity
           .copy(a.body.impulse)
           .addScaledVector(a.controller.velocity, 0.25);
+        this.consumedImpulse.copy(a.body.impulse);
+      }
       if (force >= s.knockdown * 1.8 && s.launch > 0) {
         this.phase = "flight";
         const launch =
@@ -228,6 +239,7 @@ export class EnemyReaction {
       return false;
     }
     a.body.impulse.set(0, 0, 0);
+    this.consumedImpulse.set(0, 0, 0);
     a.combat.cancelAttack("reaction");
     a.body.stagger = Math.max(a.body.stagger, 0.06);
     // The world sweep is continuous; avoid nesting centimetre-sized travel

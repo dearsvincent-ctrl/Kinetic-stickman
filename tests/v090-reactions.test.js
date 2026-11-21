@@ -542,3 +542,19 @@ test("v090 a survivor skidding off a roof waits for genuine support before getti
   assert.equal(f.e.reaction.phase, "idle");
   near(f.e.root.position.y, 0, 0.001);
 });
+
+test("v090 contacts sharing a simulation tick consume each physical impulse only once", () => {
+  const f = fixture();
+  hit(f, { action: "kick", impact: 20 });
+  const first = f.e.reaction.velocity.clone();
+  hit(f, { action: "kick", impact: 20 });
+  near(f.e.reaction.velocity.x, f.e.body.impulse.x);
+  near(f.e.reaction.velocity.z, f.e.body.impulse.z);
+  assert.ok(Math.abs(f.e.reaction.velocity.z) <= Math.abs(first.z) * 2 + 0.001);
+  run(f, 0.016);
+  const before = f.e.reaction.velocity.clone();
+  hit(f, { action: "punch", impact: 0.1 });
+  near(f.e.reaction.velocity.z, before.z + f.e.body.impulse.z);
+  assert.equal(f.e.reaction.phase, "flight");
+  assert.equal(f.e.reaction.ragdoll, true);
+});
