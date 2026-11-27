@@ -258,7 +258,8 @@ export async function checkExtremeBattleMovement(page, native) {
   await expandDeveloperSections(page);
   // This subcase measures manual 100x movement invariance. The default wave
   // encounter above keeps Freeflow on and tests its real approach behavior.
-  await page.locator("#freeflow-combat > summary").click();
+  if (!(await page.locator("#freeflow-combat").evaluate((n) => n.open)))
+    await page.locator("#freeflow-combat > summary").click();
   await page.locator("#freeflow-combat-enabled").uncheck();
   await page.evaluate(() => {
     for (const [id, value] of Object.entries({
