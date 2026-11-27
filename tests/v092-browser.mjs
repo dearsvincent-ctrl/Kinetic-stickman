@@ -198,10 +198,23 @@ export async function checkProgression(p, native) {
     ),
   );
   await dev(p);
+  const hiddenCard = await p
+    .locator("#progression-stat-jumpStrength")
+    .elementHandle();
   await p.locator("#progression-test-start").click();
   await p.locator("#progression-test-xp").click();
   for (let n = 0; n < 3; n++)
     await p.locator("#progression-test-points").click();
+  assert.ok(
+    await p.evaluate(
+      (node) =>
+        node.isConnected &&
+        node === document.getElementById("progression-stat-jumpStrength"),
+      hiddenCard,
+    ),
+    "Hidden character cards are not rebuilt by reward bursts",
+  );
+  await hiddenCard.dispose();
   await p.locator("#progression-test-open").click();
   assert.match(
     await p.locator("#progression-notice").textContent(),

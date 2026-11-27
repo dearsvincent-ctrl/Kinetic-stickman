@@ -79,10 +79,14 @@ export class ProgressionPanel {
     this.game.progressionOpen = true;
     this.game.input.setEnabled(false);
     this.game.clearMotion();
-    this.render();
+    this.render(true);
     this.dialog.showModal();
   }
-  render() {
+  render(force = false) {
+    this.refreshTestStatus();
+    // Reward bursts can contain several physical tags in one simulation step.
+    // Do not allocate/rebuild hidden statistic cards for each reward.
+    if (!force && !this.dialog.open && this.fields.children.length) return;
     const character = this.game.activeCharacter,
       s = character.state,
       oldOpen = new Set(
@@ -229,6 +233,9 @@ export class ProgressionPanel {
       }
     }
     this.dialog.scrollTop = scroll;
+  }
+  refreshTestStatus() {
+    const s = this.game.activeCharacter.state;
     if (this.testStatus) {
       this.testStatus.textContent = this.game.progressionPreview
         ? `Temporary character · level ${s.level} · ${s.points} points · never saved`
