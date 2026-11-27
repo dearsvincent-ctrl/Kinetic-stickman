@@ -681,7 +681,7 @@ export async function checkSpeedEffects(page, native) {
 export async function checkV087Polish(page, native) {
   await page.setViewportSize({ width: 844, height: 390 });
   await fresh(page, { practice: true });
-  assert.equal(await page.locator(".version b").textContent(), "0.9.1");
+  assert.equal(await page.locator(".version b").textContent(), "0.9.2");
   const independent = await unrelated(page);
   await checkSettings(page, native);
   console.log(

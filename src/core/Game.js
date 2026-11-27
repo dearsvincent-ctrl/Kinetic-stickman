@@ -1,4 +1,12 @@
 import { DeveloperMenu } from "../ui/DeveloperMenu.js";
+import { CharacterProgression } from "../progression/CharacterProgression.js";
+import { ECONOMY } from "../progression/ProgressionCatalog.js";
+import {
+  progressionEffects,
+  progressionTechnique,
+  applyProgressionEffects,
+} from "../progression/ProgressionEffects.js";
+import { ProgressionPanel } from "../ui/ProgressionPanel.js";
 import { loadReactions } from "../sandbox/ReactionSettings.js";
 import * as THREE from "three";
 import { createArena } from "../world/createArena.js";
@@ -51,7 +59,6 @@ import { TrainingDummy } from "../world/TrainingDummy.js";
 import { PhysicsSandboxPanel } from "../ui/PhysicsSandboxPanel.js";
 import {
   movementSubsteps,
-  sandboxMovementConfig,
   SANDBOX_PARAMETERS,
 } from "../sandbox/PhysicsSandbox.js";
 import { ControlLayoutEditor } from "../ui/ControlLayoutEditor.js";
@@ -139,6 +146,8 @@ export class Game {
         this.limbSelector.choose(context, eligible),
       prepareAttackContext: (context, technique) =>
         this.prepareManualAttack(context, technique),
+      transformTechnique: (technique, context) =>
+        progressionTechnique(technique, context, this.progressionEffects),
     });
     this.attackScheduler = new AttackScheduler(this.combat);
     this.targets = [];
@@ -165,7 +174,8 @@ export class Game {
       targets: this.targets,
       onContact: (hit) => {
         this.contactFeedbackRemaining = 0.18;
-        this.battle.hitEnemy(hit, this.combat.currentTechnique);
+        const result = this.battle.hitEnemy(hit, this.combat.currentTechnique);
+        if (result?.defeated) this.awardProgressionEvent("defeatExperience");
         const enemy = this.battle.enemies.find(
           (e) => e.body.id === hit.targetId,
         );
@@ -197,6 +207,8 @@ export class Game {
     // Camera preferences also load in ordinary play. They never share the
     // physics/AI/aim/layout saves or modify the player's movement parameters.
     this.cameraPreferences = new CameraPreferences(cameraStorage);
+    this.progression = new CharacterProgression({ storage: cameraStorage });
+    this.battle.onTag = () => this.awardProgressionEvent("tagExperience");
     this.battle.configureReactions(loadReactions(cameraStorage) ?? {});
     this.speedEffects.configure(loadSpeedEffectSettings(cameraStorage) ?? {});
     this.freeflow.configure(loadFreeflowSettings(cameraStorage) ?? {});
@@ -253,7 +265,9 @@ export class Game {
       onActiveChange: (active) => {
         if (active) this.physicsSandbox?.setOpen(false);
         this.controlsOpen = active;
-        this.input.setEnabled(!active && !this.helpOpen && !this.defeated);
+        this.input.setEnabled(
+          !active && !this.helpOpen && !this.progressionOpen && !this.defeated,
+        );
         this.clearMotion();
       },
     });
@@ -261,7 +275,12 @@ export class Game {
       onHelpChange: (open) => {
         if (open) this.physicsSandbox?.setOpen(false);
         this.helpOpen = open;
-        this.input.setEnabled(!open && !this.controlsOpen && !this.defeated);
+        this.input.setEnabled(
+          !open &&
+            !this.controlsOpen &&
+            !this.progressionOpen &&
+            !this.defeated,
+        );
         this.clearMotion();
       },
     });
@@ -273,11 +292,12 @@ export class Game {
     this.combatStartRoot = new THREE.Vector3();
     this.combatEndRoot = new THREE.Vector3();
     this.simulationSteps = 1;
+    this.sandboxEnabled =
+      new URLSearchParams(location.search).get("sandbox") === "1";
     this.physicsSandbox = new PhysicsSandboxPanel({
       onDash: () => this.input.requestDash(),
       onChange: (values) => {
-        this.controller.applyMovementConfig(sandboxMovementConfig(values));
-        this.battle.configureStrength(values);
+        this.applyCharacterProgression(values);
         // Keep the normal camera angle and user orbit. Bound follow lag only in
         // the explicit sandbox, so a fast launch cannot outrun the view.
         this.sandboxModified = SANDBOX_PARAMETERS.some(
@@ -305,6 +325,12 @@ export class Game {
       animation: this.animationPreferences,
       storage: cameraStorage,
     });
+    this.progression.subscribe((character, { mechanics }) => {
+      if (mechanics) this.applyCharacterProgression();
+      this.progressionPanel?.render();
+    });
+    this.progressionPanel = new ProgressionPanel(this);
+    this.applyCharacterProgression();
     this.developerMenu = new DeveloperMenu(this);
     this.accumulator = 0;
     this.lastTime = null;
@@ -346,6 +372,44 @@ export class Game {
     this.camera.updateProjectionMatrix();
   }
 
+  get activeCharacter() {
+    return this.progressionPreview ?? this.progression;
+  }
+
+  applyCharacterProgression(values = this.physicsSandbox?.values) {
+    if (!this.progression) return;
+    applyProgressionEffects(
+      this,
+      progressionEffects(this.activeCharacter, {
+        sandbox: this.sandboxEnabled,
+        preview: Boolean(this.progressionPreview),
+        physics: values,
+      }),
+    );
+    // Progression can exceed normal speed without developer mode. Keep existing
+    // swept queries/substep budgeting enabled without changing camera orbit.
+    this.progressionModified =
+      !this.sandboxEnabled &&
+      Object.values(this.activeCharacter.values).some((v) => v !== 1);
+  }
+
+  awardProgressionEvent(key) {
+    if (this.sandboxEnabled && !this.progressionPreview) return;
+    this.activeCharacter?.awardExperience(
+      this.activeCharacter.economy[key] ?? ECONOMY[key] ?? 0,
+    );
+  }
+
+  setProgressionPreview(enabled) {
+    this.progressionPreview = enabled ? this.progression.fork() : null;
+    this.progressionPreview?.subscribe((character, { mechanics }) => {
+      if (mechanics) this.applyCharacterProgression();
+      this.progressionPanel.render();
+    });
+    this.applyCharacterProgression();
+    this.progressionPanel.render();
+  }
+
   clearMotion() {
     this.input.reset();
     this.controller.stop();
@@ -378,6 +442,7 @@ export class Game {
       faceInputWhenBlocked: true,
     });
     this.controller.applyMovementConfig(config);
+    this.applyCharacterProgression?.();
     this.lastRotationJumpSequence = 0;
     this.bodyRotation.reset(0);
     this.acrobaticPresenter?.reset();
@@ -394,7 +459,9 @@ export class Game {
       this.cameraContext.recentTargetId = null;
       this.cameraContext.recentEngagementRemaining = 0;
     }
-    this.input.setEnabled(!this.controlsOpen && !this.helpOpen);
+    this.input.setEnabled(
+      !this.controlsOpen && !this.helpOpen && !this.progressionOpen,
+    );
     this.battleHud.update(1, this.battle);
     this.controlLayoutEditor?.refresh();
   }
@@ -419,7 +486,9 @@ export class Game {
       this.cameraContext.recentTargetId = null;
       this.cameraContext.recentEngagementRemaining = 0;
     }
-    this.input.setEnabled(!this.controlsOpen && !this.helpOpen);
+    this.input.setEnabled(
+      !this.controlsOpen && !this.helpOpen && !this.progressionOpen,
+    );
     this.battleHud.update(1, this.battle);
     this.controlLayoutEditor?.refresh();
   }
@@ -612,7 +681,11 @@ export class Game {
     // future fixed-step physics world; rendering/camera use their own delta.
     const dt = Math.min(elapsed, 0.08);
     const paused =
-      this.helpOpen || this.controlsOpen || document.hidden || this.contextLost;
+      this.helpOpen ||
+      this.controlsOpen ||
+      this.progressionOpen ||
+      document.hidden ||
+      this.contextLost;
     if (!paused) {
       this.accumulator = Math.min(this.accumulator + dt, STEP * 5);
       while (this.accumulator >= STEP) {
@@ -629,7 +702,9 @@ export class Game {
           else if (action === "dash") this.controller.requestDash();
         }
         const playerSteps =
-          this.physicsSandbox.enabled || this.freeflow?.active
+          this.physicsSandbox.enabled ||
+          this.progressionModified ||
+          this.freeflow?.active
             ? movementSubsteps(
                 this.controller,
                 STEP,

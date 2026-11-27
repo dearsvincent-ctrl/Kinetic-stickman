@@ -175,7 +175,7 @@ export async function checkPunchAim(page, native) {
   });
   await advance(page, 450);
   await disableFreeflow(page);
-  assert.equal(await page.locator(".version b").textContent(), "0.9.1");
+  assert.equal(await page.locator(".version b").textContent(), "0.9.2");
   assert.equal(
     (await read(page)).sequence,
     "0",

@@ -45,7 +45,7 @@ export async function checkEnemySettings(page, native) {
     waitUntil: "networkidle",
   });
   await page.clock.runFor(450);
-  assert.equal(await page.locator(".version b").textContent(), "0.9.1");
+  assert.equal(await page.locator(".version b").textContent(), "0.9.2");
   let state = await read(page);
   assert.equal(state.alive, "3");
   assert.equal(state.config.speed, 1);

@@ -15,7 +15,7 @@ const point = async (p, s) => {
 const touch = (id, p) => ({ id, ...p, radiusX: 7, radiusY: 7, force: 1 });
 export async function checkWaveCombat(page, native) {
   await advance(page, 450);
-  assert.equal(await page.locator(".version b").textContent(), "0.9.1");
+  assert.equal(await page.locator(".version b").textContent(), "0.9.2");
   let state = await read(page);
   assert.equal(state.wave, "1");
   assert.equal(state.alive, "3");
@@ -103,6 +103,14 @@ export async function checkWaveCombat(page, native) {
     `Wave continues: ${JSON.stringify(state)}`,
   );
   assert.ok(Number(state.defeated) >= 3);
+  const character = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("kinetic.character-progression.v1")),
+  );
+  assert.ok(
+    character?.level >= 2,
+    "Confirmed combat defeats award progression XP",
+  );
+  assert.ok(character.points >= 6, "Level progression awards spendable points");
   assert.ok(state.enemies.length <= 8);
   await page.screenshot({ path: "test-results/v079-next-wave.png" });
   console.log(

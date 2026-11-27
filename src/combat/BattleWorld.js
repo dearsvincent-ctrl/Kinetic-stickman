@@ -579,6 +579,7 @@ export class BattleWorld {
         )
           continue;
         this.tags++;
+        this.onTag?.(e);
         this.tagFeedback = TAG_CONFIG.feedbackDuration;
         e.spawned = e.body.active = false;
         e.tagRespawnRemaining = TAG_CONFIG.respawnDelay;

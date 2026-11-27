@@ -36,6 +36,7 @@ const SOURCE_CATEGORIES = {
   "tag-settings": "modes",
   "speed-effects": "visuals",
   "animation-polish": "visuals",
+  "progression-testing": "movement",
 };
 /** One original live widget per setting. Search/Favourites move that widget
  * through anchored slots, preserving handler, value, context and slider lock. */

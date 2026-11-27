@@ -107,6 +107,7 @@ export class CombatController {
     techniques = DEFAULT_TECHNIQUES,
     selectTechnique,
     prepareAttackContext = null,
+    transformTechnique = null,
     postureHold = COMBAT_CONFIG.postureHold,
     cancelRecovery = COMBAT_CONFIG.cancelRecovery,
   } = {}) {
@@ -116,6 +117,7 @@ export class CombatController {
     });
     this.techniques = makeRegistry(techniques);
     this.prepareAttackContext = prepareAttackContext;
+    this.transformTechnique = transformTechnique;
     this.selectTechnique =
       selectTechnique ??
       ((context, eligible) =>
@@ -180,7 +182,9 @@ export class CombatController {
   // clipped clock as the animation when an approach holds at the windup edge.
   sampleEndTime(dt) {
     const end = this.attack.elapsed + (Number.isFinite(dt) && dt > 0 ? dt : 0);
-    return this.attack.active && this.holdWindup && this.attack.phase === "windup"
+    return this.attack.active &&
+      this.holdWindup &&
+      this.attack.phase === "windup"
       ? Math.min(end, this._technique.windup)
       : end;
   }
@@ -231,6 +235,8 @@ export class CombatController {
     const executionContext = selectionContext.techniqueContexts
       ? techniqueContext(selectionContext, technique.id)
       : selectionContext;
+    technique =
+      this.transformTechnique?.(technique, executionContext) ?? technique;
     const preparedContext =
       this.prepareAttackContext?.(executionContext, technique) ??
       executionContext;
@@ -346,7 +352,8 @@ export class CombatController {
     const rotational = from.gesture || context.rotationActive;
     if (
       !approachRedirect &&
-      (attack.elapsed < (context.gesture ? 0 : (from.transitionAfter ?? 0.14)) ||
+      (attack.elapsed <
+        (context.gesture ? 0 : (from.transitionAfter ?? 0.14)) ||
         (!rotational && attack.phase !== "recovery"))
     )
       return false;
@@ -356,11 +363,12 @@ export class CombatController {
       side: from.side,
       extension: attack.extension,
       phase: attack.phase,
-      kind: approachRedirect || context.gesture
-        ? "redirection"
-        : context.action !== from.action
-          ? "continuation"
-          : "cancellation",
+      kind:
+        approachRedirect || context.gesture
+          ? "redirection"
+          : context.action !== from.action
+            ? "continuation"
+            : "cancellation",
     };
     attack.active = false;
     const accepted = this.requestAttack({ ...context, transition });
