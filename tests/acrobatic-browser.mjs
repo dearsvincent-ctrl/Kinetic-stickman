@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 const advance = (p, ms) => p.clock.runFor(ms);
 const snap = (p) => p.evaluate(() => window.__KINETIC__?.snapshot() ?? null);
@@ -216,6 +217,7 @@ export async function checkAcrobatics(page, native) {
     );
     await advance(page, 450);
     await page.locator("#physics-toggle").click();
+    await expandDeveloperSections(page);
     await page.evaluate(() => {
       const e = document.querySelector("#physics-jumpHeight");
       e.value = Math.log10(4);
@@ -276,6 +278,7 @@ export async function checkAcrobatics(page, native) {
   );
   await advance(page, 450);
   await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   await page.evaluate(() => {
     const e = document.querySelector("#physics-movement");
     e.value = Math.log10(100);
@@ -345,6 +348,7 @@ export async function checkPartialAnalogueRecovery(page, native) {
     await advance(page, 450);
     if (extreme) {
       await page.locator("#physics-toggle").click();
+      await expandDeveloperSections(page);
       await page.evaluate(() => {
         const e = document.querySelector("#physics-movement");
         e.value = 2;
@@ -492,6 +496,7 @@ export async function checkDirectionalDoubleJump(page, native) {
     );
     await advance(page, 450);
     await page.locator("#physics-toggle").click();
+    await expandDeveloperSections(page);
     await page.evaluate((extreme) => {
       for (const [key, n] of Object.entries({
         jumpHeight: extreme ? 100 : 1,
@@ -516,6 +521,7 @@ export async function checkDirectionalDoubleJump(page, native) {
       Math.abs(first - Math.sqrt(2 * 18 * 1.2 * (extreme ? 10000 : 1))) < 1e-8,
     );
     await page.locator("#physics-toggle").click();
+    await expandDeveloperSections(page);
     await page.evaluate((extreme) => {
       const e = document.querySelector("#physics-jumpHeight");
       e.value = Math.log10(extreme ? 100 : 2);

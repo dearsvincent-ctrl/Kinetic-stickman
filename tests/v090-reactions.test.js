@@ -58,15 +58,15 @@ function run(f, seconds, dt = 1 / 60) {
     near(f.e.reaction.orientation.length(), 1, 1e-6);
   }
 }
-test("v090 defaults are independent, ordered, finite and use a separate versioned save", () => {
+test("v090 defaults are independent, finite and use a separate versioned save", () => {
   const c = sanitizeReactions({
     knockdown: 3,
     stagger: 8,
     ragdoll: 2,
     intensity: Infinity,
   });
-  assert.equal(c.knockdown, 8);
-  assert.equal(c.ragdoll, 8);
+  assert.equal(c.knockdown, 3);
+  assert.equal(c.ragdoll, 2);
   assert.equal(c.intensity, 1);
   for (const p of REACTION_PARAMETERS) {
     const v = sanitizeReactions({ [p.id]: 1e20 });
@@ -132,6 +132,7 @@ test("v090 heavier force stumbles, knockdown falls, launch stays controlled when
   hit(heavy, { action: "kick", impact: 2 });
   assert.equal(heavy.e.reaction.phase, "stumble");
   const down = fixture();
+  down.b.configureReactions({ balanceDamage: 6 });
   hit(down, { action: "kick", impact: 3 });
   assert.equal(down.e.reaction.phase, "knockdown");
   run(down, 0.2);
@@ -272,7 +273,7 @@ test("v090 zero impact does not add a launch, heavy mass resists more and profil
   hit(b, { impact: 20 });
   assert.ok(a.e.reaction.force > b.e.reaction.force * 5);
   const fast = fixture();
-  fast.b.configureReactions({ recovery: 5 });
+  fast.b.configureReactions({ recovery: 5, balanceDamage: 6 });
   hit(fast, { action: "kick", impact: 3 });
   run(fast, 1);
   assert.equal(fast.e.reaction.phase, "idle");
@@ -294,7 +295,7 @@ test("v090 descending launches land on real roofs and upward launches stop at un
   const roof = box("roof", 0, -200, 200, 3, 180);
   const f = fixture({ structures: [roof] });
   f.e.spawn(new Vector3(0, 3, -130), 1, 100);
-  hit(f, { action: "kick", impact: 10 });
+  hit(f, { action: "kick", impact: 15 });
   run(f, 4);
   assert.equal(f.e.reaction.landings, 1);
   near(f.e.root.position.y, 3, 0.002);
@@ -302,7 +303,7 @@ test("v090 descending launches land on real roofs and upward launches stop at un
   const ceiling = fixture({
     structures: [box("ceiling", 0, -5, 200, 1, 200, false, 5)],
   });
-  hit(ceiling, { action: "kick", impact: 10 });
+  hit(ceiling, { action: "kick", impact: 15 });
   run(ceiling, 1);
   assert.ok(ceiling.e.root.position.y < 3.06);
   assert.ok(ceiling.e.reaction.collisions >= 1);
@@ -358,7 +359,7 @@ test("v090 detailed angular simulation is bounded for a large impacted crowd wit
   for (const [i, e] of f.b.enemies.entries()) {
     if (!e.spawned) continue;
     e.spawn(new Vector3((i % 8) * 3, 0, -5 - Math.floor(i / 8) * 3), 1, 100);
-    hit({ ...f, e }, { impact: 20 });
+    hit({ ...f, e }, { action: "kick", impact: 20 });
   }
   run(f, 0.1);
   const impacted = f.b.enemies.filter(
@@ -479,7 +480,7 @@ test("v090 swept hits track a rotating body's offset contact sphere once per str
 
 test("v090 small subsequent speed contacts cannot erase a severe ongoing ragdoll", () => {
   const f = fixture();
-  hit(f, { impact: 20 });
+  hit(f, { action: "kick", impact: 20 });
   run(f, 0.1);
   assert.equal(f.e.reaction.ragdoll, true);
   hit(f, { impact: 0.1 });
@@ -492,6 +493,7 @@ test("v090 small subsequent speed contacts cannot erase a severe ongoing ragdoll
 
 test("v090 narrow wall-side knockdowns stay supported, keep all sampled joints above ground and recover", () => {
   const f = fixture({ structures: [box("adjacent-wall", 1, -10, 1, 12, 40)] });
+  f.b.configureReactions({ balanceDamage: 6 });
   hit(f, { action: "kick", impact: 3 });
   let constrained = false;
   for (let i = 0; i < 120; i++) {
@@ -532,6 +534,7 @@ test("v090 profile reaction sliders represent all default archetype values exact
 test("v090 a survivor skidding off a roof waits for genuine support before getting up", () => {
   const f = fixture({ structures: [box("small-roof", 0, -30, 8, 20, 8)] });
   f.e.spawn(new Vector3(0, 20, -33), 1, 100);
+  f.b.configureReactions({ balanceDamage: 6 });
   hit(f, { action: "kick", impact: 4 });
   run(f, 0.9);
   assert.ok(f.e.root.position.y > 1 && f.e.root.position.y < 20);

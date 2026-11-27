@@ -117,7 +117,9 @@ async function checkSettings(page) {
   const cdp = await page.context().newCDPSession(page);
   const slider = page.locator(`#${section}-intensity`);
   async function swipe(dx, dy) {
-    await slider.scrollIntoViewIfNeeded();
+    await slider.evaluate((node) =>
+      node.scrollIntoView({ block: "center", inline: "nearest" }),
+    );
     const b = await slider.boundingBox(),
       x = b.x + b.width * 0.4,
       y = b.y + b.height / 2;
@@ -152,7 +154,9 @@ async function checkSettings(page) {
     assert.equal(await slider.inputValue(), initial);
     for (const unlocked of [false, true]) {
       if (unlocked) await unlockSlider(page, `${section}-intensity`);
-      await slider.scrollIntoViewIfNeeded();
+      await slider.evaluate((node) =>
+        node.scrollIntoView({ block: "center", inline: "nearest" }),
+      );
       const scroll = page.locator(".physics-scroll"),
         top = await scroll.evaluate((n) => n.scrollTop);
       await swipe(1, -90);

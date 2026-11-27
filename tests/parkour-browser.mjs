@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 import { stick } from "./acrobatic-browser.mjs";
 const advance = (p, ms) => p.clock.runFor(ms);
@@ -41,6 +42,7 @@ async function until(page, predicate, limit = 12000, step = 100) {
 }
 async function movement(page, n) {
   await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   await page.locator("#physics-movement").evaluate((e, n) => {
     e.value = Math.log10(n);
     e.dispatchEvent(new Event("input", { bubbles: true }));

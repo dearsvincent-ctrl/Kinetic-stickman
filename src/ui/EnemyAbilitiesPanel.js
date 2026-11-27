@@ -48,8 +48,8 @@ export class EnemyAbilitiesPanel {
     note.className = "physics-note";
     note.textContent =
       mode === "combat"
-        ? "Choose a custom mix for each combat wave. Waves, health and attacks remain active. Off uses the existing wave/population controls. Counts are capped by Maximum active enemies. Session only: Save enemies saves global tuning, not this mix."
-        : "Choose which runners escape in Tag Mode. Off uses the existing Fleeing characters setting. Counts are capped by Fleeing characters; raise that slider for larger custom groups. Session only: Save tag saves global tuning, not this mix.";
+        ? "Choose a custom mix for each combat wave. Waves, health and attacks remain active. Off uses the existing wave/population controls. Counts are capped by Maximum active enemies. Legacy Save enemies saves global tuning; use a named build to save this mix."
+        : "Choose which runners escape in Tag Mode. Off uses the existing Fleeing characters setting. Counts are capped by Fleeing characters; raise that slider for larger custom groups. Legacy Save tag saves global tuning; use a named build to save this mix.";
     const customLabel = document.createElement("label");
     customLabel.className = "aim-debug-label";
     const custom = document.createElement("input");
@@ -123,6 +123,19 @@ export class EnemyAbilitiesPanel {
     this.refreshRosterStatus();
   }
 
+  refreshRosterControls() {
+    for (const [mode, row] of this.rosters) {
+      const counts = this.battle.enemyRosters[mode];
+      row.custom.checked = counts !== null;
+      for (const [id, entry] of row.entries) {
+        entry.enabled.checked = counts ? counts[id] > 0 : id === "standard";
+        entry.input.value =
+          counts?.[id] > 0 ? counts[id] : id === "standard" ? 3 : 1;
+      }
+    }
+    this.refreshRosterStatus();
+  }
+
   refreshRosterStatus() {
     for (const [mode, row] of this.rosters) {
       const counts = this.battle.enemyRosters?.[mode] ?? null;
@@ -174,7 +187,7 @@ export class EnemyAbilitiesPanel {
     const note = document.createElement("p");
     note.className = "physics-note";
     note.textContent =
-      "Live, session-only enemy profiles. Combat pursuit or Tag escape speed multiplies running speed; its acceleration slider multiplies acceleration and braking. Combined running speed has an 8,000 m/s numerical safety bound. Jump height/count and air control never use player physics. Climbing uses this baseline and shared running momentum. Enemy damage multiplies wave damage; resistance divides incoming knockback. Saved global settings remain separate.";
+      "Live enemy profiles; named sandbox builds can save every archetype. Combat pursuit or Tag escape speed multiplies running speed; its acceleration slider multiplies acceleration and braking. Combined running speed has an 8,000 m/s numerical safety bound. Jump height/count and air control never use player physics. Climbing uses this baseline and shared running momentum. Enemy damage multiplies wave damage; resistance divides incoming knockback. Saved global settings remain separate.";
     fields.append(legend, selectLabel, note);
     for (const p of ENEMY_ABILITY_PARAMETERS) {
       const row = document.createElement("label");
@@ -219,7 +232,7 @@ export class EnemyAbilitiesPanel {
         }
         this.battle.configureProfile(this.profileId, { [p.id]: value });
         this.refreshProfile();
-        this.status.textContent = `${DEFAULT_ENEMY_PROFILES[this.profileId].name} abilities applied live · session only`;
+        this.status.textContent = `${DEFAULT_ENEMY_PROFILES[this.profileId].name} abilities applied live · save a named build to keep`;
       });
     }
     for (const p of ENEMY_ABILITY_TOGGLES) {
@@ -269,7 +282,7 @@ export class EnemyAbilitiesPanel {
     this.status.className = "physics-note";
     this.status.setAttribute("role", "status");
     this.status.textContent =
-      "Profiles and custom rosters are session-only; reload restores sensible defaults. Save/Load for custom profiles is reserved for a later update.";
+      "Profiles and custom rosters can be saved in named sandbox builds. Reload restores baseline profiles until a build is loaded. Legacy enemy/tag Save/Load remains independent.";
     fields.append(actions, this.status);
     section.append(summary, fields);
     document.querySelector("#physics-presets").before(section);

@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 import { unlockSlider } from "./slider-test-utils.mjs";
 import { stick } from "./acrobatic-browser.mjs";
@@ -36,6 +37,7 @@ const tune = (p, values) =>
 async function open(p) {
   if (await p.locator("#physics-panel").evaluate((e) => e.hidden))
     await p.locator("#physics-toggle").click();
+  await expandDeveloperSections(p);
   if (!(await p.locator("#tag-settings").evaluate((e) => e.open)))
     await p.locator("#tag-settings > summary").click();
 }

@@ -1,5 +1,6 @@
 import { Group, Vector3, Quaternion } from "three";
 import { REACTION_JOINTS } from "../combat/EnemyReaction.js";
+const SIDES = ["left", "right"];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 /** An articulated angular ragdoll layer. Joint translations/scales never change,
  * preserving authored bone lengths and ordinary animation underneath recovery. */
@@ -50,6 +51,7 @@ export class EnemyReactionPresenter {
     }
     reaction.presentedOrientation.copy(this.character.joints.hips.quaternion);
     reaction.hasPresentedPose = true;
+    reaction.syncStandingBoxes(this.character.joints.hips.position);
   }
   apply(reaction) {
     if (!reaction?.active) return;
@@ -87,7 +89,8 @@ export class EnemyReactionPresenter {
       this.pivot.quaternion.copy(r.orientation);
       this.pivot.position.y = r.bodyHeight;
     } else {
-      const recoil = Math.exp(-r.age * 7) * clamp(r.weight, 0, 2);
+      const recoil = clamp(r.weight, 0, 2);
+      const level = r.level ?? 0;
       const j = c.joints;
       j.spine.rotation.x -=
         r.localZ * recoil * (r.location === "body" ? 0.24 : 0.12);
@@ -95,20 +98,47 @@ export class EnemyReactionPresenter {
       j.spine.rotation.y += r.localX * recoil * 0.22;
       j.head.rotation.x -=
         r.localZ * recoil * (r.location === "head" ? 0.38 : 0.08);
-      if (r.phase === "stumble")
-        for (const side of ["left", "right"]) {
+      const grounded = !r.agent?.controller.jump.airborne;
+      const compression = grounded ? Math.min(0.08, level * recoil * 0.045) : 0;
+      const flex = Math.acos(1 - compression / 0.87);
+      j.hips.position.y -= compression;
+      for (const side of ["left", "right"]) {
+        j[side + "Hip"].rotation.x -= flex;
+        j[side + "Knee"].rotation.x += flex * 2;
+        j[side + "Ankle"].rotation.x -= flex;
+      }
+      j.spine.rotation.x -= r.localZ * recoil * level * 0.16;
+      j.spine.rotation.y += r.localX * recoil * level * 0.22;
+      if (
+        (r.phase === "stumble" || r.phase === "heavy-stumble") &&
+        !r.agent?.controller.jump.airborne
+      )
+        for (const side of SIDES) {
           const sign = side === "left" ? 1 : -1;
-          const step = Math.sin(r.age * 19) * sign * recoil;
-          j[side + "Hip"].rotation.x += step * 0.32;
+          const step =
+            Math.sin(r.stepPhase) *
+            sign *
+            Math.min(1, recoil) *
+            (0.4 + level * 0.6);
+          j[side + "Hip"].rotation.x += step * (0.25 + level * 0.18);
           j[side + "Knee"].rotation.x = Math.max(
             0,
-            j[side + "Knee"].rotation.x + Math.abs(step) * 0.25,
+            j[side + "Knee"].rotation.x +
+              Math.max(0, step) * (0.3 + level * 0.25),
           );
         }
     }
+    if (!r.ownsMotion) {
+      const j = c.joints;
+      j.spine.rotation.x = clamp(j.spine.rotation.x, -0.85, 0.85);
+      j.spine.rotation.y = clamp(j.spine.rotation.y, -0.75, 0.75);
+      j.spine.rotation.z = clamp(j.spine.rotation.z, -0.65, 0.65);
+      j.head.rotation.x = clamp(j.head.rotation.x, -0.7, 0.7);
+      j.head.rotation.z = clamp(j.head.rotation.z, -0.5, 0.5);
+    }
     // Articulation is limited independently of root travel. Preserve elbows and
     // knees as hinges; all rotations stay finite and bones stay their rig length.
-    for (const side of ["left", "right"]) {
+    for (const side of SIDES) {
       c.joints[side + "Knee"].rotation.x = clamp(
         c.joints[side + "Knee"].rotation.x,
         0,

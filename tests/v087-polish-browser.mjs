@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 import { stick } from "./acrobatic-browser.mjs";
 import { unlockSlider } from "./slider-test-utils.mjs";
@@ -42,7 +43,9 @@ const unrelated = (page) =>
     (keys) =>
       Object.fromEntries(
         Object.keys(localStorage)
-          .filter((key) => !keys.includes(key))
+          .filter(
+            (key) => !keys.includes(key) && key !== "kinetic.developer-menu.v1",
+          )
           .sort()
           .map((key) => [key, localStorage.getItem(key)]),
       ),
@@ -63,6 +66,7 @@ export async function fresh(page, { sandbox = true, practice = false } = {}) {
 export async function open(page, section) {
   if (await page.locator("#physics-panel").evaluate((node) => node.hidden))
     await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   if (!(await page.locator(`#${section}`).evaluate((node) => node.open)))
     await page.locator(`#${section} > summary`).click();
   await advance(page);
@@ -82,7 +86,12 @@ const locked = (page, section) =>
           (input) => input.disabled && input.dataset.sliderLocked === "true",
         ),
     );
-export async function until(page, predicate, label, { limit = 2000, step = 20 } = {}) {
+export async function until(
+  page,
+  predicate,
+  label,
+  { limit = 2000, step = 20 } = {},
+) {
   for (let elapsed = 0; elapsed <= limit; elapsed += step) {
     const state = await read(page);
     if (predicate(state)) return state;
@@ -97,6 +106,7 @@ export async function setRange(page, section, parameter, value) {
   if (section === "physics") {
     if (await page.locator("#physics-panel").evaluate((node) => node.hidden))
       await page.locator("#physics-toggle").click();
+    await expandDeveloperSections(page);
   } else await open(page, section);
   const id = `${parameter.prefix ?? section}-${parameter.id}`;
   const slider = await unlockSlider(page, id);
@@ -141,7 +151,9 @@ export async function resetNew(page) {
 // Chromium owns the scroll, so gameplay pointermove acknowledgements do not apply.
 async function swipe(page, cdp, id, dx, dy) {
   const slider = page.locator(`#${id}`);
-  await slider.scrollIntoViewIfNeeded();
+  await slider.evaluate((node) =>
+    node.scrollIntoView({ block: "center", inline: "nearest" }),
+  );
   const b = await slider.boundingBox();
   const start = { x: b.x + b.width * 0.32, y: b.y + b.height / 2 };
   await cdp.send("Input.dispatchTouchEvent", {
@@ -250,7 +262,9 @@ async function checkSettings(page, native) {
   await page.setViewportSize({ width: 844, height: 390 });
   await open(page, "animation-polish");
   const slider = await unlockSlider(page, "animation-polish-sprintAggression");
-  await slider.scrollIntoViewIfNeeded();
+  await slider.evaluate((node) =>
+    node.scrollIntoView({ block: "center", inline: "nearest" }),
+  );
   const joyBox = await page.locator("#joystick").boundingBox();
   const joy = touch(1, {
     x: joyBox.x + joyBox.width / 2,
@@ -667,16 +681,24 @@ export async function checkSpeedEffects(page, native) {
 export async function checkV087Polish(page, native) {
   await page.setViewportSize({ width: 844, height: 390 });
   await fresh(page, { practice: true });
-  assert.equal(await page.locator(".version b").textContent(), "0.9.0");
+  assert.equal(await page.locator(".version b").textContent(), "0.9.1");
   const independent = await unrelated(page);
   await checkSettings(page, native);
-  console.log("PASS: v0.8.8 polish settings locks, native panning/multitouch and independent ordinary-play persistence");
+  console.log(
+    "PASS: v0.8.8 polish settings locks, native panning/multitouch and independent ordinary-play persistence",
+  );
   await checkManualFlow(page, native);
-  console.log("PASS: v0.8.8 native tap/held/slide/recovery combos, Block and moving/aerial strikes");
+  console.log(
+    "PASS: v0.8.8 native tap/held/slide/recovery combos, Block and moving/aerial strikes",
+  );
   await checkSpeedEffects(page, native);
-  console.log("PASS: v0.8.8 actual-speed grounded dust and one-shot/rearmed sonic effects");
+  console.log(
+    "PASS: v0.8.8 actual-speed grounded dust and one-shot/rearmed sonic effects",
+  );
   await checkFreeflow(page, native);
-  console.log("PASS: v0.8.8 strong manual Combat freeflow approach, physical Kick contact and Tag isolation");
+  console.log(
+    "PASS: v0.8.8 strong manual Combat freeflow approach, physical Kick contact and Tag isolation",
+  );
   assert.deepEqual(
     await unrelated(page),
     independent,

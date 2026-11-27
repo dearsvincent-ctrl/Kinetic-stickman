@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 import { stick } from "./acrobatic-browser.mjs";
 const advance = (p, ms) => p.clock.runFor(ms);
@@ -11,6 +12,7 @@ const read = (p) =>
   }));
 async function tune(p, n) {
   await p.locator("#physics-toggle").click();
+  await expandDeveloperSections(p);
   await p.locator("#physics-movement").evaluate((e, n) => {
     e.value = Math.log10(n);
     e.dispatchEvent(new Event("input", { bubbles: true }));
@@ -64,7 +66,7 @@ export async function checkGeometricWorld(page, native) {
   );
   await page.goto(url.href, { waitUntil: "networkidle" });
   await advance(page, 450);
-  assert.equal(await page.locator(".version b").textContent(), "0.9.0");
+  assert.equal(await page.locator(".version b").textContent(), "0.9.1");
   let s = await stick(page, native);
   await s.move(0, 0);
   await travel(page, s, -130, 0);

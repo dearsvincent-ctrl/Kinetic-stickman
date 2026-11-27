@@ -1,3 +1,4 @@
+import { DeveloperMenu } from "../ui/DeveloperMenu.js";
 import { loadReactions } from "../sandbox/ReactionSettings.js";
 import * as THREE from "three";
 import { createArena } from "../world/createArena.js";
@@ -304,6 +305,7 @@ export class Game {
       animation: this.animationPreferences,
       storage: cameraStorage,
     });
+    this.developerMenu = new DeveloperMenu(this);
     this.accumulator = 0;
     this.lastTime = null;
     this.resize = this.resize.bind(this);

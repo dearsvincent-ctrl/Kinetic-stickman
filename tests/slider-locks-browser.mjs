@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 
 const advance = (page, ms = 60) => page.clock.runFor(ms);
@@ -24,7 +25,9 @@ const allLocked = (page) =>
  * pointermove acknowledgement, which would be wrong for that native pan. */
 async function swipe(page, cdp, id, dx, dy) {
   const input = page.locator(`#${id}`);
-  await input.scrollIntoViewIfNeeded();
+  await input.evaluate((node) =>
+    node.scrollIntoView({ block: "center", inline: "nearest" }),
+  );
   const b = await input.boundingBox(),
     start = { x: b.x + b.width * 0.35, y: b.y + b.height / 2 };
   const point = (x, y) => ({ id: 77, x, y, radiusX: 7, radiusY: 7, force: 1 });
@@ -53,6 +56,7 @@ export async function checkSliderLocks(page, native) {
   await advance(page, 450);
   if (await page.locator("#physics-panel").evaluate((node) => node.hidden))
     await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   await advance(page);
   assert.ok(await allLocked(page), "Every existing range starts locked");
   const cdp = await page.context().newCDPSession(page),
@@ -65,7 +69,9 @@ export async function checkSliderLocks(page, native) {
     initial,
     "A locked horizontal drag changes no values",
   );
-  await target.scrollIntoViewIfNeeded();
+  await target.evaluate((node) =>
+    node.scrollIntoView({ block: "center", inline: "nearest" }),
+  );
   const scroll = page.locator(".physics-scroll"),
     beforeLockedScroll = await scroll.evaluate((node) => node.scrollTop);
   await swipe(page, cdp, "physics-movement", 2, -100);
@@ -83,7 +89,9 @@ export async function checkSliderLocks(page, native) {
       .evaluateAll((inputs) => inputs.every((input) => input.disabled)),
     "Unlock affects only its own slider",
   );
-  await target.scrollIntoViewIfNeeded();
+  await target.evaluate((node) =>
+    node.scrollIntoView({ block: "center", inline: "nearest" }),
+  );
   const beforeUnlockedScroll = await scroll.evaluate((node) => node.scrollTop),
     beforeAdjustment = await target.inputValue();
   await swipe(page, cdp, "physics-movement", 1, -100);
@@ -119,6 +127,7 @@ export async function checkSliderLocks(page, native) {
   const beforeReopen = await values(page);
   await page.locator("#physics-close").click();
   await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   await advance(page);
   assert.ok(await allLocked(page));
   assert.deepEqual(

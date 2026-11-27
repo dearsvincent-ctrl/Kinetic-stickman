@@ -1792,3 +1792,42 @@ h1 {
     font-size: 10px;
   }
 }
+
+/* v0.9.1: hierarchical developer workbench; gameplay pointers remain independent. */
+.developer-toolbar { position: sticky; top: 0; z-index: 3; background: #1c2b26; padding: 10px 0 6px; }
+.developer-toolbar input, #developer-configurations input, #developer-configurations select { width: 100%; min-height: 44px; border: 1px solid #607469; border-radius: 5px; padding: 9px; background: #14241e; color: #f3f0e7; font: inherit; font-size: 13px; touch-action: pan-y; user-select: text; }
+.developer-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+.developer-actions button { flex: 1 1 95px; }
+.developer-category, .developer-favourites, #developer-configurations { border: 1px solid #4b6255; border-radius: 6px; margin: 8px 0; padding: 0 9px 8px; }
+.developer-category:not([open]), .developer-favourites:not([open]), #developer-configurations:not([open]) { padding-bottom: 0; }
+.developer-category > summary, .developer-favourites > summary, #developer-configurations > summary { min-height: 46px; display: list-item; padding: 14px 0; cursor: pointer; font-size: 12px; font-weight: 700; }
+.developer-category-body details { margin-top: 8px; border-top: 1px solid #40594b; }
+.developer-category-body details > summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-size: 12px; }
+.developer-category-body > button { margin-top: 5px; }
+.developer-category-body fieldset { min-width: 0; padding: 8px 0; border-left: 0; border-right: 0; }
+.developer-setting-tools { display: flex; justify-content: flex-end; grid-column: 1 / -1; }
+.physics-panel .developer-star { min-height: 44px; min-width: 44px; padding: 4px; font-size: 22px; color: #ffbb85; border: 0; background: transparent; }
+.developer-setting-result { padding: 5px 0 10px; border-bottom: 1px solid #40594b; }
+.developer-setting-path { color: #b8cfbe !important; font-size: 10px !important; margin-bottom: 0; overflow-wrap: anywhere; }
+.developer-setting-link { display: block; width: 100%; margin-top: 7px; text-align: left; }
+.developer-setting-link[hidden] { display: none; }
+#developer-search-results { display: none; }
+.developer-searching #developer-search-results { display: block; }
+.developer-searching #developer-categories, .developer-searching .developer-favourites, .developer-searching #developer-configurations { display: none; }
+#developer-configurations select, #developer-configurations input { margin: 5px 0; }
+.physics-panel *, .developer-setting-result > * { min-width: 0; }
+@media (max-height: 430px) {
+ .physics-panel { width: min(390px, 45vw); }
+ .physics-heading h2 { font-size: 15px; }
+ .developer-toolbar { padding-top: 6px; }
+ #developer-menu-status { margin: 4px 0; min-height: 16px; }
+}
+
+/* Keep original range rows compact: the star shares the label row. */
+.physics-panel .physics-row { grid-template-columns: minmax(0,1fr) auto 44px; align-items: center; row-gap: 3px; }
+.physics-panel .physics-row > .developer-setting-tools { grid-column: 3; grid-row: 1; align-self: center; }
+.physics-panel .physics-row > .slider-control { grid-column: 1 / -1; }
+.developer-setting-path { margin: 6px 0 3px; }
+.developer-searching .developer-toolbar > .developer-actions { display: none; }
+
+.physics-scroll { scroll-padding-block-start: calc(var(--developer-toolbar-height, 120px) + 10px); scroll-padding-block-end: 12px; }

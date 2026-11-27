@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 import { ENEMY_ABILITY_PARAMETERS } from "../src/sandbox/EnemyAbilities.js";
 import { stick } from "./acrobatic-browser.mjs";
@@ -22,6 +23,7 @@ async function panel(page) {
     await page.locator("#physics-panel").evaluate((element) => element.hidden)
   )
     await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
 }
 async function details(page, id) {
   await panel(page);
@@ -72,11 +74,17 @@ export async function checkEnemyAbilities(page, native) {
   });
   await advance(page, 450);
   await page.waitForSelector("#loading", { state: "detached" });
-  assert.equal(await page.locator(".version b").textContent(), "0.9.0");
+  assert.equal(await page.locator(".version b").textContent(), "0.9.1");
   const initial = await read(page);
   assert.equal(initial.alive, "3");
   assert.ok(initial.enemies.every((enemy) => profileId(enemy) === "standard"));
-  const saved = await page.evaluate(() => ({ ...localStorage }));
+  const saved = await page.evaluate(() =>
+    Object.fromEntries(
+      Object.entries(localStorage).filter(
+        ([key]) => key !== "kinetic.developer-menu.v1",
+      ),
+    ),
+  );
 
   await details(page, "#enemy-abilities");
   assert.equal(await page.locator("#enemy-profile-select option").count(), 4);
@@ -235,7 +243,13 @@ export async function checkEnemyAbilities(page, native) {
     state.enemies.every((enemy) => enemy.position.every(Number.isFinite)),
   );
   assert.deepEqual(
-    await page.evaluate(() => ({ ...localStorage })),
+    await page.evaluate(() =>
+      Object.fromEntries(
+        Object.entries(localStorage).filter(
+          ([key]) => key !== "kinetic.developer-menu.v1",
+        ),
+      ),
+    ),
     saved,
     "Session-only profile and roster edits preserve all saved preferences",
   );

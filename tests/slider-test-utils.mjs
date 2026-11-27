@@ -9,12 +9,15 @@ export async function unlockSlider(page, id) {
   const closed = await slider.evaluate((node) => {
     const ids = [];
     for (let parent = node.parentElement; parent; parent = parent.parentElement)
-      if (parent.tagName === "DETAILS" && !parent.open && parent.id) ids.unshift(parent.id);
+      if (parent.tagName === "DETAILS" && !parent.open && parent.id)
+        ids.unshift(parent.id);
     return ids;
   });
   for (const section of closed)
     await page.locator(`details[id="${section}"] > summary`).click();
-  await slider.scrollIntoViewIfNeeded();
+  await slider.evaluate((node) =>
+    node.scrollIntoView({ block: "center", inline: "nearest" }),
+  );
   if (await slider.isDisabled())
     await page.locator(`[data-slider-lock="${id}"]`).click();
   assert.equal(
@@ -23,4 +26,14 @@ export async function unlockSlider(page, id) {
     `${id} is individually unlocked`,
   );
   return slider;
+}
+
+/** Historical gameplay fixtures tune many sections. Expand through the real
+ * navigation UI; focused workbench checks separately verify compact defaults. */
+export async function expandDeveloperSections(page) {
+  if (
+    (await page.locator("#developer-expand-all").count()) &&
+    !(await page.locator("#physics-panel").evaluate((n) => n.hidden))
+  )
+    await page.locator("#developer-expand-all").click();
 }

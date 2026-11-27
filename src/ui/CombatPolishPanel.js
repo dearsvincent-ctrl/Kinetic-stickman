@@ -25,6 +25,7 @@ import {
 export class CombatPolishPanel {
   constructor({ effects, freeflow, animator, animation, storage, battle }) {
     this.storage = storage;
+    this.sections = new Map();
     this.effects = effects;
     this.freeflow = freeflow;
     this.animator = animator;
@@ -37,7 +38,7 @@ export class CombatPolishPanel {
         id: "enemy-reactions",
         title: "Enemy Hit Reactions / Hybrid Ragdoll",
         parameters: REACTION_PARAMETERS,
-        note: "Angular ragdoll joints keep fixed bone lengths. Physical launch and mass are separate from visual intensity and Attack Power. Thresholds are ordered automatically. Secondary collision damage starts off. Tag Mode never applies combat reactions. Settings save independently.",
+        note: "Standing reactions grow continuously; accumulated balance is independent of health and displacement. Knockdown threshold is a stability reference, not an immediate force cutoff. Extreme impacts still launch. Recovery speed controls getting up; Standing recovery and Balance recovery are separate. Environmental damage starts off. Settings save independently.",
         toggle: ["ragdollEnabled", "Selective ragdoll enabled"],
         get: () => battle.reactionSettings,
         apply: (values) => battle.configureReactions(values),
@@ -132,6 +133,7 @@ export class CombatPolishPanel {
         ? "Applied live · saved independently on this browser"
         : "Applied live · storage unavailable";
     };
+    this.sections.set(id, { get, commit, refresh, defaults, parameters });
     for (const [key, text] of toggles ?? (toggle ? [toggle] : [])) {
       const label = document.createElement("label");
       label.className = "aim-debug-label";

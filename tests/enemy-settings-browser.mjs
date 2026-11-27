@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 import { unlockSlider } from "./slider-test-utils.mjs";
 import { stick } from "./acrobatic-browser.mjs";
@@ -31,6 +32,7 @@ const point = async (p, s) => {
 const touch = (id, p) => ({ id, ...p, radiusX: 7, radiusY: 7, force: 1 });
 async function open(p) {
   await p.locator("#physics-toggle").click();
+  await expandDeveloperSections(p);
   if (!(await p.locator("#enemy-settings").evaluate((e) => e.open)))
     await p.locator("#enemy-settings > summary").click();
 }
@@ -43,7 +45,7 @@ export async function checkEnemySettings(page, native) {
     waitUntil: "networkidle",
   });
   await page.clock.runFor(450);
-  assert.equal(await page.locator(".version b").textContent(), "0.9.0");
+  assert.equal(await page.locator(".version b").textContent(), "0.9.1");
   let state = await read(page);
   assert.equal(state.alive, "3");
   assert.equal(state.config.speed, 1);

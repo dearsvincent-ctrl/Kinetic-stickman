@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 import { unlockSlider } from "./slider-test-utils.mjs";
 import { JUMP_CONFIG } from "../src/movement/JumpState.js";
@@ -404,6 +405,7 @@ export async function checkSandbox(page, native) {
   await page.goto(dev.href, { waitUntil: "networkidle" });
   await advance(page, 450);
   await click(page, "#physics-toggle");
+  await expandDeveloperSections(page);
   assert.equal(await page.locator("#physics-fields .physics-row").count(), 8);
   const original = await page.evaluate(() =>
     localStorage.getItem("kinetic.controls.v1"),
@@ -426,6 +428,7 @@ export async function checkSandbox(page, native) {
   );
   await fresh(page);
   await click(page, "#physics-toggle");
+  await expandDeveloperSections(page);
   assert.equal(
     await page.locator("#physics-movement").getAttribute("aria-valuetext"),
     "3×",
@@ -473,6 +476,7 @@ export async function checkSandbox(page, native) {
   await advance(page, 500);
   // Preserve both dash implementations in the developer lab, with no HUD/editor Dash.
   await click(page, "#physics-toggle");
+  await expandDeveloperSections(page);
   await tune(page, {
     ...NORMAL_PHYSICS,
     jumpHeight: 20,
@@ -497,7 +501,9 @@ export async function checkSandbox(page, native) {
   await page.keyboard.down("g");
   await advance(page, 100);
   assert.ok(
-    ["flying-kick", "bicycle-kick"].includes(await page.locator("#stance-label").getAttribute("data-technique")),
+    ["flying-kick", "bicycle-kick"].includes(
+      await page.locator("#stance-label").getAttribute("data-technique"),
+    ),
     "Aerial Kick uses the flying or contextual bicycle technique",
   );
   await page.keyboard.up("g");
@@ -512,6 +518,7 @@ export async function checkSandbox(page, native) {
   );
   assert.equal(await page.locator("#jump-status").textContent(), "READY");
   await click(page, "#physics-toggle");
+  await expandDeveloperSections(page);
   for (const [width, height] of [
     [320, 568],
     [390, 844],

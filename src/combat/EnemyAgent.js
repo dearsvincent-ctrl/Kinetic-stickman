@@ -285,6 +285,7 @@ export class EnemyAgent {
     this.body.previousPosition.copy(this.root.position);
     this.startHeading = this.controller.heading;
     this.body.update(dt, false, this.controller.heading);
+    this.reaction.balance.update(dt, this.reaction.settings, this.profile);
     if (this.reaction.active) {
       if (!this.body.active) {
         this.defeatTime += dt;

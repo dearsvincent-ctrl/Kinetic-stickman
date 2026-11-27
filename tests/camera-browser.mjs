@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 import { stick } from "./acrobatic-browser.mjs";
 import { unlockSlider } from "./slider-test-utils.mjs";
@@ -25,7 +26,9 @@ const otherSaved = (page) =>
   page.evaluate(
     (key) =>
       Object.fromEntries(
-        Object.entries(localStorage).filter(([name]) => name !== key),
+        Object.entries(localStorage).filter(
+          ([name]) => name !== key && name !== "kinetic.developer-menu.v1",
+        ),
       ),
     KEY,
   );
@@ -51,6 +54,7 @@ async function fresh(page, sandbox = true) {
 async function open(page) {
   if (await page.locator("#physics-panel").evaluate((node) => node.hidden))
     await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   if (!(await page.locator("#camera-settings").evaluate((node) => node.open)))
     await page.locator("#camera-settings > summary").click();
   await advance(page, 50);
@@ -207,7 +211,7 @@ export async function checkCamera(page, native) {
     await page.evaluate((key) => localStorage.removeItem(key), KEY);
     await page.setViewportSize({ width: 844, height: 390 });
     await fresh(page);
-    assert.equal(await page.locator(".version b").textContent(), "0.9.0");
+    assert.equal(await page.locator(".version b").textContent(), "0.9.1");
     assert.equal(
       await page.evaluate(() => typeof window.__KINETIC__),
       "undefined",

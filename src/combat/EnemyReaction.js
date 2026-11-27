@@ -1,3 +1,4 @@
+import { BalanceState } from "./BalanceState.js";
 import { ReactionSkeleton } from "./ReactionSkeleton.js";
 import { Vector3, Quaternion, Euler } from "three";
 import {
@@ -40,6 +41,8 @@ export class EnemyReaction {
   constructor(agent) {
     this.agent = agent;
     this.skeleton = new ReactionSkeleton();
+    this.balance = new BalanceState();
+    this.stepSample = new Vector3();
     this.settings = REACTION_DEFAULTS;
     this.velocity = new Vector3();
     this.consumedImpulse = new Vector3();
@@ -55,6 +58,11 @@ export class EnemyReaction {
     this.jointRates = new Float64Array(JOINTS.length * 3);
     this.presentedPose = new Float64Array(JOINTS.length * 3);
     this.presentedOrientation = new Quaternion();
+    this.standingSample = {
+      jointAngles: this.presentedPose,
+      orientation: this.presentedOrientation,
+      bodyHeight: 0.97,
+    };
     this.boxes = [0.9, 1.36, 1.74].map((height, i) => ({
       height,
       part: i === 2 ? "head" : "body",
@@ -74,6 +82,9 @@ export class EnemyReaction {
   }
   reset() {
     this.phase = "idle";
+    this.balance.reset();
+    this.level = this.stepPhase = this.stepSpeed = 0;
+    this.stepSample.copy(this.agent.root.position);
     this.age = this.elapsed = this.weight = this.force = 0;
     this.sequence = 0;
     this.ragdoll = false;
@@ -131,7 +142,7 @@ export class EnemyReaction {
     this.age = this.elapsed = 0;
     this.lastCollisionTime = -Infinity;
     this.force = force;
-    this.weight = Number.isFinite(impact.visual)
+    const visual = Number.isFinite(impact.visual)
       ? clamp(impact.visual, 0, 3)
       : s.intensity;
     this.location = impact.location ?? "body";
@@ -143,10 +154,38 @@ export class EnemyReaction {
       this.directionX * Math.cos(yaw) - this.directionZ * Math.sin(yaw);
     this.localZ =
       this.directionX * Math.sin(yaw) + this.directionZ * Math.cos(yaw);
+    const lostFooting = this.balance.hit(impact, s, p, {
+      speed: a.controller.velocity.length(),
+      side: this.localX,
+      airborne: a.controller.jump.airborne,
+      committed: a.combat.attack.active,
+      kicking:
+        a.combat.attack.active && a.combat.currentTechnique?.action === "kick",
+      guarded: a.body.blocking,
+    });
+    const level = clamp(
+      Math.max(
+        force / Math.max(1, s.knockdown * 2.5),
+        this.balance.instability * 0.85,
+      ),
+      0,
+      1,
+    );
+    this.level = Math.max(this.level * 0.7, level);
+    const gain =
+      level < 0.5
+        ? s.lightIntensity +
+          (s.moderateIntensity - s.lightIntensity) * level * 2
+        : s.moderateIntensity +
+          (s.heavyIntensity - s.moderateIntensity) * (level - 0.5) * 2;
+    this.weight = Math.max(
+      this.weight * 0.7,
+      visual * gain * (0.55 + level * 0.6),
+    );
     this.ragdoll =
       s.ragdollEnabled &&
       ((this.ragdoll && this.ownsMotion) ||
-        score >= Math.max(s.knockdown, s.ragdoll));
+        (lostFooting && score >= s.ragdoll));
     const wasOwner = this.ownsMotion;
     // Combat and pressure contacts can share one simulation tick. The legacy
     // accumulator stays observable until update; consume only its new delta.
@@ -155,7 +194,7 @@ export class EnemyReaction {
       this.consumedImpulse.copy(a.body.impulse);
       this.velocity.clampLength(0, IMPACT_LIMITS.velocity);
     }
-    const severe = score >= s.knockdown || !a.body.active;
+    const severe = lostFooting || !a.body.active;
     if (severe) {
       if (!this.ownsMotion && this.hasPresentedPose) {
         this.jointAngles.set(this.presentedPose);
@@ -178,7 +217,7 @@ export class EnemyReaction {
             this.velocity.y,
             launch * (1 + Math.max(0, impact.up ?? 0) * 0.5),
           );
-      } else this.phase = "knockdown";
+      } else if (!wasOwner) this.phase = "knockdown";
       this.velocity.clampLength(0, IMPACT_LIMITS.velocity);
       this.angular
         .set(
@@ -195,12 +234,17 @@ export class EnemyReaction {
       a.controller.jumpRequested = a.controller.dashRequested = false;
       if (a.controller.dash.active) a.controller.dash.finish("hit");
     } else if (!this.ownsMotion) {
-      this.phase = score >= s.stagger * 2.5 ? "stumble" : "recoil";
+      this.phase =
+        this.level >= 0.65
+          ? "heavy-stumble"
+          : this.level >= 0.25
+            ? "stumble"
+            : "recoil";
     }
     if (score >= s.stagger)
       a.body.stagger = Math.max(
         a.body.stagger,
-        0.24 / Math.sqrt(p.balance ?? 1),
+        (0.16 + this.level * 0.2) / Math.sqrt(p.balance ?? 1),
       );
     else a.body.stagger = Math.min(a.body.stagger, 0.12);
     a.combat.cancelAttack("impact");
@@ -228,9 +272,35 @@ export class EnemyReaction {
     this.age += dt;
     this.elapsed += dt;
     const speed = clamp(s.recovery * (a.profile?.recovery ?? 1), 0.1, 20);
-    if (this.phase === "recoil" || this.phase === "stumble") {
-      this.weight *= Math.exp(-dt * 7 * speed);
-      if (this.elapsed > (this.phase === "stumble" ? 0.65 : 0.4) / speed) {
+    const standingSpeed = clamp(
+      s.standingRecovery * (a.profile?.recovery ?? 1),
+      0.1,
+      20,
+    );
+    if (
+      this.phase === "recoil" ||
+      this.phase === "stumble" ||
+      this.phase === "heavy-stumble"
+    ) {
+      this.stepSpeed =
+        this.agent.root.position.distanceTo(this.stepSample) / dt;
+      this.stepSample.copy(this.agent.root.position);
+      this.stepPhase +=
+        dt *
+        (5 +
+          Math.min(
+            9,
+            Math.max(this.stepSpeed, this.agent.body.impulse.length()),
+          ) *
+            1.2);
+      this.level *= Math.exp(-dt * 2.2 * standingSpeed);
+      this.weight *= Math.exp(
+        -dt * (this.phase === "recoil" ? 6 : 3) * standingSpeed,
+      );
+      if (
+        this.elapsed > (0.45 + this.level * 0.7) / standingSpeed &&
+        this.weight < 0.025
+      ) {
         this.phase = "idle";
         this.weight = 0;
         this.agent.body.hitboxes = this.restBoxes;
@@ -273,6 +343,7 @@ export class EnemyReaction {
       this.bodyHeight += (0.97 - this.bodyHeight) * blend;
       if (t === 1) {
         this.phase = "idle";
+        this.balance.instability = Math.min(0.35, this.balance.instability);
         this.weight = 0;
         this.orientation.identity();
         this.bodyHeight = 0.97;
@@ -515,9 +586,36 @@ export class EnemyReaction {
     if (this.ownsMotion) this.agent.body.hitboxes = this.boxes;
   }
 
+  syncStandingBoxes(position) {
+    if (!this.active || this.ownsMotion) return;
+    this.standingSample.bodyHeight = position.y;
+    const yaw = this.agent.controller.heading;
+    const offsetX = position.x * Math.cos(yaw) + position.z * Math.sin(yaw);
+    const offsetZ = -position.x * Math.sin(yaw) + position.z * Math.cos(yaw);
+    this.skeleton.sample(
+      this.standingSample,
+      this.agent.controller.heading,
+      false,
+    );
+    for (let i = 0; i < this.boxes.length; i++) {
+      const box = this.boxes[i],
+        point = this.skeleton.core[i];
+      box.previousX = box.x;
+      box.previousZ = box.z;
+      box.previousHeight = box.height;
+      box.x = point.x + offsetX;
+      box.z = point.z + offsetZ;
+      box.height = point.y;
+    }
+    this.agent.body.hitboxes = this.boxes;
+  }
+
   snapshot() {
     return {
       phase: this.phase,
+      instability: this.balance.instability,
+      balanceLoad: this.balance.lastLoad,
+      standingLevel: this.level,
       force: this.force,
       location: this.location,
       ragdoll: this.ragdoll,

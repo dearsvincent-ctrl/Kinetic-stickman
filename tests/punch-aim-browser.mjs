@@ -1,3 +1,4 @@
+import { expandDeveloperSections } from "./slider-test-utils.mjs";
 import assert from "node:assert/strict";
 import { unlockSlider } from "./slider-test-utils.mjs";
 const advance = (p, ms) => p.clock.runFor(ms);
@@ -24,12 +25,18 @@ const tune = (p, values) =>
     }
   }, values);
 async function setFreeflowEnabled(page, enabled) {
-  const wasClosed = await page.locator("#physics-panel").evaluate((node) => node.hidden);
+  const wasClosed = await page
+    .locator("#physics-panel")
+    .evaluate((node) => node.hidden);
   if (wasClosed) await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   if (!(await page.locator("#freeflow-combat").evaluate((node) => node.open)))
     await page.locator("#freeflow-combat > summary").click();
   await page.locator("#freeflow-combat-enabled").setChecked(enabled);
-  assert.equal(await page.locator("#freeflow-combat-enabled").isChecked(), enabled);
+  assert.equal(
+    await page.locator("#freeflow-combat-enabled").isChecked(),
+    enabled,
+  );
   if (wasClosed) await page.locator("#physics-close").click();
   await page.evaluate(() => document.activeElement?.blur());
 }
@@ -44,6 +51,7 @@ export async function checkPunchAim(page, native) {
   await advance(page, 450);
   await disableFreeflow(page);
   await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   assert.equal(await page.locator("#physics-fields .physics-row").count(), 8);
   assert.equal(
     await page.locator("#aim-assist-controls .physics-row").count(),
@@ -135,6 +143,7 @@ export async function checkPunchAim(page, native) {
   await advance(page, 450);
   await disableFreeflow(page);
   await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   for (const [id, v] of Object.entries({
     strength: 175,
     maxAngle: 35,
@@ -166,13 +175,14 @@ export async function checkPunchAim(page, native) {
   });
   await advance(page, 450);
   await disableFreeflow(page);
-  assert.equal(await page.locator(".version b").textContent(), "0.9.0");
+  assert.equal(await page.locator(".version b").textContent(), "0.9.1");
   assert.equal(
     (await read(page)).sequence,
     "0",
     "Enemies never trigger automatic player punches",
   );
   await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   await page.locator("#aim-debug").scrollIntoViewIfNeeded();
   await page.locator("#aim-debug").check();
   await page.locator("#physics-close").click();
@@ -260,6 +270,7 @@ export async function checkPunchAim(page, native) {
     "Selection disappears after punch recovery",
   );
   await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   await tune(page, { strength: 200, maxAngle: 45, cone: 60 });
   await page.locator("#aim-save").click();
   // Fresh health/encounter; saved developer aim loads without changing physics.
@@ -335,6 +346,7 @@ export async function checkPunchAim(page, native) {
     "PASS: saved 200%/45°/±60° assistance reaches manual Punch and Kick with native action slides, moving enemies and responsive Block",
   );
   await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   await page.locator("#aim-strength").scrollIntoViewIfNeeded();
   await tune(page, { strength: 0 });
   await page.locator("#physics-close").click();
@@ -346,6 +358,7 @@ export async function checkPunchAim(page, native) {
   assert.equal((await read(page)).aimTarget, "none");
   assert.equal(Number((await read(page)).aimAngle), 0);
   await page.locator("#physics-toggle").click();
+  await expandDeveloperSections(page);
   await page.locator("#aim-reset").click();
   await page.locator("#aim-save").click();
   await page.locator("#physics-close").click();

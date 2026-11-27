@@ -19,6 +19,8 @@ import { checkEnemyAbilities } from "./enemy-abilities-browser.mjs";
 import { checkSliderLocks } from "./slider-locks-browser.mjs";
 import { checkCamera } from "./camera-browser.mjs";
 import { checkV087Polish } from "./v087-polish-browser.mjs";
+import { checkDeveloperMenu } from "./v091-browser.mjs";
+import { checkStandingCombat } from "./v091-combat-browser.mjs";
 import { checkReactions } from "./v090-browser.mjs";
 import { checkMovementAbilities } from "./v089-browser.mjs";
 import { resolvePagesBase } from "../build/pagesBase.js";
@@ -141,6 +143,8 @@ try {
     if (suite === "all" || suite === "polish") {
       await checkV087Polish(run.page, run.native);
       await checkReactions(run.page, run.native);
+      await checkStandingCombat(run.page, run.native);
+      await checkDeveloperMenu(run.page, run.native);
     }
     for (const request of run.requests) {
       const url = new URL(request);

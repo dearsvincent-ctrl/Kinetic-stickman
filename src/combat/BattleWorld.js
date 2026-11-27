@@ -253,12 +253,23 @@ export class BattleWorld {
       this.enemies.push(e);
     }
   }
-  configureEnemies(values, { resetPopulation = false } = {}) {
+  configureEnemies(
+    values,
+    { resetPopulation = false, populationOverride = undefined } = {},
+  ) {
     const prior = this.enemySettings;
     this.enemySettings = sanitizeEnemySettings({ ...prior, ...values });
     const populationChanged =
-      resetPopulation || prior.maxEnemies !== this.enemySettings.maxEnemies;
-    if (resetPopulation) this.populationOverride = null;
+      resetPopulation ||
+      prior.maxEnemies !== this.enemySettings.maxEnemies ||
+      (populationOverride !== undefined &&
+        populationOverride !== this.populationOverride);
+    if (populationOverride !== undefined)
+      this.populationOverride =
+        populationOverride === null
+          ? null
+          : Math.max(1, Math.min(64, Math.round(populationOverride)));
+    else if (resetPopulation) this.populationOverride = null;
     else if (prior.maxEnemies !== this.enemySettings.maxEnemies)
       this.populationOverride = this.enemySettings.maxEnemies;
     if (prior.attackFrequency > 0 && this.enemySettings.attackFrequency > 0)
