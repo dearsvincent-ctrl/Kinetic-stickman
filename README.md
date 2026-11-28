@@ -1,8 +1,58 @@
-# Kinetic — Movement Lab v0.9.2
+# Kinetic — Movement Lab v0.9.3
 
-A mobile-first Three.js/Vite stickman prototype. Version 0.9.2 adds persistent character progression, independent gameplay upgrades and a separate mobile character interface. Version 0.9.1 introduced graduated standing hit reactions and independent accumulated balance, plus a hierarchical developer workbench with search, favourites and named local builds. It preserves bounded ballistic launches, angular ragdoll joints and alive recovery. It retains the v0.8.9 separation of ground speed, air acceleration/braking, agility and supported wall movement, eliminating speed-driven wall launches. It preserves attack-driven freeflow approaches, directional target switching, ground/aerial combinations and bicycle kicks. Sonic barriers now create layered expanding pressure fronts, radial dust, speed streaks and brief camera impact. Combat-only near misses and direct high-speed collisions stagger or displace enemies without adding contact damage. **Manual, Assisted and Dynamic camera modes**, optional dynamic field of view and independently saved Combat/Tag camera profiles remain available. The default retains the existing 52° manual view. Configurable Standard/Acrobat/Leaper/Heavy enemies, ability-aware traversal and individual developer slider locks remain available. **Tag Mode** retains fleeing AI, swept contact tags, counters and delayed respawning. **Combat Mode** retains pursuit, manual Punch/Kick, health, damage, waves, aim assistance and strength tuning. The 2,000 × 2,000 city/jungle playground, player parkour, directional double jumps, analogue locomotion and custom mobile HUD remain available in both modes. Enemy route planning is local and bounded.
+A mobile-first Three.js/Vite stickman prototype. Version 0.9.3 adds numerical character attributes and independent progression balancing/build libraries. Version 0.9.2 introduced persistent character progression, independent gameplay upgrades and a separate mobile character interface. Version 0.9.1 introduced graduated standing hit reactions and independent accumulated balance, plus a hierarchical developer workbench with search, favourites and named local builds. It preserves bounded ballistic launches, angular ragdoll joints and alive recovery. It retains the v0.8.9 separation of ground speed, air acceleration/braking, agility and supported wall movement, eliminating speed-driven wall launches. It preserves attack-driven freeflow approaches, directional target switching, ground/aerial combinations and bicycle kicks. Sonic barriers now create layered expanding pressure fronts, radial dust, speed streaks and brief camera impact. Combat-only near misses and direct high-speed collisions stagger or displace enemies without adding contact damage. **Manual, Assisted and Dynamic camera modes**, optional dynamic field of view and independently saved Combat/Tag camera profiles remain available. The default retains the existing 52° manual view. Configurable Standard/Acrobat/Leaper/Heavy enemies, ability-aware traversal and individual developer slider locks remain available. **Tag Mode** retains fleeing AI, swept contact tags, counters and delayed respawning. **Combat Mode** retains pursuit, manual Punch/Kick, health, damage, waves, aim assistance and strength tuning. The 2,000 × 2,000 city/jungle playground, player parkour, directional double jumps, analogue locomotion and custom mobile HUD remain available in both modes. Enemy route planning is local and bounded.
 
-## Character progression (v0.9.2)
+## Numerical attributes and progression balancing (v0.9.3)
+
+Normal character cards now show **Attribute 1 → 2**, not physical units or multipliers. Attribute = `1 + purchased upgrade ranks`. This preserves all v0.9.2 purchases: rank 4 becomes attribute 5. Default maximum attribute 11 preserves the previous ten purchasable ranks. A numerical attribute of 10 does **not** mean ten times the speed or power. Internally the resolver still supplies independent physical parameters to existing movement, traversal and combat systems. A new independent Wall-jump impulse attribute completes the Leaper branch; default wall-jump behaviour is unchanged.
+
+The default remains **v0.9.2 reference**, selectable under **DEV → Player Movement → Progression Balancing**. No permanent rebalance was imposed. The old first maximum-speed upgrade is +54.38% of the base sprint velocity, which explains the reported approximately 1× → 1.5× jump. Ordinary Running speed has a smaller +14.50% first increment. All old reference curves use the following formula, with different gains:
+
+`gameplay = base × [1 + gain × (1 − exp(−r/5))]`, where `r = attribute − 1`, clamped to the configured maximum. Upgrade cost remains `ceil(1 + 0.5r)`. Experience for the next character level remains `round(100 + 50 × (level − 1)^1.35)`; baseline awards remain 3 starting points, 3 points per level, 35 XP per combat defeat and 20 XP per physical tag.
+
+| Attribute | Base gameplay input | Reference gain | First upgrade increase |
+|---|---:|---:|---:|
+| Running speed | 2.6 m/s | 0.8 | 14.50% |
+| Maximum movement velocity | 5.2 m/s | 3 | 54.38% |
+| Ground acceleration | 1 × | 2 | 36.25% |
+| Jump strength | 1.2 m height | 4 | 72.51% |
+| Agility | 1 × | 3 | 54.38% |
+| Wall-running ability | 1 × | 3 | 54.38% |
+| Wall adhesion | 1 × | 3 | 54.38% |
+| Climbing ability | 1 × | 3 | 54.38% |
+| Wall-jump impulse | 1 × | 3 | 54.38% |
+| Landing stability | 1 × | 3 | 54.38% |
+| Attack power | 1 × | 3 | 54.38% |
+| Attack speed | 1 × | 0.6 | 10.88% |
+| Knockback strength | 1 × | 4 | 72.51% |
+| Balance and stability | 1 × | 2 | 36.25% |
+| Combat recovery | 1 × | 0.8 | 14.50% |
+| Air control / aerial steering | 1 × | 3 | 54.38% |
+| Air / aerial acceleration | 1 × | 3 | 54.38% |
+| Air braking | 1 × | 3 | 54.38% |
+| Rotational control | 1 × | 0.5 | 9.06% |
+| Aerial recovery | 1 × | 0.8 | 14.50% |
+
+For editable curves, let `r = clamp(attribute − 1, 0, maximumAttribute − 1)` and `t = thresholdAttribute − 1`; the effective growth coordinate is `n = min(r,t) + max(0,r−t) × growthBeyondThreshold`. Each attribute independently chooses:
+
+- **Linear / additive:** `base × (1 + rate × n)`. A 10% rate adds 10% of the original base per point; it does not compound.
+- **Diminishing:** `base × [1 + rate × (1 − exp(−n/scale))]`.
+- **Accelerating / additive:** `base × (1 + rate × n^exponent)`.
+- **Compounded:** `base × (1 + rate)^n`, explicitly labelled.
+
+Values are bounded by the attribute's configured gameplay cap. Costs are independently `ceil(costBase + costGrowth × r^costExponent)`. The Additive 5%, 10%, 20% and 50% configurations are experiments, not permanent balance decisions. Base values, rates, curve types, thresholds, caps, cost curves, XP requirements/rewards and numerical ability prerequisites can all be edited separately. The table previews attributes 1, 2, 5, 10 and 20, marking values above the selected cap. Base/gameplay-cap sliders use logarithmic tracks with actual-value readouts. Every range uses the existing individual locks and safe vertical scrolling.
+
+**How to compare curves:** choose the attribute, choose a reference/additive preset or edit its individual rule, then inspect the preview. Draft edits apply only to an active temporary character. **Save new / Load selected / Reset draft** use an independent progression library. Normal character rules change only through **Use draft rules for normal character**, with confirmation. **Restore normal character reference rules** restores the reference without deleting purchases, XP, points or unlocks. Point awards and new purchase costs change prospectively. Lowering a testing cap limits effects and future purchases, but retains paid ranks for restoration.
+
+**How to compare builds:** open Experimental builds, choose a common point budget, and begin a fresh temporary character. Assign individual numerical values, apply/refund the budget or reset all temporary attributes to 1. The Speedster, Acrobat, Superhuman Leaper, Powerhouse and Martial Artist buttons are optional weighted examples; they do not create character classes or restrict hybrids. All use the same selected curve and point budget. Invested and remaining points are displayed explicitly; investment means the cost to recreate the build under the currently selected rules, not a historical spending ledger. A capped build may have unspent points. Developer assignment deliberately bypasses purchase prerequisites, but normal purchases still validate them. Save/switch experimental builds with their associated rules, or end testing to return to the unrestricted sandbox. No button copies an experimental character over the legitimate character.
+
+Configuration and build slots (up to 32 each) use `kinetic.progression-lab.v1`, independent of `kinetic.sandbox-configurations.v1` and the character. Duplicate names require explicit Overwrite and confirmation; deletion is confirmed. Named sandbox snapshots exclude the progression editor. Favourites/search continue sharing original controls and lock state. Normal character data keeps the existing `kinetic.character-progression.v1` storage key with **payload version 2**, reading payloads 0/1/2. Loading legacy data does not write or reset it; the next legitimate save writes the migrated schema. New statistics default to attribute 1. Future/invalid library versions are protected from overwrite and clearly fall back to session-only testing.
+
+Existing numerical guardrails remain: ability inputs at most 100×, stability at most 10×, bounded flip timing/angular speed, and collision-resolved movement. Ordinary run pace cannot exceed 95% of the separately configured maximum sprint speed; raise maximum velocity explicitly instead of receiving a hidden speed bonus. Extreme experimental curves can hit these guardrails, so larger attributes need not keep increasing the result. Reference gameplay stays within these bounds. Underlying developer physics multipliers remain unrestricted within their previous bounds and do not alter the saved character.
+
+`ProgressionCurves.js` owns sanitized rules and mathematical evaluation; `CharacterProgression` owns ranks, numerical attributes, currency and purchase validation; `ProgressionEffects` adapts results to existing gameplay; `ProgressionLab` owns isolated active/draft configurations and experimental libraries. There is no per-frame curve evaluation or hidden character-panel rebuilding. Future sessions can instantiate temporary characters with independent starting attributes, economy and ability policies; a future mode must still integrate its own ability gating and difficulty rules. Pursuit Survival, run duration/reward design, enemy difficulty scaling and cloud synchronisation are not implemented.
+
+## Character progression reference (v0.9.2)
 
 Open **Settings → Character progression** in ordinary play. New characters retain every existing movement, double-jump, parkour, manual-combat and freeflow feature, start at level 1 with 3 upgrade points, and can preview a purchase before spending. Current rank, current/next value, cost and prerequisite reasons are shown for every statistic. Upgrade ranks are capped at 10 and use diminishing growth. Character level caps at 50. Confirmed Combat defeats award 35 XP and successful Tag contacts award 20 XP; each level awards 3 points. These are ordinary existing-mode rewards, not a new survival mode or wave system.
 
@@ -65,7 +115,7 @@ Root causes fixed: wall impact speed was copied into vertical velocity; climb, d
 
 ## Play on Android
 
-Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.9.2** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.9.2**. Landscape gives the controls more space; portrait is supported.
+Open **https://dearsvincent-ctrl.github.io/Kinetic-stickman/?v=0.9.3** in Android Chrome. No computer, installation or local build is needed. Refresh until the header shows **0.9.3**. Landscape gives the controls more space; portrait is supported.
 
 | Action            | Touch                                                       | Desktop                            |
 | ----------------- | ----------------------------------------------------------- | ---------------------------------- |

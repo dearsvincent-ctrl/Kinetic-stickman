@@ -37,6 +37,7 @@ const SOURCE_CATEGORIES = {
   "speed-effects": "visuals",
   "animation-polish": "visuals",
   "progression-testing": "movement",
+  "progression-balancing": "movement",
 };
 /** One original live widget per setting. Search/Favourites move that widget
  * through anchored slots, preserving handler, value, context and slider lock. */
@@ -341,7 +342,7 @@ export class DeveloperMenu {
       !this.panel.contains(input) ||
       !input.id ||
       this.registry.entries.has(input.id) ||
-      input.closest(".developer-toolbar, #developer-configurations")
+      input.closest(".developer-toolbar, #developer-configurations, [data-progression-library]")
     )
       return false;
     if (!["range", "checkbox", "select-one", "number"].includes(input.type))

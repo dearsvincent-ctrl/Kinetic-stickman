@@ -112,6 +112,15 @@ export const STATISTICS = Object.freeze([
     "Vertical climb and controlled descent speed.",
   ),
   stat(
+    "wallJump",
+    "Wall-jump impulse",
+    "parkour",
+    1,
+    "×",
+    3,
+    "Deliberate wall-jump impulse; ordinary wall contact does not launch the character.",
+  ),
+  stat(
     "landingStability",
     "Landing stability",
     "parkour",

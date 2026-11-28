@@ -16,7 +16,6 @@ const button = (id, text, action) => {
   n.addEventListener("click", action);
   return n;
 };
-const value = (n, unit) => `${Number(n.toFixed(2))} ${unit}`;
 /** Event-driven view of the character owner; never copies slider or gameplay state. */
 export class ProgressionPanel {
   constructor(game) {
@@ -127,7 +126,9 @@ export class ProgressionPanel {
               a.baseline
                 ? "Available from the start"
                 : a.purchased
-                  ? "Purchased"
+                  ? a.enabled === false
+                    ? "Purchased · disabled in this ruleset"
+                    : "Purchased"
                   : (a.reason ?? `Available · ${a.cost} points`),
             ),
           );
@@ -163,15 +164,12 @@ export class ProgressionPanel {
           const name = make("h3", d.name);
           row.append(
             name,
-            make(
-              "p",
-              `Rank ${p.rank}/${p.maxLevel} · ${value(p.current, p.unit)}`,
-            ),
+            make("p", `Attribute ${p.attribute} / ${p.maxLevel + 1}`),
             make(
               "p",
               p.rank >= p.maxLevel
                 ? "Maximum upgrade reached"
-                : `Next: ${value(p.next, p.unit)} · ${p.cost} ${p.cost === 1 ? "point" : "points"}`,
+                : `Next attribute: ${p.nextAttribute} · ${p.cost} ${p.cost === 1 ? "point" : "points"}`,
             ),
             make("p", p.effect),
           );
@@ -203,7 +201,7 @@ export class ProgressionPanel {
             "p",
             ability
               ? p.effect
-              : `${value(p.current, p.unit)} → ${value(p.next, p.unit)}. ${p.effect}`,
+              : `Attribute ${p.attribute} → ${p.nextAttribute}. ${p.effect}`,
           ),
           make("p", p.reason ?? `Spend ${p.cost} upgrade points?`),
         );

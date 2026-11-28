@@ -55,7 +55,7 @@ export async function checkProgression(p, native) {
     waitUntil: "networkidle",
   });
   await advance(p, 200);
-  assert.equal(await p.locator(".version b").textContent(), "0.9.2");
+  assert.equal(await p.locator(".version b").textContent(), "0.9.3");
   await openCharacter(p);
   assert.match(
     await p.locator("#progression-overview").textContent(),
@@ -77,7 +77,7 @@ export async function checkProgression(p, native) {
   await category(p, "combat");
   assert.match(
     await p.locator("#progression-stat-combatRecovery").textContent(),
-    /Requires Attack speed rank 1/,
+    /Requires Attack speed attribute 2/,
   );
   await category(p, "abilities");
   assert.match(
@@ -114,7 +114,7 @@ export async function checkProgression(p, native) {
   assert.deepEqual(await saved(p), initial);
   assert.match(
     await p.locator("#progression-stat-jumpStrength").textContent(),
-    /Rank 1\/10/,
+    /Attribute 2 \/ 11/,
   );
   const dialog = p.locator("#progression-dialog"),
     cdp = await p.context().newCDPSession(p);

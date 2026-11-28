@@ -7,6 +7,8 @@ import {
   applyProgressionEffects,
 } from "../progression/ProgressionEffects.js";
 import { ProgressionPanel } from "../ui/ProgressionPanel.js";
+import { ProgressionLab } from "../progression/ProgressionLab.js";
+import { ProgressionBalancingPanel } from "../ui/ProgressionBalancingPanel.js";
 import { loadReactions } from "../sandbox/ReactionSettings.js";
 import * as THREE from "three";
 import { createArena } from "../world/createArena.js";
@@ -207,7 +209,11 @@ export class Game {
     // Camera preferences also load in ordinary play. They never share the
     // physics/AI/aim/layout saves or modify the player's movement parameters.
     this.cameraPreferences = new CameraPreferences(cameraStorage);
-    this.progression = new CharacterProgression({ storage: cameraStorage });
+    this.progressionLab = new ProgressionLab(cameraStorage);
+    this.progression = new CharacterProgression({
+      storage: cameraStorage,
+      rules: this.progressionLab.active,
+    });
     this.battle.onTag = () => this.awardProgressionEvent("tagExperience");
     this.battle.configureReactions(loadReactions(cameraStorage) ?? {});
     this.speedEffects.configure(loadSpeedEffectSettings(cameraStorage) ?? {});
@@ -330,6 +336,8 @@ export class Game {
       this.progressionPanel?.render();
     });
     this.progressionPanel = new ProgressionPanel(this);
+    if (this.physicsSandbox.enabled)
+      this.progressionBalancingPanel = new ProgressionBalancingPanel(this);
     this.applyCharacterProgression();
     this.developerMenu = new DeveloperMenu(this);
     this.accumulator = 0;
@@ -400,8 +408,17 @@ export class Game {
     );
   }
 
-  setProgressionPreview(enabled) {
-    this.progressionPreview = enabled ? this.progression.fork() : null;
+  setProgressionPreview(
+    enabled,
+    { rules = this.progressionLab?.draft, state } = {},
+  ) {
+    this.progressionPreview = enabled
+      ? new CharacterProgression({
+          state: state === undefined ? this.progression.snapshot() : state,
+          temporary: true,
+          rules: rules ?? this.progression.rules,
+        })
+      : null;
     this.progressionPreview?.subscribe((character, { mechanics }) => {
       if (mechanics) this.applyCharacterProgression();
       this.progressionPanel.render();

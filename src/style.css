@@ -1949,3 +1949,10 @@ h1 {
   .progression-overview { font-size:14px; margin:8px 0; }
   #progression-notice { font-size:12px; line-height:1.4; margin:8px 0; }
 }
+#progression-lab-preview { width:100%; border-collapse:collapse; font-size:12px; margin:12px 0; }
+#progression-lab-preview th,#progression-lab-preview td { padding:7px 3px; text-align:left; border-bottom:1px solid var(--edge); }
+#progression-lab-formula,#progression-lab-status,#progression-lab-requirements,#progression-build-status { font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+#progression-balancing input:not([type=range]):not([type=checkbox]),#progression-balancing select { width:100%; min-height:44px; margin:4px 0; color:inherit; background:#22322d; border:1px solid #52635d; border-radius:5px; padding:7px; }
+#progression-balancing .physics-row > select { grid-column:1 / -1; }
+/* These selectors survive original-widget movement into Search/Favourites. */
+#physics-panel select[id^="progression-lab-"] { grid-column:1 / -1; width:100%; min-height:44px; margin:4px 0; color:inherit; background:#22322d; border:1px solid #52635d; border-radius:5px; padding:7px; }

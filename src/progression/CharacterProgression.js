@@ -5,15 +5,20 @@ import {
   STAT_BY_ID,
   ABILITIES,
   experienceRequired,
-  upgradeCost,
-  statMultiplier,
 } from "./ProgressionCatalog.js";
+import {
+  REFERENCE_RULES,
+  sanitizeRules,
+  evaluateCurve,
+  curveCost,
+  investmentCost,
+} from "./ProgressionCurves.js";
 const integer = (v, min, max, fallback = min) =>
   typeof v === "number" && Number.isFinite(v)
     ? Math.max(min, Math.min(max, Math.floor(v)))
     : fallback;
 const fresh = (economy = ECONOMY) => ({
-  version: 1,
+  version: 2,
   level: 1,
   experience: 0,
   points: economy.startingPoints,
@@ -24,19 +29,24 @@ const fresh = (economy = ECONOMY) => ({
 export function normalizeProgression(raw, economy = ECONOMY) {
   if (raw == null) return fresh(economy);
   // Version 0 uses the same stable IDs with legacy field names.
-  if (raw.version !== 0 && raw.version !== 1)
+  if (raw.version !== 0 && raw.version !== 1 && raw.version !== 2)
     throw new Error("Unsupported character save version");
   const s = fresh(economy);
-  s.level = integer(raw.level, 1, economy.maxLevel, 1);
-  s.points = integer(raw.points ?? raw.upgradePoints, 0, 1000000, 0);
-  s.experience = integer(
-    raw.experience ?? raw.xp,
-    0,
-    s.level === economy.maxLevel ? 0 : experienceRequired(s.level, economy) - 1,
+  s.level = integer(
+    raw.level,
+    1,
+    raw.version === 2 ? 100 : ECONOMY.maxLevel,
+    1,
   );
+  s.points = integer(raw.points ?? raw.upgradePoints, 0, 1000000, 0);
+  s.experience = integer(raw.experience ?? raw.xp, 0, 1000000000);
   const levels = raw.upgrades ?? raw.statistics ?? {};
   for (const d of STATISTICS)
-    s.upgrades[d.id] = integer(levels[d.id], 0, d.maxLevel);
+    s.upgrades[d.id] = integer(
+      levels[d.id],
+      0,
+      raw.version === 2 ? 99 : d.maxLevel,
+    );
   s.unlocked = [
     ...new Set([
       ...s.unlocked,
@@ -58,9 +68,14 @@ export class CharacterProgression {
     state,
     economy = ECONOMY,
     temporary = false,
+    rules = REFERENCE_RULES,
   } = {}) {
+    this.rules = sanitizeRules(rules);
     this.storage = storage;
-    this.economy = { ...ECONOMY, ...economy };
+    this.economy = {
+      ...this.rules.economy,
+      ...(economy === ECONOMY ? {} : economy),
+    };
     this.temporary = temporary;
     this.listeners = new Set();
     this.revision = 0;
@@ -77,6 +92,10 @@ export class CharacterProgression {
       }
     try {
       this.state = normalizeProgression(saved, this.economy);
+      if (saved == null)
+        for (const d of STATISTICS)
+          this.state.upgrades[d.id] =
+            (this.rules.startingAttributes?.[d.id] ?? 1) - 1;
     } catch (error) {
       this.state = fresh(this.economy);
       this.loadError = error.message + "; original save preserved.";
@@ -89,10 +108,18 @@ export class CharacterProgression {
       Object.fromEntries(
         STATISTICS.map((d) => [
           d.id,
-          statMultiplier(d, this.state.upgrades[d.id] ?? 0),
+          evaluateCurve(this.rules.stats[d.id], this.attribute(d.id)) / d.base,
         ]),
       ),
     );
+  }
+  attribute(id) {
+    return 1 + (this.state.upgrades[id] ?? 0);
+  }
+  configureRules(rules) {
+    this.rules = sanitizeRules(rules);
+    this.economy = { ...this.rules.economy };
+    this.changed(true, { persist: false });
   }
   subscribe(fn) {
     this.listeners.add(fn);
@@ -113,17 +140,25 @@ export class CharacterProgression {
       return false;
     }
   }
-  changed(mechanics = true) {
+  changed(mechanics = true, { persist = true } = {}) {
     if (mechanics) this.values = this.resolve();
     this.revision++;
-    this.save();
+    if (persist) this.save();
     for (const f of this.listeners) f(this, { mechanics });
   }
-  requirements({ level = 1, stats = {}, abilities = [] } = {}) {
+  requirements({
+    level = 1,
+    stats = {},
+    attributes = {},
+    abilities = [],
+  } = {}) {
     if (this.state.level < level) return `Requires character level ${level}`;
     for (const [id, n] of Object.entries(stats))
       if ((this.state.upgrades[id] ?? 0) < n)
-        return `Requires ${STAT_BY_ID.get(id)?.name ?? id} rank ${n}`;
+        return `Requires ${STAT_BY_ID.get(id)?.name ?? id} attribute ${n + 1}`;
+    for (const [id, n] of Object.entries(attributes))
+      if (this.attribute(id) < n)
+        return `Requires ${STAT_BY_ID.get(id)?.name ?? id} attribute ${n}`;
     for (const id of abilities)
       if (!this.state.unlocked.includes(id)) return `Requires ${id}`;
     return null;
@@ -132,18 +167,22 @@ export class CharacterProgression {
     const d = STAT_BY_ID.get(id);
     if (!d) return null;
     const rank = this.state.upgrades[id] ?? 0,
-      cost = upgradeCost(d, rank),
+      rule = this.rules.stats[id],
+      cost = curveCost(rule, rank),
       reason =
-        rank >= d.maxLevel
-          ? "Maximum rank reached"
+        rank >= rule.maxAttribute - 1
+          ? "Maximum attribute reached"
           : (this.requirements({ stats: d.prerequisites }) ??
             (this.state.points < cost ? "Insufficient upgrade points" : null));
     return {
       ...d,
       rank,
       cost,
+      maxLevel: rule.maxAttribute - 1,
+      attribute: rank + 1,
+      nextAttribute: Math.min(rule.maxAttribute, rank + 2),
       current: d.base * this.values[id],
-      next: d.base * statMultiplier(d, rank + 1),
+      next: evaluateCurve(rule, rank + 2),
       available: !reason,
       reason,
     };
@@ -158,13 +197,20 @@ export class CharacterProgression {
     return { ok: true };
   }
   ability(id) {
-    const a = ABILITIES.find((a) => a.id === id);
+    const definition = ABILITIES.find((a) => a.id === id);
+    const a = definition
+      ? { ...definition, ...this.rules.abilities[id], stats: {} }
+      : null;
     if (!a) return null;
     const purchased = this.state.unlocked.includes(id),
       reason = purchased
         ? null
-        : (this.requirements(a) ??
-          (this.state.points < a.cost ? "Insufficient upgrade points" : null));
+        : !a.enabled
+          ? "Disabled in this testing configuration"
+          : (this.requirements(a) ??
+            (this.state.points < a.cost
+              ? "Insufficient upgrade points"
+              : null));
     return {
       ...a,
       purchased,
@@ -193,6 +239,7 @@ export class CharacterProgression {
   }
   awardExperience(amount) {
     if (!Number.isFinite(amount) || amount <= 0) return 0;
+    if (this.state.level >= this.economy.maxLevel) return 0;
     this.state.experience += Math.min(1000000, Math.floor(amount));
     let levels = 0;
     while (
@@ -221,11 +268,57 @@ export class CharacterProgression {
     this.changed(false);
     return true;
   }
+  investment() {
+    return (
+      investmentCost(this.rules, this.state.upgrades) +
+      this.state.unlocked.reduce(
+        (sum, id) =>
+          sum +
+          (ABILITIES.find((a) => a.id === id)?.baseline
+            ? 0
+            : (this.rules.abilities[id]?.cost ?? 0)),
+        0,
+      )
+    );
+  }
+  redistribute(attributes, budget) {
+    if (!this.temporary)
+      return {
+        ok: false,
+        reason: "Assignments are restricted to temporary developer characters",
+      };
+    if (!Number.isFinite(budget) || budget < 0 || budget > 1000000)
+      return { ok: false, reason: "Invalid point budget" };
+    const upgrades = {};
+    for (const d of STATISTICS) {
+      const n = attributes[d.id] ?? this.attribute(d.id);
+      if (
+        !Number.isInteger(n) ||
+        n < 1 ||
+        n > this.rules.stats[d.id].maxAttribute
+      )
+        return { ok: false, reason: `${d.name} exceeds its configured range` };
+      upgrades[d.id] = n - 1;
+    }
+    const extra =
+        this.investment() - investmentCost(this.rules, this.state.upgrades),
+      spent = investmentCost(this.rules, upgrades) + extra;
+    if (spent > budget)
+      return {
+        ok: false,
+        reason: `Build costs ${spent} points; budget is ${budget}`,
+      };
+    this.state.upgrades = upgrades;
+    this.state.points = Math.floor(budget) - spent;
+    this.changed();
+    return { ok: true };
+  }
   fork() {
     return new CharacterProgression({
       state: this.snapshot(),
       economy: this.economy,
       temporary: true,
+      rules: this.rules,
     });
   }
 }

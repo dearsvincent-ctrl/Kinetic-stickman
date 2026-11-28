@@ -92,7 +92,7 @@ export class Combatant {
       damage * (perfect ? 0 : blocked ? 1 - DAMAGE_CONFIG.blockReduction : 1);
     this.health = Math.max(0, this.health - applied);
     this.flash = 0.18;
-    const stability = Math.max(1, Math.min(10, this.stability ?? 1));
+    const stability = Math.max(0.1, Math.min(10, this.stability ?? 1));
     if (!blocked) this.stagger = DAMAGE_CONFIG.stagger / stability;
     const force = (knockback * (blocked ? 0.15 : 1)) / stability;
     // Bounded impulse, independent of sandbox travel speed and attack reach.

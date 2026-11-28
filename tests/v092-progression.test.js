@@ -84,7 +84,7 @@ test("v092 progression persists independently of legacy physics, layouts and nam
   assert.equal(loaded.state.points, 2);
   assert.equal(s.getItem("kinetic.physics-sandbox.v1"), "untouched");
   assert.equal(s.getItem("kinetic.sandbox-configurations.v1"), "builds");
-  assert.equal(JSON.parse(s.getItem(PROGRESSION_KEY)).version, 1);
+  assert.equal(JSON.parse(s.getItem(PROGRESSION_KEY)).version, 2);
 });
 test("v092 experience carries over levels and awards configured points", () => {
   const c = new CharacterProgression();

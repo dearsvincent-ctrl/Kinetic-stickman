@@ -41,7 +41,15 @@ export async function openBrowser(url, { practice = false } = {}) {
   await page.clock.install();
   await page.goto(url, { waitUntil: "networkidle" });
   await page.waitForSelector("#loading", { state: "detached" });
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  try {
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  } catch (error) {
+    if (!String(error).includes("Cannot fast-forward to the past")) throw error;
+    // pauseAt stops real-time syncing before rejecting an elapsed deadline.
+    // Under busy software WebGL, reading a new deadline from that now-paused
+    // clock removes the transport race. Do not suppress any gameplay errors.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  }
   const cdp = await page.context().newCDPSession(page);
   let previousPoints = new Map();
   const native = async (type, points, changed = points) => {

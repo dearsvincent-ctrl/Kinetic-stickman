@@ -16,7 +16,10 @@ export function progressionEffects(
     v = enabled
       ? character.values
       : Object.fromEntries(Object.keys(character.values).map((id) => [id, 1]));
-  const selected = (id) => enabled && character.state.selected.includes(id);
+  const selected = (id) =>
+    enabled &&
+    character.state.selected.includes(id) &&
+    character.rules?.abilities?.[id]?.enabled !== false;
   const abilities = {
     ...source.abilities,
     groundAcceleration:
@@ -33,6 +36,7 @@ export function progressionEffects(
       v.wallRunning *
       (selected("wallFlow") ? 1.2 : 1),
     landingStability: source.abilities.landingStability * v.landingStability,
+    wallJump: source.abilities.wallJump * (v.wallJump ?? 1),
   };
   const movement = resolveMovementConfig({
     movementConfig: {
@@ -40,8 +44,14 @@ export function progressionEffects(
       analogue: undefined,
       abilities,
       locomotion: {
-        walkSpeed: source.locomotion.walkSpeed * v.runningSpeed,
-        runSpeed: source.locomotion.runSpeed * v.runningSpeed,
+        walkSpeed: Math.min(
+          source.locomotion.walkSpeed * v.runningSpeed,
+          source.locomotion.sprintSpeed * v.maximumVelocity * 0.475,
+        ),
+        runSpeed: Math.min(
+          source.locomotion.runSpeed * v.runningSpeed,
+          source.locomotion.sprintSpeed * v.maximumVelocity * 0.95,
+        ),
         sprintSpeed: source.locomotion.sprintSpeed * v.maximumVelocity,
       },
       jump: {
@@ -75,13 +85,28 @@ export function progressionEffects(
         (selected("wallFlow") ? 1.2 : 1)) /
       movement.abilities.wallTraversal,
     rotation: {
-      flipDuration: BODY_ROTATION_CONFIG.flipDuration / v.rotationalControl,
-      minFlipDuration:
-        BODY_ROTATION_CONFIG.minFlipDuration / v.rotationalControl,
-      maxAngularSpeed:
-        BODY_ROTATION_CONFIG.maxAngularSpeed * v.rotationalControl,
-      recoveryResponse:
+      flipDuration: Math.min(
+        1.2,
+        Math.max(0.25, BODY_ROTATION_CONFIG.flipDuration / v.rotationalControl),
+      ),
+      minFlipDuration: Math.min(
+        0.6,
+        Math.max(
+          0.2,
+          BODY_ROTATION_CONFIG.minFlipDuration / v.rotationalControl,
+        ),
+      ),
+      maxAngularSpeed: Math.min(
+        60,
+        Math.max(
+          12,
+          BODY_ROTATION_CONFIG.maxAngularSpeed * v.rotationalControl,
+        ),
+      ),
+      recoveryResponse: Math.min(
+        80,
         BODY_ROTATION_CONFIG.recoveryResponse * v.rotationalControl,
+      ),
     },
   };
 }

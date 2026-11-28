@@ -3,6 +3,11 @@ import {
   NORMAL_PHYSICS,
   SANDBOX_STORAGE_KEY,
 } from "./PhysicsSandbox.js";
+import { REFERENCE_RULES } from "../progression/ProgressionCurves.js";
+import {
+  LAB_CONTROLS,
+  LAB_SELECTS,
+} from "../progression/ProgressionLabControls.js";
 import {
   REACTION_PARAMETERS,
   REACTION_DEFAULTS,
@@ -361,6 +366,57 @@ for (const p of [...ENEMY_ABILITY_PARAMETERS, ...ENEMY_ABILITY_TOGGLES]) {
     }),
   );
 }
+for (const p of LAB_CONTROLS)
+  catalog.set(p.id, {
+    id: p.id,
+    name: p.label,
+    family: "progressionLab",
+    category: "movement",
+    type: "range",
+    min: p.min,
+    max: p.max,
+    step: p.step,
+    default: p.key.startsWith("economy-")
+      ? REFERENCE_RULES.economy[p.key.slice(8)]
+      : p.key.startsWith("ability-")
+        ? p.key === "ability-cost"
+          ? 3
+          : p.key === "ability-level"
+            ? 2
+            : 1
+        : p.key === "build-budget"
+          ? 100
+          : p.key === "build-value"
+            ? 1
+            : REFERENCE_RULES.stats.maximumVelocity[p.key],
+    log: !!p.log,
+    persistence: "kinetic.progression-lab.v1",
+  });
+for (const p of [
+  ...LAB_SELECTS,
+  {
+    id: "progression-lab-preset",
+    name: "Reference / experimental rules",
+    default: "v0.9.2 reference",
+  },
+])
+  catalog.set(p.id, {
+    ...p,
+    family: "progressionLab",
+    category: "movement",
+    type: "select-one",
+    context: ["attribute", "ability"].includes(p.key),
+    persistence: "kinetic.progression-lab.v1",
+  });
+catalog.set("progression-lab-ability-enabled", {
+  id: "progression-lab-ability-enabled",
+  name: "Ability available in this ruleset",
+  family: "progressionLab",
+  category: "movement",
+  type: "checkbox",
+  default: true,
+  persistence: "kinetic.progression-lab.v1",
+});
 export const SETTING_CATALOG = catalog;
 export class SettingsRegistry {
   constructor() {

@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { openBrowser } from "./browser-driver.mjs";
 import { checkProgression } from "./v092-browser.mjs";
+import { checkProgressionRefinement } from "./v093-browser.mjs";
 import { checkGameplay } from "./manual-gameplay-browser.mjs";
 import { checkAcrobatics } from "./acrobatic-browser.mjs";
 import { checkActiveBattle } from "./active-battle-browser.mjs";
@@ -151,6 +152,10 @@ try {
       const characterRun = await openBrowser(`${origin}${base}`);
       try {
         await checkProgression(characterRun.page, characterRun.native);
+        await checkProgressionRefinement(
+          characterRun.page,
+          characterRun.native,
+        );
         assert.deepEqual(
           characterRun.errors,
           [],
